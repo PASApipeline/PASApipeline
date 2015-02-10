@@ -1,0 +1,32 @@
+
+#refreshLink { background-color: rgb(200,200,200); 
+}
+
+h1{ 
+    text-align: center;
+}
+
+.annotComparison { border: 1px solid rgb(0,0,0);
+}
+
+#pasaAlignmentAssemblyStatsTable { 
+    margin: 0 auto 0 auto;
+}                                 
+
+.alignmentAssemblyClassificationsTable {
+       margin: 0 auto 0 auto;
+}
+
+.geneComparisonOverviewTable {
+    margin: 0 auto 0 auto;
+}
+
+#pasaLinksList {
+    list-style-type: none;
+}
+
+#pasaLinksList a:hover { 
+    background-color: rgb(200,200,200);
+}
+
+

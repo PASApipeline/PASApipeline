@@ -1,0 +1,66 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Pasa_conf;
+use Mysql_connect;
+use strict;
+use DBI;
+use Getopt::Std;
+use Ath1_cdnas;
+use CDNA::CDNA_alignment;
+
+
+use vars qw ($opt_M $opt_G $opt_d $opt_h);
+open (STDERR, "&>STDOUT");
+&getopts ('M:p:G:dh');
+my $usage =  <<_EOH_;
+
+Script invalidates all single-exon ESTs that would otherwise provide valid alignments
+    
+
+############################# Options ###############################
+# -M Mysql database name
+# -d Debug
+# 
+# -h print this option menu and quit
+#
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+our $SEE = 0;
+
+if ($opt_h) {die $usage;}
+my $MYSQLdb = $opt_M or die $usage;
+my $MYSQLserver = &Pasa_conf::getParam("MYSQLSERVER");
+my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+our $DEBUG = $opt_d;
+
+my ($dbproc) = &connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+
+my $query = "select al.align_id, al.align_acc, ci.cdna_acc from align_link al, cdna_info ci where al.cdna_info_id = ci.id and ci.is_fli = 0 and al.validate = 1 and al.num_segments = 1";
+my @results = &do_sql_2D($dbproc, $query);
+
+
+# prepare a query for invalidation of transcripts
+my $invalidate_query = "update align_link set validate = 0, comment = \"invalidated (valid) single exon est alignment\" where validate =  1 and align_id = ?";
+my $sth = $dbproc->{dbh}->prepare ($invalidate_query) or die $dbproc->{dbh}->errstr;
+
+foreach my $result (@results) {
+    my ($align_id, $align_acc, $cdna_acc) = @$result;
+    print "invalidating single exon alignment $align_acc of $cdna_acc (align_id: $align_id)\n";
+    $sth->execute($align_id) or die $dbproc->{dbh}->errstr;
+}
+
+$dbproc->disconnect;
+
+exit(0);
+
+

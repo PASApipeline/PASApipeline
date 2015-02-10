@@ -1,0 +1,116 @@
+#!/usr/bin/env perl
+
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Mysql_connect;
+use strict;
+use DBI;
+use Ath1_cdnas;
+use Getopt::Std;
+use Gene_obj;
+use Storable ("thaw");
+use Data::Dumper;
+
+use vars qw ($opt_t $opt_M $opt_C $opt_p $opt_f $opt_d $opt_h $opt_v);
+
+&getopts ('M:p:f:dhvC:t:');
+
+
+$|=1;
+our $SEE = 0;
+
+my $usage =  <<_EOH_;
+
+This script retrieves all the proposed annotation updates from the annotation_store table and dumps the gene structures in GFF format.
+This includes successes and failures.
+
+
+############################# Options ###############################
+#
+# -M Mysql database/server ie. ("ath1_cdnas:haasbox")
+# -p passwordinfo  (contains "username:password")
+# -t partial type ("5prime|3prime|both|none") Default: both
+#
+# -h print this option menu and quit
+# -v verbose
+# -d Debug
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+if ($opt_h) {die $usage;}
+my $MYSQLstring = $opt_M or die "Must indicate MySQL parameters.\n\n$usage";
+
+my ($MYSQLdb, $MYSQLserver) = split (/:/, $MYSQLstring); 
+my $passwordinfo = $opt_p or die "Must specify password info.\n\n\n$usage";
+my $DEBUG = $opt_d;
+
+our $SEE = $opt_v;
+my ($user, $password) = split (/:/, $passwordinfo);
+my $type = $opt_t || "both";
+
+my ($allow_5prime_partial, $allow_3prime_partial) = (1,1);
+if ($type eq "5prime") {
+    $allow_3prime_partial = 0;
+}
+elsif ($type eq "3prime") {
+    $allow_5prime_partial = 0;
+}
+elsif ($type eq "none") {
+    $allow_3prime_partial = 0;
+    $allow_5prime_partial = 0;
+}
+
+my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+
+my %cdna_acc_to_asmbl_id;
+my $query = "select ci.cdna_acc, c.annotdb_asmbl_id from clusters c, cdna_info ci, align_link al where al.cluster_id = c.cluster_id and al.cdna_info_id = ci.id and ci.is_assembly = 1 ";
+my @results = &do_sql_2D($dbproc, $query);
+foreach my $result (@results) {
+    my ($cdna_acc, $asmbl_id) = @$result;
+    $cdna_acc_to_asmbl_id{$cdna_acc} = $asmbl_id;
+}
+
+my $temp_model_id = 0;
+my $temp_gene_id = 0;
+
+
+my $query = qq {
+    select cdna_acc, gene_obj from asmbl_gene_objs 
+        where allow_5prime_partial = $allow_5prime_partial
+        and allow_3prime_partial = $allow_3prime_partial
+    };
+
+my $sth = $dbproc->{dbh}->prepare($query);
+$sth->execute();
+while (my @row = $sth->fetchrow_array()) {
+    my ($cdna_acc, $gene_blob) = @row;
+    my $gene_obj = thaw($gene_blob);
+    unless (ref $gene_obj) {
+        print STDERR "error, no gene_obj for $cdna_acc\n";
+        next;
+    }
+        
+
+    $gene_obj->{asmbl_id} = $cdna_acc_to_asmbl_id{$cdna_acc};
+    $gene_obj->{TU_feat_name} = "gene_" . $cdna_acc;
+    $gene_obj->{Model_feat_name} = "model_" . $cdna_acc;
+    $gene_obj->{com_name} = "pasa $cdna_acc (5prime_partial_allowed:$allow_5prime_partial, 3prime_partial_allowed:$allow_3prime_partial)";
+    
+    print $gene_obj->to_GFF3_format() . "\n";
+    
+}
+
+$sth->finish;
+
+$dbproc->disconnect;
+
+exit(0);
+
+
+

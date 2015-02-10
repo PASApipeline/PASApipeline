@@ -1,0 +1,33 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Mysql_connect;
+use strict;
+use DBI;
+
+my $usage = "usage: $0 user password host database\n\n";
+
+my $user = $ARGV[0] or die $usage;
+my $password = $ARGV[1] or die $usage;
+my $host = $ARGV[2] or die $usage;
+my $database = $ARGV[3] or die $usage;
+
+# my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+eval {
+  my ($dbproc) = &Mysql_connect::connect_to_db($host,$database,$user,$password);
+  };
+
+
+if ($@) {
+  die "Error, connection not made: $@\n";
+}
+else {
+  print "All is good.\n";
+}
+
+exit(0);
+
+

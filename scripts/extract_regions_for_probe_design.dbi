@@ -1,0 +1,511 @@
+#!/usr/bin/env perl
+
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Mysql_connect;
+use strict;
+use DBI;
+use Ath1_cdnas;
+use Getopt::Std;
+use TiedHash;
+use Carp;
+use Data::Dumper;
+use CDNA::PASA_alignment_assembler;
+use Nuc_translator;
+use CdbTools;
+
+use vars qw ($opt_M $opt_p $opt_f $opt_d $opt_h $opt_v $opt_g);
+
+&getopts ('M:p:dhvg:');
+
+
+$|=1;
+my $SEE = 0;
+
+open (STDERR, "&>STDOUT");
+
+my $usage =  <<_EOH_;
+
+############################# Options ###############################
+#
+# -M Mysql database/server ie. ("ath1_cdnas:haasbox")
+# -p passwordinfo  (contains "username:password")
+# -g genome fasta file
+# -d Debug
+# 
+# -h print this option menu and quit
+# -v verbose
+###################### Process Args and Options #####################
+_EOH_
+
+    ;
+
+if ($opt_h) {die $usage;}
+my $MYSQLstring = $opt_M or die "Must indicate MySQL parameters.\n\n$usage";
+my $genome_db = $opt_g or die "Error, need genome fasta db.\n";
+my ($MYSQLdb, $MYSQLserver) = split (/:/, $MYSQLstring); 
+my $passwordinfo = $opt_p or die "Must specify password info.\n\n\n$usage";
+my $DEBUG = $opt_d;
+$SEE = $opt_v;
+#our $DB_SEE = $SEE;
+
+my ($user, $password) = split (/:/, $passwordinfo);
+
+my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+###################################################################
+## Begin program here
+
+my $chromo_value = "";
+my $genome_seq = "";
+
+my $SPLICE_BOUNDS_SEQ_SPAN_SIDE_LENGTH = 40;
+
+main: {
+        
+
+    my $cluster_text = "";
+    while (<STDIN>) {
+        if (m|^// subcluster|) {
+            if ($cluster_text =~ /\w/) {
+                &process_cluster($cluster_text);
+            }
+            $cluster_text = "";
+        }
+        
+        $cluster_text .= $_;
+    }
+    
+    &process_cluster($cluster_text);
+}
+
+exit(0);
+
+
+####
+sub process_cluster {
+    my ($cluster_text) = @_;
+    
+    $cluster_text =~ s/\s+$//; # trim trailing ws
+    
+    print "\n\n"
+        . "==============================\n$cluster_text\n\n";
+    
+
+    $cluster_text =~ m|// subcluster (\d+)|;
+    
+    my $subcluster_id = $1 or die "Error, no subcluster ID from text: $cluster_text";
+
+    my @alignment_objs = &get_alignment_objs_for_assemblies($subcluster_id);
+    
+    #print "# alignments:\n";
+    #foreach my $alignment_obj (@alignment_objs) {
+    #    print $alignment_obj->get_acc() . "\t" . $alignment_obj->toToken() . "\n";
+    #}
+    #print "#\n\n";
+    
+    my @lines = split (/\n/, $cluster_text);
+
+    my @feature_structs;
+    my $chromo = "";
+    foreach my $line (@lines) {
+        unless ($line =~ /^\w+-\w+/) { 
+            next; 
+        } # starts with an event ID.
+        
+        my @x = split (/\t/, $line);
+        
+        my $struct = { 
+            event_ID => $x[0],
+            chromo => $x[1],
+            orient => $x[2],
+            feat_type => $x[3],
+            coords_listing => $x[4],
+            pasa_acc_list => $x[5],
+            feat_class => $x[6],
+            num_trans_support => $x[7],
+        };
+        
+        $chromo = $struct->{chromo};
+        push (@feature_structs, $struct);
+    }
+    
+    unless ($chromo) { die "Error, no chromo"; }
+        
+    unless (@feature_structs) {
+        die "Error, no feature structs.\n";
+    }
+
+    if ($chromo ne $chromo_value) {
+        $chromo_value = $chromo;
+        $genome_seq = cdbyank_linear($chromo_value, $genome_db);
+    }
+    
+    my %acc_to_alignment_obj;
+    my %acc_to_cdna_seq;
+    
+    foreach my $alignment_obj (@alignment_objs) {
+        my $acc = $alignment_obj->get_acc();
+        
+        $acc_to_alignment_obj{$acc} = $alignment_obj;
+        
+        my $cdna_seq = $alignment_obj->extractSplicedSequence(\$genome_seq);
+        
+        $acc_to_cdna_seq{$acc} = $cdna_seq;
+    }
+    
+    &get_junction_seqs(\@alignment_objs, \@feature_structs, \%acc_to_alignment_obj, \%acc_to_cdna_seq);
+
+    &get_region_seqs($subcluster_id, \@alignment_objs, \%acc_to_alignment_obj, \%acc_to_cdna_seq);
+    
+}
+
+
+####
+sub get_junction_seqs {
+    my ($alignment_objs_aref, $feature_structs_aref, $acc_to_alignment_obj_href, $acc_to_cdna_seq_href) = @_;
+    
+    #print Dumper ($feature_structs_aref);
+    
+    
+    ### get a sequence for every feature:
+    foreach my $feature (@$feature_structs_aref) {
+        
+        my ($event_ID, $chromo, $orient, $feat_type, $coords_listing, $pasa_acc_list) = ($feature->{event_ID},
+                                                                                         $feature->{chromo},
+                                                                                         $feature->{orient},
+                                                                                         $feature->{feat_type},
+                                                                                         $feature->{coords_listing},
+                                                                                         $feature->{pasa_acc_list});
+        
+        my @pasa_accs = split (/,/, $pasa_acc_list);
+        my $representative_pasa_acc = $pasa_accs[0];
+        my $alignment_obj = $acc_to_alignment_obj_href->{$representative_pasa_acc} or die "Error, no alignment obj for $representative_pasa_acc\n";
+        my $cdna_seq = $acc_to_cdna_seq_href->{$representative_pasa_acc};
+        
+        if ($feat_type eq 'intron' || $feat_type eq 'intron_skips_exon') {
+            &extract_intron_junction_sequence($event_ID, $alignment_obj, $cdna_seq, $coords_listing, "splice_junction"); 
+        }
+        
+        elsif ($feat_type eq 'alt_terminal_exons') {
+            
+            ## process the intron that joins the terminal exons to the rest.
+            my $intron_coordset = &find_intron_joining_alt_terminal_exons($coords_listing, $alignment_obj, $cdna_seq);
+            &extract_intron_junction_sequence($event_ID, $alignment_obj, $cdna_seq, $intron_coordset, "alt_term_exons_joining");
+            
+            ## process each of the introns within terminal exon junctions.
+            my @intron_coordsets = &get_intron_coordsets_from_exon_coordsets($coords_listing);
+            foreach my $intron (@intron_coordsets) {
+                &extract_intron_junction_sequence($event_ID, $alignment_obj, $cdna_seq, $intron, "alt_term_exon_intra_junctions");
+            }
+            
+        }
+        elsif ($feat_type eq 'retained_exons') {
+            ## want junction probes to the left, to the right, and internal
+            my @internal_introns = &get_intron_coordsets_from_exon_coordsets($coords_listing);
+            foreach my $intron (@internal_introns) {
+                &extract_intron_junction_sequence($event_ID, $alignment_obj, $cdna_seq, $intron, "retained_exon_intra_junctions");
+            }
+            
+            ## get to the left and right
+            my @coords_left;
+            my @coords_right;
+            my @retained_coords;
+            foreach my $coordset (split /,/, $coords_listing) {
+                my ($lend, $rend) = split (/-/, $coordset);
+                push (@retained_coords, $lend, $rend);
+            }
+            @retained_coords = sort {$a<=>$b} @retained_coords;
+            my $retained_lend = shift @retained_coords;
+            my $retained_rend = pop @retained_coords;
+
+            foreach my $segment ($alignment_obj->get_alignment_segments()) {
+                my ($lend, $rend) = $segment->get_coords();
+                if ($rend < $retained_lend) {
+                    push (@coords_left, $rend);
+                }
+                elsif ($lend > $retained_rend) {
+                    push (@coords_right, $lend);
+                }
+            }
+
+            @coords_left = sort {$a<=>$b} @coords_left;
+            my $max_coords_left = pop @coords_left;
+            @coords_right = sort {$a<=>$b} @coords_right;
+            my $min_coords_right = shift @coords_right;
+            
+            my $intron_left = ($max_coords_left + 1) . "-" . ($retained_lend - 1);
+            my $intron_right = ($retained_rend + 1) . "-" . ($min_coords_right + 1);
+            
+            &extract_intron_junction_sequence($event_ID, $alignment_obj, $cdna_seq, $intron_left, "retained_exons_left_junction");
+            &extract_intron_junction_sequence($event_ID, $alignment_obj, $cdna_seq, $intron_right, "retained_exons_right_junction");
+            
+        }
+               
+    }
+    
+    
+    return;
+}
+
+
+####
+sub get_alignment_objs_for_assemblies {
+    my ($subcluster_id) = @_;
+
+    my @alignment_objs;
+    
+    ## get the list of transcripts:
+    my $query = "select sl.cdna_acc from subcluster_link sl where sl.subcluster_id = $subcluster_id";
+    my @results = &do_sql_2D($dbproc, $query);
+
+    my @cdna_accs;
+    foreach my $result (@results) {
+        push (@cdna_accs, $result->[0]);
+    }
+    
+    unless (@cdna_accs) {
+        die "Error, no cdna_accs retrieved for subcluster_id $subcluster_id";
+    }
+
+    foreach my $cdna_acc (@cdna_accs) {
+        my $alignment_obj = &Ath1_cdnas::get_alignment_obj_via_acc($dbproc, $cdna_acc);
+        push (@alignment_objs, $alignment_obj);
+    }
+        
+
+    unless (@alignment_objs) {
+        die "Error, no alignment objects extracted for transcripts in subcluster $subcluster_id";
+    }
+    
+    return (@alignment_objs);
+    
+}
+
+
+####
+# given the intron coordinates, extracts cDNA sequence flanking this junction.
+sub extract_intron_junction_sequence {
+    my ($event_ID, $alignment_obj, $cdna_seq, $intron_coordpair, $annotation) = @_;
+    
+    my $pasa_acc = $alignment_obj->get_acc();
+
+    my ($intron_lend, $intron_rend) = split (/-/, $intron_coordpair);
+    ## convert coordinates so they correspond to the exon boundaries:
+    $intron_lend--;
+    $intron_rend++;
+    
+    my ($cdna_lend, $cdna_rend) = sort {$a<=>$b} $alignment_obj->get_genomic_to_cDNA_coordinates($intron_lend, $intron_rend);
+    my $feat_length = 2 * $SPLICE_BOUNDS_SEQ_SPAN_SIDE_LENGTH;
+    
+    
+    my $start_retrieval = $cdna_lend - $SPLICE_BOUNDS_SEQ_SPAN_SIDE_LENGTH + 1;
+    my $offset = $SPLICE_BOUNDS_SEQ_SPAN_SIDE_LENGTH;
+    if ($start_retrieval < 1) {
+        $start_retrieval = 1;
+        $offset = $cdna_lend - $start_retrieval;
+    }
+    
+    my $subseq = substr($cdna_seq, $start_retrieval - 1, $feat_length);
+    
+    print ">$event_ID\t$annotation\tintron:$intron_coordpair\t$pasa_acc\tT($cdna_lend-$cdna_rend) left-offset:$offset\t$subseq\n";
+    
+    return;
+    
+}
+
+####
+sub find_intron_joining_alt_terminal_exons {
+    my ($coords_listing, $rep_pasa_alignment_obj, $rep_cdna_sequence) = @_;
+    
+    ## find the intron that joins the terminal exons to this alignment assembly:
+    my @alt_term_coords;
+    while ($coords_listing =~ /(\d+)/g) {
+        push (@alt_term_coords, $1);
+    }
+
+    #print "coords listing: $coords_listing\n";
+
+    my $left_coord = shift @alt_term_coords;
+    my $right_coord = pop @alt_term_coords;
+    # adj to intron coord:
+    $left_coord--;
+    $right_coord++;
+    
+    #print "left adj: $left_coord\n"
+    #    . "right adj: $right_coord\n";
+    
+
+    my $target_intron;
+    foreach my $intron_coordpair ($rep_pasa_alignment_obj->get_intron_coords()) {
+        
+        my ($intron_lend, $intron_rend) = sort {$a<=>$b} @$intron_coordpair;
+        print "-intron: $intron_lend, $intron_rend\n";
+        if ($intron_rend == $left_coord || $intron_lend == $right_coord) {
+            $target_intron = "$intron_lend-$intron_rend";
+        }
+    }
+    unless ($target_intron) {
+        die "Error, couldn't find target intron!";
+    }
+        
+    return ($target_intron);
+}
+
+
+
+####
+sub get_intron_coordsets_from_exon_coordsets {
+    my ($exon_coordsets) = @_;
+    my @exons = split (/,/, $exon_coordsets);
+    if (scalar @exons == 1) {
+        return; # no introns to report
+    }
+
+    my @exon_coords;
+    foreach my $exon (@exons) {
+        my ($exon_lend, $exon_rend) = split (/-/, $exon);
+        push (@exon_coords, [$exon_lend, $exon_rend]);
+    }
+
+    @exon_coords = sort {$a->[0]<=>$b->[0]} @exon_coords;
+
+    my @introns;
+    for (my $i = 0; $i < $#exon_coords; $i++) {
+        my $prev_rend = $exon_coords[$i]->[1];
+        my $next_lend = $exon_coords[$i+1]->[0];
+        $prev_rend++;
+        $next_lend--;
+        push (@introns, "$prev_rend-$next_lend");
+    }
+
+    return (@introns);
+}
+
+####
+sub get_region_seqs {
+    my ($subcluster_id, $alignment_objs_aref, $acc_to_alignment_obj_href, $acc_to_cdna_seq_href) = @_;
+    
+    my @position_array;
+
+    my @coords; # get the min and max of all spans:
+    foreach my $alignment_obj (@$alignment_objs_aref) {
+        my @segments = $alignment_obj->get_alignment_segments();
+        foreach my $segment (@segments) {
+            my ($lend, $rend) = $segment->get_coords();
+            push (@coords, $lend, $rend);
+        }
+    }
+    @coords = sort {$a<=>$b} @coords;
+    my $min_coord = shift @coords;
+    my $max_coord = pop @coords;
+
+    my $feature_length = $max_coord - $min_coord + 1;
+
+    for (my $i = 0; $i < $feature_length; $i++) {
+        $position_array[$i] = "I"; # init to intron
+    }
+    
+    ## add each alignment segment to the position array
+    for (my $i = 0; $i <= $#$alignment_objs_aref; $i++) {
+        my @segments = $alignment_objs_aref->[$i]->get_alignment_segments();
+        foreach my $segment (@segments) {
+            my ($lend, $rend) = $segment->get_coords();
+            for (my $j = $lend; $j <= $rend; $j++) {
+                my $pos = $j - $min_coord;
+                if ($position_array[$pos] eq 'I') {
+                    $position_array[$pos] = $i;
+                }
+                else {
+                    $position_array[$pos] .= ",$i";
+                }
+            }
+        }
+
+    }
+    
+    
+    ## define regions, ignoring I's.
+    my $variant_region_counter = 0;
+    my $common_region_counter = 0;
+
+    my @regions;
+    my $region_begin = 0;
+    my $region_type = $position_array[0];
+    my $last_nonI_position = 0;
+
+    # add a terminator:
+    $position_array[$#position_array + 1] = "TERMINATE";
+    
+    for (my $i = 1; $i <= $#position_array; $i++) {
+        my $next_region_type = $position_array[$i];
+        if ($next_region_type ne 'I') {
+            if ($next_region_type ne $region_type) {
+                ## terminate last region, start new one.
+                push (@regions, { begin => $region_begin,
+                                  end => $last_nonI_position,
+                                  type => $region_type,
+                              } );
+                $region_begin = $i;
+                $region_type = $next_region_type;
+
+            }
+            $last_nonI_position = $i;
+        }
+    }
+    
+    
+    foreach my $region (@regions) {
+        my ($begin, $end, $type) = ($region->{begin}, $region->{end}, $region->{type});
+        my @pasa_acc_indices = split (/,/, $type);
+        my @pasa_accs;
+        foreach my $pasa_acc_index (@pasa_acc_indices) {
+            my $pasa_acc = $alignment_objs_aref->[$pasa_acc_index]->get_acc();
+            push (@pasa_accs, $pasa_acc);
+        }
+        @pasa_accs = sort @pasa_accs;
+        
+        my $region_acc_list = join (",", @pasa_accs);
+        
+        ## transform begin and end coordinates to genome sequence:
+        $begin += $min_coord;
+        $end += $min_coord;
+        
+        ## pull out a reference pasa assembly to retrieve sequence from:
+        my $ref_acc = $pasa_accs[0];
+        my $alignment_obj = $acc_to_alignment_obj_href->{$ref_acc};
+        my $ref_cDNA = $acc_to_cdna_seq_href->{$ref_acc};
+        my ($cdna_lend, $cdna_rend) = sort {$a<=>$b} $alignment_obj->get_genomic_to_cDNA_coordinates($begin, $end);
+        my $region_length = $cdna_rend - $cdna_lend + 1;
+
+        my $subseq = substr($ref_cDNA, $cdna_lend - 1, $region_length);
+        my $region_ID;
+        if (scalar (@pasa_accs) == scalar (@$alignment_objs_aref)) {
+            $common_region_counter++;
+            $region_ID = "S$subcluster_id" . "_" . "com$common_region_counter";
+        }
+        else {
+            $variant_region_counter++;
+            $region_ID = "S$subcluster_id" . "_" . "var$variant_region_counter";
+        }
+        
+        print ">$region_ID\tG[$chromo_value]:$begin-$end\tT[$ref_acc]:$cdna_lend-$cdna_rend\trep:$region_acc_list\t$subseq\n";
+    }
+
+    return;
+}
+
+
+
+
+    
+
+
+
+
+
+
+
+

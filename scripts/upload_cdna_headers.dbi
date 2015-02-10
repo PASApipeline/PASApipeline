@@ -1,0 +1,71 @@
+#!/usr/bin/env perl
+
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Mysql_connect;
+use strict;
+use DBI;
+use Ath1_cdnas;
+use Getopt::Std;
+
+use vars qw ($opt_M $opt_p $opt_f $opt_d $opt_h $opt_v);
+
+&getopts ('M:p:f:dhv');
+
+
+$|=1;
+our $SEE = 0;
+
+open (STDERR, "&>STDOUT");
+
+my $usage =  <<_EOH_;
+
+############################# Options ###############################
+#
+# -M Mysql database/server ie. ("ath1_cdnas:haasbox")
+# -p passwordinfo  (contains "username:password")
+# -f cDNA Fasta filename
+# -d Debug
+# 
+# -h print this option menu and quit
+# -v verbose
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+if ($opt_h) {die $usage;}
+my $MYSQLstring = $opt_M or die "Must indicate MySQL parameters.\n\n$usage";
+
+my ($MYSQLdb, $MYSQLserver) = split (/:/, $MYSQLstring); 
+my $passwordinfo = $opt_p or die "Must specify password info.\n\n\n$usage";
+my $DEBUG = $opt_d;
+
+my $fasta_db = $opt_f or die "Must specify cdna fasta db filename.\n";
+our $SEE = $opt_v;
+
+my ($user, $password) = split (/:/, $passwordinfo);
+
+my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+open (FASTA, "$fasta_db") or die "Can't open $fasta_db";
+while (<FASTA>) {
+    if (/^>/) {
+	my $header = $_;
+	chomp $header;
+	$header =~ s/^>//;
+	my ($accession, $header) = split (/\s+/, $header, 2);
+	if ($header) {
+	    my $query = "update cluster_link set header = ? where cdna_acc = ?";
+	    &RunMod($dbproc, $query, $header, $accession);
+	}
+    }
+}
+
+close FASTA;
+
+
+exit(0);

@@ -1,0 +1,19 @@
+
+## templated variables to be replaced exist as <__var_name__>
+
+# MySQL settings
+MYSQLDB=<__MYSQLDB__>
+
+
+#######################################################
+# Parameters to specify to specific scripts in pipeline
+# create a key = "script_name" + ":" + "parameter" 
+# assign a value as done above.
+
+#script validate_alignments_in_db.dbi
+validate_alignments_in_db.dbi:--MIN_PERCENT_ALIGNED=<__MIN_PERCENT_ALIGNED__>
+validate_alignments_in_db.dbi:--MIN_AVG_PER_ID=<__MIN_AVG_PER_ID__>
+
+#script subcluster_builder.dbi
+subcluster_builder.dbi:-m=50
+

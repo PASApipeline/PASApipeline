@@ -1,0 +1,169 @@
+#!/usr/bin/env perl
+
+
+use strict;
+use warnings;
+
+use FindBin;
+use lib ("$FindBin::Bin");
+use Pasa_init;
+use Pasa_conf;
+use Mysql_connect;
+
+use DBI;
+use Getopt::Std;
+use Ath1_cdnas;
+use CDNA::CDNA_alignment;
+use CDNA::Alternative_splice_comparer;
+use CDNA::PASA_alignment_assembler;
+use Carp;
+use Data::Dumper;
+use CdbTools;
+use Nuc_translator;
+use Storable qw (nfreeze);
+
+use vars qw ($opt_M $opt_v $opt_G $opt_d $opt_h);
+
+&getopts ('M:G:dhv');
+my $usage =  <<_EOH_;
+
+Script loads the alignment textual representation for the pasa assemblies.
+
+############################# Options ###############################
+# -M Mysql database name
+# -G genome_seq fasta db
+# -d Debug
+# 
+# -h print this option menu and quit
+# -v verbose
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+my $SEE = $opt_v;
+#our $DB_SEE = $opt_v;
+
+if ($opt_h) {die $usage;}
+
+my $MYSQLdb = $opt_M or die $usage;
+my $MYSQLserver = &Pasa_conf::getParam("MYSQLSERVER");
+my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+our $DEBUG = $opt_d;
+my $genomic_db = $opt_G or die $usage;
+
+my ($dbproc) = &connect_to_db($MYSQLserver, $MYSQLdb, $user, $password);
+
+## get list of molecules
+my $query = "select distinct annotdb_asmbl_id from clusters";
+my @asmbl_ids;
+my @results = &do_sql_2D($dbproc, $query);
+
+foreach my $result (@results) {
+    my $asmbl_id = $result->[0];
+    push (@asmbl_ids, $asmbl_id);
+}
+
+## first empty table:
+{
+  my $query = "delete from asmbl_gene_objs";
+  &RunMod($dbproc, $query);
+}
+
+my $insert_query = qq {
+    insert asmbl_gene_objs (cdna_acc, allow_5prime_partial, allow_3prime_partial, gene_obj)
+        values (?,?,?,?) 
+    };
+
+my $sth = $dbproc->{dbh}->prepare($insert_query);
+
+
+$dbproc->{dbh}->{AutoCommit} = 0;
+my $ids_to_assembly = scalar(@asmbl_ids);
+my $progress = 0;
+
+
+foreach my $asmbl_id (@asmbl_ids) {
+    
+    my $genome_seq_fasta = cdbyank($asmbl_id, $genomic_db);
+    my ($acc, $header, $genome_seq) = linearize($genome_seq_fasta);
+    
+    ## process each pasa assembly, FL and non-FL
+    ## provide diff settings for partial allowances
+    ## store each gene model in the database
+    
+    my $query = "select al.align_id from align_link al, clusters c, cdna_info ci "
+        . " where ci.is_assembly = 1 and ci.id = al.cdna_info_id "
+        . " and al.cluster_id = c.cluster_id and c.annotdb_asmbl_id = ?";
+    my @results = &do_sql_2D($dbproc, $query, $asmbl_id);
+    
+    my @cdna_accs;
+    foreach my $result (@results) {
+        push (@cdna_accs, $result->[0]);
+    }
+
+    
+    foreach my $align_id (@cdna_accs) {
+        
+        #my $alignment = &Ath1_cdnas::get_alignment_obj_via_acc($dbproc, $asmbl_acc, \$genome_seq);
+        
+        my $alignment = &Ath1_cdnas::create_alignment_obj($dbproc, $align_id, \$genome_seq);
+     
+        my $asmbl_acc = $alignment->get_acc();
+        
+        foreach my $partial_settings ([0,0], [0,1], [1,0], [1,1]) {
+            my ($prime5_partial, $prime3_partial) = @$partial_settings;
+
+            
+            eval {
+            
+                my $gene_obj = $alignment->get_gene_obj_via_alignment( { '5prime' => $prime5_partial,
+                                                                         '3prime' => $prime3_partial } );
+                
+                $gene_obj->clear_sequence_info();
+                $gene_obj->{TU_feat_name} = $gene_obj->{Model_feat_name} = "$asmbl_acc [5p:$prime5_partial, 3p:$prime3_partial]";
+                
+                
+                my $blob = nfreeze($gene_obj);
+                my $blob_length = length($blob);
+                
+                $sth->execute($asmbl_acc, $prime5_partial, $prime3_partial, $blob);
+                
+                print "processing $asmbl_acc, $prime5_partial, $prime3_partial, (blob: $blob_length)\n" if $SEE;
+                $progress++;
+            };
+            
+            if ($@) {
+                print STDERR $@;
+            }
+            elsif ($progress % 50 == 0) {
+                $dbproc->{dbh}->commit;
+                print STDERR "\rCommitted $progress  ";
+            }
+            
+        }
+
+    }
+}
+
+
+$sth->finish;
+
+print STDERR "\n\ndone.\n";
+$dbproc->{dbh}->commit;
+
+
+
+
+exit(0);
+
+
+        
+        
+
+
+
+    

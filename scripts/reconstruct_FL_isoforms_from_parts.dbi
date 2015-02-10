@@ -1,0 +1,185 @@
+#!/usr/bin/env perl
+
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Mysql_connect;
+use strict;
+use DBI;
+use Ath1_cdnas;
+use CDNA::CDNA_stitcher;
+
+use Getopt::Std;
+
+use vars qw ($opt_M $opt_f $opt_d $opt_h $opt_v $opt_P);
+
+&getopts ('M:dhvP:');
+
+
+$|=1;
+our $SEE = 0;
+
+open (STDERR, "&>STDOUT");
+
+my $usage =  <<_EOH_;
+
+############################# Options ###############################
+#
+# -M Mysql database name
+# -P prefix for output files (gtf, gff3, and bed)
+# -d Debug
+# 
+# -h print this option menu and quit
+# -v verbose
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+if ($opt_h) {die $usage;}
+
+
+my $MYSQLdb = $opt_M or die $usage;
+my $MYSQLserver = &Pasa_conf::getParam("MYSQLSERVER");
+
+my $DEBUG = $opt_d;
+our $SEE = $opt_v;
+
+my $prefix = $opt_P or die "Must specify output prefix with -P ";
+
+my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+
+my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+
+my $gtf_outfile = "$prefix.gtf";
+my $gff3_outfile = "$prefix.gff3";
+
+open (my $gtf_fh, ">$gtf_outfile");
+open (my $gff3_fh, ">$gff3_outfile");
+
+
+###################################################################
+## Begin program here
+
+my $query = "select c.annotdb_asmbl_id, sl.subcluster_id "
+	. " from clusters c, cdna_info ci, align_link al, subcluster_link sl "
+	. " where c.cluster_id = al.cluster_id and al.cdna_info_id = ci.id "
+	. " and al.align_acc = sl.cdna_acc "
+	. " and ci.is_assembly = 1 "
+	. " group by c.annotdb_asmbl_id, sl.subcluster_id "
+	. " order by c.annotdb_asmbl_id ";
+
+
+my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+
+foreach my $result (@results) {
+	# print join("\t", @$result) . "\n";
+
+	my ($asmbl_id, $subcluster_id) = @$result;
+	
+	my @pasa_asmbl_objs = &get_pasa_asmbl_objs($dbproc, $subcluster_id);
+	
+	my @new_asmbls;
+	
+	if (scalar @pasa_asmbl_objs == 1) {
+		## just report it
+		@new_asmbls = @pasa_asmbl_objs;
+		
+	}
+	else {
+		## try to reconstruct a more FL assembly from the parts.
+				
+		@pasa_asmbl_objs = reverse sort {$a->{num_aligned_nts}<=>$b->{num_aligned_nts}} @pasa_asmbl_objs;
+		
+		
+		my $template_isoform = shift @pasa_asmbl_objs; ## this is the one with the greatest number of aligned nucleotides.
+
+		@new_asmbls = ($template_isoform);
+
+		## try to stitch the others into this template:
+		
+		foreach my $other_isoform (@pasa_asmbl_objs) {
+
+			if ($template_isoform->has_overlapping_segment($other_isoform)) {
+
+				my $stitcher = new CDNA::CDNA_stitcher();
+				
+				my $stitched_asmbl = $stitcher->stitch_alignments($template_isoform, $other_isoform);
+				
+				$stitched_asmbl->set_acc($other_isoform->get_acc());
+				
+				$stitched_asmbl->remap_cdna_segment_coords();
+				
+				push (@new_asmbls, $stitched_asmbl);
+			}
+			else {
+				## remain unchanged.
+				push (@new_asmbls, $other_isoform); 
+			}
+		}
+		
+	}
+
+	
+	foreach my $new_asmbl (@new_asmbls) {
+		
+		print $gtf_fh $new_asmbl->to_GTF_format( seq_id => $asmbl_id,
+												 gene_id => "S$subcluster_id",
+												 transcript_id => $new_asmbl->get_acc(),
+												 ) 
+			. "\n";
+	
+
+		print $gff3_fh $new_asmbl->to_GFF3_format( seq_id => $asmbl_id,
+												   match_id => "S$subcluster_id-" . $new_asmbl->get_acc(),
+												   )
+			. "\n";
+		
+	}
+	
+	print $gtf_fh "\n\n";
+	print $gff3_fh "\n\n";
+	
+	
+}
+
+
+close $gtf_fh;
+close $gff3_fh;
+
+exit(0);
+
+
+####
+sub get_pasa_asmbl_objs {
+	my ($dbproc, $subcluster_id) = @_;
+
+
+	my @alignment_objs;
+
+	my $query = "select al.align_id, al.align_acc from subcluster_link sl, align_link al "
+        . " where al.align_acc = sl.cdna_acc and sl.subcluster_id = $subcluster_id";
+	
+	my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+
+	foreach my $result (@results) {
+		my ($align_id, $pasa_acc) = @$result;
+		
+		my $cdna_obj = &Ath1_cdnas::create_alignment_obj($dbproc, $align_id);
+
+		push (@alignment_objs, $cdna_obj);
+	}
+
+
+	return(@alignment_objs);
+}
+
+
+
+											
+											

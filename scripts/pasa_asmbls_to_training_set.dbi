@@ -1,0 +1,147 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ("$FindBin::Bin");
+use Pasa_init;
+use Mysql_connect;
+use strict;
+use Getopt::Long qw(:config no_ignore_case bundling pass_through);
+use Gene_obj;
+use Nuc_translator;
+use CdbTools;
+use List::Util qw (min max);
+
+
+
+$|=1;
+our $SEE = 0;
+
+my $usage =  <<_EOH_;
+
+############################# Options ###############################
+#
+# Required:
+#
+# --pasa_transcripts_fasta <string>    the \${pasa_db}.pasa_assemblies.denovo_transcript_isoforms.fasta file
+# --pasa_transcripts_gff3 <string>     the \${pasa_db}.denovo_transcript_isoforms.gff3 file
+#
+#  Optional:
+#
+# -m <int>                             minimum protein length (default: 100)
+#
+# -G <string>                          genetic code (default: universal, options: Euplotes, Tetrahymena, Candida, Acetabularia)
+#
+# -h print this option menu and quit
+# -v verbose
+#
+# -S                                   strand-specific (only analyzes top strand)
+# -T <int>                             top longest ORFs to train Markov Model (hexamer stats) (default: 500)
+#
+#
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+
+# required
+my ($pasa_transcripts_fasta_file, $pasa_transcripts_gff3_file);
+
+
+# optional
+my ($min_prot_length, $genetic_code, $help, $verbose, $strand_specific_flag, $top_long_orfs);
+
+my $DEBUG = 0; # just prints commands, doesnt execute anything
+
+&GetOptions( 'pasa_transcripts_fasta=s' =>\$pasa_transcripts_fasta_file,
+             'pasa_transcripts_gff3=s' => \$pasa_transcripts_gff3_file,
+             'm=i' => \$min_prot_length,
+             'G=s' => \$genetic_code,
+             'h' => \$help,
+             'v' =>\$verbose,
+             'S' => \$strand_specific_flag,
+             'T=i' => \$top_long_orfs,
+             'd' => \$DEBUG);
+
+
+if ($help) {
+    die $usage;
+}
+
+unless ($pasa_transcripts_fasta_file && $pasa_transcripts_gff3_file) {
+    die $usage;
+}
+
+
+main: {
+
+    my $transdecoder_dir = "$FindBin::Bin/../pasa-plugins/transdecoder";
+
+
+    my $cmd = "$transdecoder_dir/transcripts_to_best_scoring_ORFs.pl -t $pasa_transcripts_fasta_file ";
+    
+    if ($min_prot_length) {
+        $cmd .= " -m $min_prot_length ";
+    }
+    if ($genetic_code) {
+        $cmd .= " -G $genetic_code ";
+    }
+    if ($verbose) {
+        $cmd .= " -v ";
+    }
+    if ($strand_specific_flag) {
+        $cmd .= " -S ";
+    }
+    if ($top_long_orfs) {
+        $cmd .= " -T $top_long_orfs ";
+    }
+
+    &process_cmd($cmd);
+
+    
+
+    ## Convert the output file over to using the genome coordinates:
+    
+    my $best_candidates_gff3_file = "$pasa_transcripts_fasta_file.transdecoder.gff3";
+    
+    $cmd = "$transdecoder_dir/cdna_alignment_orf_to_genome_orf.pl $pasa_transcripts_fasta_file.transdecoder.gff3 $pasa_transcripts_gff3_file $pasa_transcripts_fasta_file > $pasa_transcripts_fasta_file.transdecoder.genome.gff3";
+    &process_cmd($cmd);
+
+
+    $cmd = "$transdecoder_dir/util/gff3_file_to_bed.pl $pasa_transcripts_fasta_file.transdecoder.genome.gff3 > $pasa_transcripts_fasta_file.transdecoder.genome.bed";
+    &process_cmd($cmd);
+    
+
+    print STDERR "\n\n** Final PASA best candidate orfs are provided as files: $pasa_transcripts_fasta_file.transdecoder.\*\n\n";
+    
+    exit(0);
+
+
+}
+    
+
+####
+sub process_cmd {
+	my ($cmd) = @_;
+
+	print "CMD: $cmd\n";
+    
+    if ($DEBUG) { 
+        return;
+    }
+
+	my $ret = system($cmd);
+
+	if ($ret) {
+		die "Error, cmd: $cmd died with ret $ret";
+	}
+	
+	return;
+
+}
+
+
+
+
+

@@ -1,0 +1,114 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Mysql_connect;
+use strict;
+use DBI;
+use CDNA::PASA_alignment_assembler;
+use CDNA::CDNA_alignment;
+use Ath1_cdnas;
+use Storable;
+use Getopt::Std;
+use File::Basename;
+
+use vars qw ($opt_h $opt_D $opt_s $opt_p $opt_d $DEBUG $opt_S $opt_M $opt_G $opt_v);
+
+&getopts ('hD:dp:S:M:G:vs:');
+
+
+$|=1;
+our $SEE = $opt_v;
+
+open (STDERR, "&>STDOUT");
+
+my $usage =  <<_EOH_;
+
+Script assembles the predefined clusters of cDNAs/ESTs, one annotationdb asmbl_id (genomic sequence) at a time.
+The 'assemblies' directory is created and the assemblies are stored in that directory for future loading using
+assembly_db_loader.dbi
+
+############################# Options ###############################
+#
+# -M Mysql database/server ie. ("ath1_cdnas:haasbox")
+# -G genomic_sequence fasta db.
+# -p passwordinfo  (contains "username:password")
+# -s subcluster_id
+#
+# -d Debug
+# 
+# -h print this option menu and quit
+# -v verbose
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+
+if ($opt_h) {die $usage;}
+my $MYSQLstring = $opt_M or die $usage;
+my $genomic_seq_db = $opt_G or die $usage;
+my ($MYSQLdb, $MYSQLserver) = split (/:/, $MYSQLstring); 
+my $passwordinfo = $opt_p or die $usage;
+my $DEBUG = $opt_d;
+my $subcluster_id = $opt_s or die $usage;
+
+
+unless (-s "$genomic_seq_db.cidx") {
+    system ("cdbfasta $genomic_seq_db");
+}
+
+my ($user, $password) = split (/:/, $passwordinfo);
+
+my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+my $query = "select c.cluster_id, c.annotdb_asmbl_id from clusters c, subclusters s where s.subcluster_id = $subcluster_id and s.cluster_id = c.cluster_id";
+my $result = &first_result_sql($dbproc, $query) or die "Error, no asmbl_id for subcluster: $subcluster_id";
+my ($cluster_id, $asmbl_id) = @$result;
+
+my $sequence = &Ath1_cdnas::get_seq_from_fasta ($asmbl_id, $genomic_seq_db);
+
+    
+my $assembler = new CDNA::PASA_alignment_assembler();
+## get the cdnas on that cluster
+
+my $query = "select cdl.cdna_acc, cdl.align_id from cluster_link cl, cdna_link cdl where cl.cluster_id = $cluster_id and cl.cdna_acc = cdl.cdna_acc and cdl.validate = 1";
+my @results = &Mysql_connect::do_sql_2D ($dbproc, $query);
+my @alignments;
+foreach my $result (@results) {
+    my ($cdna_acc, $align_id) = @$result;
+    print "cdna_acc: $cdna_acc\talign_id: $align_id\n";
+    
+    my $alignment_obj = &Ath1_cdnas::create_alignment_obj($dbproc, $align_id, \$sequence);
+    $alignment_obj->set_acc($cdna_acc);
+    my $aligned_orient = $alignment_obj->get_orientation();
+    my $spliced_orient = $alignment_obj->get_spliced_orientation();
+    print "$cdna_acc (a$aligned_orient, s$spliced_orient)\n";
+    unless ($aligned_orient =~ /[\+\-]/) {
+        die "Error, $cdna_acc lacs aligned orient!";
+    }
+    
+    print $alignment_obj->toToken() . "\n";
+    push (@alignments, $alignment_obj);
+}
+
+if (@alignments) {
+    $assembler->assemble_alignments(@alignments);
+    print $assembler->toAlignIllustration(150);
+    print "\n\n\n";
+    my @assemblies = $assembler->get_assemblies();
+    foreach my $assembly (@assemblies) {
+        my $acc = $assembly->get_acc();
+        print "ASSEMBLY: " . $assembly->toToken() . "\t$acc\n";
+        $assembly->{cluster_id} = $cluster_id;
+    }
+} else {
+    print "Sorry, no validating cDNA alignments in this cluster.\n";
+}
+
+
+$dbproc->disconnect;
+
+

@@ -1,0 +1,22 @@
+mysqldump -uaccess -paccess -hbhaas-lx testingRiceChr7_Template status
+
+mysqldump -uaccess -paccess -hbhaas-lx rice_genome_06162005
+
+
+
+## to enable the pasa-user/pass to have create privileges on only databases ending in '_pasa':
+
+grant all privileges on `%_pasa`.* to pasaadmin@'%';
+
+Using the backticks instead of single quotes in the db name pattern is mandatory for this to work.
+
+
+
+
+------
+
+create user 'pasa_access' identified by 'pasa_access';
+grant select on *.* to 'pasa_access@%';
+grant all on *.* to 'pasa_write@%';
+
+grant all on *.* to 'pasa_write'@'localhost' identified by '...';

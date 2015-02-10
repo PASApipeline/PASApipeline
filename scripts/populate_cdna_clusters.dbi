@@ -1,0 +1,121 @@
+#!/usr/bin/env perl
+
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Mysql_connect;
+use strict;
+use DBI;
+use Getopt::Std;
+
+use vars qw ($opt_h $opt_M $opt_b $opt_p $opt_d);
+open (STDERR, "&>STDOUT");
+&getopts ('hM:b:p:d');
+my $usage =  <<_EOH_;
+
+Script loads a mysql db, populating the clusters and cluster_link tables.
+
+############################# Options ###############################
+# -M Mysql database/server ie. ("ath1_cdnas:haasbox")
+# -b blat top_hits file
+# -p password info  (contains "username:password")
+# 
+# -d Debug
+# 
+# -h print this option menu and quit
+#
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+if ($opt_h) {die $usage;}
+my $MYSQLstring = $opt_M or die $usage;
+my ($MYSQLdb, $MYSQLserver) = split (/:/, $MYSQLstring); 
+my $passwordinfo = $opt_p or die $usage;
+my $DEBUG = $opt_d;
+
+my ($user, $password) = split (/:/, $passwordinfo);
+
+unless (-d "clusters") {
+    die "No 'clusters' directory exists.  Please generate clusters before populating the cdna data.\n";
+}
+
+our $SEE = 0;
+
+my $blat_file = $opt_b or die $usage;
+
+my ($dbproc) = &connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+
+## Read in all relevant blat matches.
+open (BLAT, "$blat_file") or die "Can't open $blat_file";
+my %blat_accs;
+my %lengths;
+while (<BLAT>) {
+    my @x = split (/\t/);
+    unless ($#x >= 20) { next;} #not a blat coordinate line, some header presumably.
+    my ($asmbl_id, $acc, $cdna_length) = ($x[13], $x[9], $x[10]);
+    $blat_accs{$acc} = $asmbl_id;
+    $lengths{$acc} = $cdna_length;
+}
+
+close BLAT;
+
+
+## parse clusters of cdnas.
+my %seen;
+foreach my $cluster_file (<clusters/*.clusters>) {
+    print "#### Processing cluster file: $cluster_file\n" if $SEE;
+    open (CLUSTERS, "$cluster_file") or die "can't open $cluster_file";
+    while (<CLUSTERS>) {
+        print "Clusters: $_\n" if $SEE;
+        unless (/\w/) { next;}
+        chomp;
+        my @cdnas = split (/\t/);
+        foreach my $cdna (@cdnas) {
+            $seen{$cdna} = 1;
+        }
+        &insert_cdna_info(@cdnas);
+    }
+    close CLUSTERS;
+}
+
+print "Processing leftovers.\n" if $SEE;
+foreach my $cdna (keys %blat_accs) {
+    
+    unless ($seen{$cdna}) {
+        &insert_cdna_info($cdna);
+    }
+}
+
+
+$dbproc->disconnect;
+
+
+system "rm -rf clusters";
+
+
+####
+sub insert_cdna_info {
+    my (@cdnas) = @_;
+    print "inserting cdnas: @cdnas\n" if $SEE;
+    
+    ## Make an alignment entry:
+    my $asmbl_id = $blat_accs{$cdnas[0]}; #get asmbl_id
+    my $query = "insert clusters (annotdb_asmbl_id) values (?)\n";
+    &Mysql_connect::RunMod($dbproc, $query, $asmbl_id);
+    
+    my $cluster_id = &get_last_insert_id($dbproc);
+    
+    ##Insert the cdnas into the cdna_link table
+    foreach my $cdna (@cdnas) {
+        my $query = "update cluster_link set cluster_id = ? where cdna_acc = ?";
+        &RunMod($dbproc, $query, $cluster_id, $cdna);
+        
+    }
+}
+
+

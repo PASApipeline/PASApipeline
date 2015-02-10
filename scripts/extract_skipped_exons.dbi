@@ -1,0 +1,160 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Mysql_connect;
+use strict;
+use DBI;
+use Getopt::Std;
+use Ath1_cdnas;
+use CDNA::CDNA_alignment;
+use CDNA::Alternative_splice_comparer;
+use CDNA::PASA_alignment_assembler;
+use Carp;
+use Data::Dumper;
+use CdbTools;
+use Nuc_translator;
+
+use vars qw ($opt_M $opt_v $opt_p $opt_G $opt_d $opt_h);
+open (STDERR, "&>STDOUT");
+&getopts ('M:p:G:dhv');
+my $usage =  <<_EOH_;
+
+Script loads the alignment textual representation for the pasa assemblies.
+
+############################# Options ###############################
+# -M Mysql database/server ie. ("ath1_cdnas:haasbox")
+# -p passwordinfo  (contains "username:password")
+# -G genome_seq fasta db
+# -d Debug
+# 
+# -h print this option menu and quit
+# -v verbose
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+my $SEE = $opt_v;
+#our $DB_SEE = $opt_v;
+
+if ($opt_h) {die $usage;}
+my $MYSQLstring = $opt_M or die $usage;
+my ($MYSQLdb, $MYSQLserver) = split (/:/, $MYSQLstring); 
+my $passwordinfo = $opt_p or die $usage;
+our $DEBUG = $opt_d;
+my $genomic_db = $opt_G or die $usage;
+
+my ($user, $password) = split (/:/, $passwordinfo);
+
+my ($dbproc) = &connect_to_db($MYSQLserver, $MYSQLdb, $user, $password);
+
+## get list of molecules
+my $query = "select distinct annotdb_asmbl_id from clusters";
+my @asmbl_ids;
+my @results = &do_sql_2D($dbproc, $query);
+
+foreach my $result (@results) {
+    my $asmbl_id = $result->[0];
+    push (@asmbl_ids, $asmbl_id);
+}
+
+foreach my $asmbl_id (@asmbl_ids) {
+    
+    my $genome_seq_fasta = cdbyank($asmbl_id, $genomic_db);
+    my ($acc, $header, $genome_seq) = linearize($genome_seq_fasta);
+    
+
+    my $query = qq { select distinct cl.cdna_acc from clusters c, cluster_link cl, splice_variation sv 
+                         where c.annotdb_asmbl_id = ? 
+                         and c.cluster_id = cl.cluster_id
+                         and cl.cdna_acc = sv.cdna_acc
+                         and sv.type = "skipped_exon"
+                     };
+    my @results = &do_sql_2D($dbproc, $query, $asmbl_id);
+
+    #print "Got the following cdnas for asmbl_id: $asmbl_id\n";
+    
+    my @cdnas;
+    foreach my $result (@results) {
+        my $cdna = $result->[0];
+        push (@cdnas, $cdna);
+    }
+
+    print "CDNAS($asmbl_id): @cdnas\n" if $SEE;
+    
+    my %seen;
+
+    foreach my $cdna (@cdnas) {
+        
+        my $alignment = &Ath1_cdnas::get_alignment_obj_via_acc($dbproc, $cdna);
+        
+        ## get range of skipped exons:
+        my $query = "select lend, rend from splice_variation where cdna_acc = ? and type = ?";
+        my @results = &do_sql_2D($dbproc, $query, $cdna, "skipped_exon");
+        
+        foreach my $result (@results) {
+            my ($lend, $rend) = @$result;
+            
+            ## analyze each skipped exon only once:
+            my $skipped_exon_token = "$lend" . "_" . "$rend";
+            if ($seen{$skipped_exon_token}) {
+                next;
+            } 
+            else {
+                $seen{$skipped_exon_token} = 1;
+            }
+
+            &analyze_skipped_exon ($cdna, $alignment, $lend, $rend, \$genome_seq);
+        }
+    }
+
+}
+
+
+exit(0);
+
+
+
+####
+sub analyze_skipped_exon {
+    my ($cdna_acc, $alignment, $lend, $rend, $genome_seq_ref) = @_;
+     
+    my $spliced_orient = $alignment->get_spliced_orientation();
+        
+    my @alignment_segments = sort {$a->{end5}<=>$b->{end5}} $alignment->get_alignment_segments();
+
+    my $skipped_exons_seq = "";
+    
+    foreach my $seg (@alignment_segments) {
+        my ($seg_lend, $seg_rend) = sort {$a<=>$b} $seg->get_coords();
+
+        ## check for encapsulation by the skipped_exon region
+        if ($seg_lend >= $lend && $seg_rend <= $rend) {
+            
+            my $seg_length = abs ($seg_rend - $seg_lend) + 1;
+            $skipped_exons_seq .= substr($$genome_seq_ref, $seg_lend - 1 , $seg_length);
+            
+        }
+    }
+
+
+    unless ($skipped_exons_seq) {
+        die "Error, no skipped exons retrieved from alignment within range ($lend, $rend) \n" . $alignment->toString();
+    }
+
+
+    if ($spliced_orient eq "-") {
+        $skipped_exons_seq = &reverse_complement($skipped_exons_seq);
+    }
+
+    print "$cdna_acc/$lend-$rend: $skipped_exons_seq\n";
+    
+}
+
+
+
+
+

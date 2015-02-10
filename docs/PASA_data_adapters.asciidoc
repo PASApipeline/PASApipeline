@@ -1,0 +1,66 @@
+= PASA Data Adapter Cookbook =
+
+
+*Writing your own data adapters is unnecessary if you wish to operate entirely using GFF3-formatted annotation files.  Building data adapters is only needed if you'd prefer to operate on alternatively formatted data files or to couple PASA directly to a relational database.  If the latter describes your interest, then keep reading...*
+
+There are two primary forms of data adapters.  One is used to load the latest versions of annotations into the mysql database, and the other is to perform annotation updates based on the results of an annotation comparison.  The Data Adapters need to be implemented by the user, although sample implementations are available and described here.  
+
+Data Adapters, termed here as hooks, are Perl modules that implement abstract interfaces specific for each operation.  The $PASAHOME/pasa_conf/conf.txt file indicates the directory where these custom modules are to be located.  In our example $PASAHOME/pasa_conf/sample_test.conf file, we have the following line:
+
+   HOOK_PERL_LIBS=__PASAHOME__/SAMPLE_HOOKS
+
+which indicates that our example hooks are modules that are found in the $PASAHOME/SAMPLE_HOOKS directory.  The actual modules that implement the hooks are specified in the lines:
+
+   HOOK_EXISTING_GENE_ANNOTATION_LOADER=GFF3::GFF3_annot_retriever::get_annot_retriever 
+
+and
+
+    HOOK_GENE_STRUCTURE_UPDATER=GFF3::GFF3_annot_updater::get_updater_obj
+
+[NOTE]
+In addition to GFF3 format based data adapters, there are http://mblab.wustl.edu/GTF22.html[GTF] format data adapters as well.  In this case, you would use:
+   HOOK_EXISTING_GENE_ANNOTATION_LOADER=GTF::Gtf_annot_retriever::get_annot_retriever 
+   HOOK_GENE_STRUCTURE_UPDATER=GTF::Gtf_annot_updater::get_updater_obj
+
+
+== The gene annotation loader hook ==
+
+
+The *HOOK_EXISTING_GENE_ANNOTATION_LOADER=GFF3::GFF3_annot_retriever::get_annot_retriever* indicates that the module *GFF3::GFF3_annot_retriever.pm* found in the *SAMPLE_HOOKS* directory implements a method *get_annot_retriever()* which returns an object that inherits from and implements the functions of package *PASA_UPDATES::Pasa_latest_annot_retrieval_adapter*.  These details are important only if you decide that the provided data adapters are insufficient and you'd like to implement your own based on a different data file format or direct relational database connection.
+
+=== Importing the latest annotations into the PASA database ===
+
+
+In our example, we have our original annotations supplied in gff3 format, and our gene annotation loader hook implementing a gff3 file reader to supply the genome annotations.  We run the following script to load our annotations:
+
+    % ../scripts/Load_Current_Gene_Annotations.dbi -c alignAssembly.config -g genome_sample.fasta -P orig_annotations_sample.gff3
+
+The above script calls the gene annotation loader hook as specified in our sample conf.txt file.   The value provided to -P is provided as a parameter to the function called as the hook.  In this example, the paramter is the name of the gff3 file that contains the annotations.  In a different implementation of this hook (ie. at TIGR), this parameter is instead a set of values that are needed to connect to a relational database from which the annotations are extacted. 
+
+This system is designed to be flexible so that the annotations can be extracted from any source, relying on a custom implementation of the data adapter specified in the conf.txt file.  Sample GFF3 and GTF file format based data adapters are provided, and so custom data adapters may not be necessary.
+
+
+=== Performing an annotation comparison ===
+
+
+The following command compares the loaded gene annotations to the PASA assemblies and performs updates to gene models.
+
+  % ../scripts/Launch_PASA_pipeline.pl -c annotCompare.config -A -g genome_sample.fasta -t all_transcripts.fasta.clean
+
+Performing this step is essential and must be done prior to attempting to extract the updated gene structures using a data adapter, as described below.
+
+
+
+== The gene structure updater hook ==
+
+Likewise, the *HOOK_GENE_STRUCTURE_UPDATER=HOOK_GENE_STRUCTURE_UPDATER=GFF3::GFF3_annot_updater::get_updater_obj* indicates that the module *GFF3::GFF3_annot_updater.pm* found in the *SAMPLE_HOOKS* directory implements a method *get_update_obj()* which returns an object that inherits from and implements the functions of package *PASA_UPDATES::Pasa_update_adapter*.
+
+
+
+== Updating our gene structure annotations via a Data Adapter ==
+
+After the annotation comparison, there will likely be some subset of PASA alignment assemblies that are classified as able to be successfully incorporated into gene structure annotations.  To extract these and perform updates, we need run the following script that calls the hook to the gene structure update adapter.
+
+   % ../scripts/cDNA_annotation_updater.dbi -M "${mysql_db_name}:${mysql_server_name}:${user}:${password}" -P null
+
+By default, in our sample configuration file, the update adapter hook that is called is GFF3::GFF3_annot_updater::get_updater_obj.  If we needed to pass some critical piece of information to the hook, such as database connection parameters, we would do that thru the -P option of the script.  The example data adapter here does nothing but print the tentative successful gene structure updates to stdout in GFF3 format, and so we simply pass 'null' to the -P option just so the parameter won't be empty.  In a more sophisticated setup, the successful annotation updates can be written back to the original annotation source, such as in a relational database.

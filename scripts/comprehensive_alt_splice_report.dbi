@@ -1,0 +1,241 @@
+#!/usr/bin/env perl
+
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Pasa_conf;
+use Mysql_connect;
+use strict;
+use DBI;
+use Ath1_cdnas;
+use Getopt::Std;
+
+use vars qw ($opt_h $opt_v $opt_d $opt_M);
+
+# This script loads in the validate, spliced_orient, and num_segments fields based on the prog_validation files.
+
+&getopts ('hD:dM:v');
+
+my $usage =  <<__EOH__;
+
+Script updates the cdna_link table to include the validation status and textual data.
+
+usage: $0 -M db:server < prog_validations
+
+
+############################# Options ###############################
+#
+# -M Mysql database name
+# 
+# -d Debug
+# -v verbose
+# -h print this option menu and quit
+#
+###################### Process Args and Options #####################
+
+__EOH__
+
+    ;
+
+
+
+if ($opt_h) {die $usage;}
+
+my $MYSQLdb = $opt_M or die $usage;
+my $MYSQLserver = &Pasa_conf::getParam("MYSQLSERVER");
+my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+
+my $DEBUG = $opt_d;
+
+
+
+$|++;
+
+my $VERBOSE = $opt_v;
+
+my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+my $max_compare_id = &Ath1_cdnas::get_max_compare_id($dbproc);
+my %asmbl_to_annot;
+{
+  if ($max_compare_id) {
+	my $query = "select cdna_acc, gene_id from annotation_link where compare_id = $max_compare_id";
+	my @results = &do_sql_2D($dbproc, $query);
+	foreach my $result (@results) {
+	  my ($cdna_acc, $gene_id) = @$result;
+	  $asmbl_to_annot{$cdna_acc} = $gene_id;
+	}
+  }
+}
+
+
+## link all sv_ids to splicing events:
+my $query = qq { select distinct sv.sv_id, c.annotdb_asmbl_id, sv.cdna_acc, sv.type, sv.lend, sv.rend, sv.orient
+                         from clusters c, align_link al, cdna_info ci, splice_variation sv
+                         where c.cluster_id = al.cluster_id
+                         and al.cdna_info_id = ci.id and ci.is_assembly = 1
+                         and al.align_acc = sv.cdna_acc
+                         
+                     };
+
+my %splicing_event_to_sv_ids;
+my %sv_id_to_asmbl_acc;
+
+my @results = &do_sql_2D($dbproc, $query);
+
+
+foreach my $result (@results) {
+  my ($sv_id, $contig_id, $asmbl_acc, $splice_type, $lend, $rend, $orient) = @$result;
+  
+  $sv_id_to_asmbl_acc{$sv_id} = $asmbl_acc;
+  
+  my $token = join ("$;", $contig_id, $splice_type, $lend, $rend, $orient);
+  push (@{$splicing_event_to_sv_ids{$token}}, $sv_id);
+}
+
+print join ("\t", "#contig_id", "alt_splicing_type", "lend", "rend", "orient", 
+			"supporting_pasa_asmbls", "gene_annotations",
+			"supporing_transcripts", "count_supporting_transcripts", "alternative_overlapping_transcripts", "count_alternative_transcripts") . "\n";
+
+
+foreach my $splicing_event (keys %splicing_event_to_sv_ids) {
+  
+  my ($contig_id, $splice_type, $lend, $rend, $orient) = split(/$;/, $splicing_event);
+  
+  my @sv_ids = @{$splicing_event_to_sv_ids{$splicing_event}};
+  
+  my %sv_ids = map { + $_ => 1 } @sv_ids;
+  
+  my %other_sv_ids;
+  foreach my $sv_id (@sv_ids) {
+	{
+	  ## defensive programming. Hopefully, unnecessary.  Ensure that variations and supports are disjoint
+	  my $query = "select sv_id_A, sv_id_B from alt_splice_link where sv_id_A = $sv_id or sv_id_B = $sv_id";
+	  my @results = &do_sql_2D($dbproc, $query);
+	  foreach my $result (@results) {
+		my ($sv_id_A, $sv_id_B) = @$result;
+		if ($sv_id_A eq $sv_id) {
+		  $other_sv_ids{$sv_id_B} = 1;
+		}
+		elsif ($sv_id_B eq $sv_id) {
+		  $other_sv_ids{$sv_id_A} = 1;
+		}
+	  }
+	  
+	  
+	}
+  }
+
+
+  eval {
+      &ensure_disjoint(\%sv_ids, \%other_sv_ids);
+      
+      my %transcripts_support;
+      my %transcripts_against;
+      
+      my %gene_annots;
+      
+      my %supporting_asmbls;
+  
+      foreach my $sv_id (@sv_ids) {
+          
+          my $query = "select cdna_acc, transcripts_A, transcripts_B from splice_variation_support where sv_id = $sv_id";
+          my @results = &do_sql_2D($dbproc, $query);
+          foreach my $result (@results) {
+              my ($other_cdna_acc, $transcripts_A, $transcripts_B) = @$result;
+              my @support = split (/,/, $transcripts_A);
+              my @against = split (/,/, $transcripts_B);
+              
+              foreach my $support_trans (@support) {
+                  $transcripts_support{$support_trans}++;
+              }
+              foreach my $against_trans (@against) {
+                  $transcripts_against{$against_trans}++;
+              }
+              my $asmbl_acc = $sv_id_to_asmbl_acc{$sv_id};
+              $supporting_asmbls{$asmbl_acc} = 1;
+              
+              if (my $gene_annot = $asmbl_to_annot{$asmbl_acc}) {
+                  $gene_annots{$gene_annot} = 1;
+              }
+          }
+          
+      }
+      
+      ## some marginally supporting transcrpits may end up in both categories for complex cases. Remove them altogether.
+      &enforce_disjoint(\%transcripts_support, \%transcripts_against);
+      
+      my @supporting_transcripts = keys %transcripts_support;
+      my @against_transcripts = keys %transcripts_against;
+      
+      unless (%gene_annots) {
+          $gene_annots{none} = 1;
+      }
+      
+      print join ("\t", 
+                  $contig_id, 
+                  $splice_type, 
+                  $lend, 
+                  $rend, 
+                  $orient, 
+                  join(",", sort keys %supporting_asmbls), 
+                  join(",", keys %gene_annots),
+                  join (",", sort @supporting_transcripts), 
+                  scalar(@supporting_transcripts), 
+                  join (",", sort @against_transcripts), 
+                  scalar(@against_transcripts)
+          )
+          . "\n";
+      
+      
+      unless (@supporting_transcripts && @against_transcripts) {
+          die "Error, no supporting transcripts for variation!";
+      }
+  };
+
+  if ($@) {
+      print STDERR "** Error encountered:\n";   # need to investigate why this happens; extrememly rare event.
+      print STDERR "$@\n";
+  }
+  
+}
+
+exit(0);
+	
+
+####
+sub ensure_disjoint {
+  my ($href_A, $href_B) = @_;
+
+  foreach my $key (keys %$href_A) {
+	if (exists $href_B->{$key}) {
+	  
+	  use Data::Dumper;
+	  print Dumper($href_A);
+	  print Dumper($href_B);
+
+	  die "Error, not disjoint, $key found in both sets";
+	}
+  }
+
+  return;
+}
+
+####
+sub enforce_disjoint {
+  my ($href_A, $href_B) = @_;
+
+  my @keys = keys %$href_A;
+
+  foreach my $key (@keys) {
+	if (exists $href_B->{$key}) {
+		delete $href_A->{$key};
+		delete $href_B->{$key};
+	}
+  }
+  
+  return;
+}

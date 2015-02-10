@@ -1,0 +1,88 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Mysql_connect;
+use strict;
+use DBI;
+use Getopt::Std;
+
+use vars qw ($opt_f $opt_h $opt_D $opt_d $DEBUG $opt_S $opt_M);
+
+&getopts ('hD:dS:M:f:');
+
+
+$|=1;
+our $SEE = 0;
+
+open (STDERR, "&>STDOUT");
+
+my $usage =  <<_EOH_;
+
+Sets the spliced orientation (transcribed orientation) based on a priori knowledge.
+
+############################# Options ###############################
+#
+# -M Mysql database name
+# 
+# -f file containing transcribed orientation info for accessions.  Format of lines: "accession(tab)[+-]"
+# 
+# -d Debug
+# 
+# -h print this option menu and quit
+#
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+if ($opt_h) {die $usage;}
+
+my $MYSQLdb = $opt_M or die $usage;
+my $DEBUG = $opt_d;
+
+my $MYSQLserver = &Pasa_conf::getParam("MYSQLSERVER");
+my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+my $filehandle;
+if ($opt_f) {
+    if ($opt_f eq "NULL") {
+        print "Nothing to upload to fli status.\n";
+        exit(0); # -f specified with no filename.  Exit gracefully.
+    } else { 
+        print "loading $opt_f\n";
+        open ($filehandle, $opt_f) or die "Can't open file: $opt_f";
+    }
+} else {
+    print "setting filehandle to STDIN.\n";
+    $filehandle = *STDIN;
+}
+
+
+my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+while (<$filehandle>) {
+	chomp;
+	my ($cdna_acc, $orient) = split(/\s+/);
+	unless ($orient eq '+' || $orient eq '-') {
+		die "Error, orientation field must be + or -. (line: $_)";
+	}
+
+	print STDERR "setting $cdna_acc => s($orient)\n";
+	
+	my $opposite_orient = ($orient eq '+') ? '-' : '+';
+	
+	my $query = "update cdna_link set spliced_orient = \'$orient\' where cdna_acc = \'$cdna_acc\' and spliced_orient != \'$opposite_orient\'\n";
+	
+    &RunMod($dbproc, $query);
+}
+
+close $filehandle;
+
+$dbproc->disconnect;
+
+exit(0);
+

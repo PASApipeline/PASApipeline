@@ -1,0 +1,65 @@
+-- MySQL dump 8.22
+--
+-- Host: haasbox    Database: PASA_admin
+---------------------------------------------------------
+-- Server version	3.23.40
+
+--
+-- Table structure for table 'PASA_database_info'
+--
+
+CREATE TABLE PASA_database_info (
+  pasa_db_name varchar(50) NOT NULL default '',
+  annot_db_name varchar(50) default NULL,
+  workdir varchar(250) NOT NULL default '',
+  email varchar(100) NOT NULL default '',
+  genome_db varchar(250) NOT NULL default '',
+  transcript_db varchar(250) NOT NULL default '',
+  fl_accs varchar(250) default NULL,
+  timestamp datetime NOT NULL default '0000-00-00 00:00:00',
+  trim_vector_polyA tinyint(4) NOT NULL default '0',
+  PRIMARY KEY  (pasa_db_name)
+) TYPE=MyISAM;
+
+--
+-- Table structure for table 'alignment_assembly_params'
+--
+
+CREATE TABLE alignment_assembly_params (
+  job_id int(11) NOT NULL default '0',
+  max_intron_length int(11) NOT NULL default '0',
+  min_percent_trans_align int(11) NOT NULL default '0',
+  min_percent_identity int(11) NOT NULL default '0',
+  PRIMARY KEY  (job_id)
+) TYPE=MyISAM;
+
+--
+-- Table structure for table 'annot_compare_params'
+--
+
+CREATE TABLE annot_compare_params (
+  job_id int(11) NOT NULL default '0',
+  min_percent_overlap int(11) NOT NULL default '0',
+  min_percent_prot_coding int(11) NOT NULL default '0',
+  min_percent_isoform_length int(11) NOT NULL default '0',
+  min_perid_prot_compare int(11) NOT NULL default '0',
+  PRIMARY KEY  (job_id)
+) TYPE=MyISAM;
+
+--
+-- Table structure for table 'audit_info'
+--
+
+CREATE TABLE audit_info (
+  job_id int(11) NOT NULL auto_increment,
+  pasa_db_name varchar(50) NOT NULL default '',
+  is_started tinyint(1) NOT NULL default '0',
+  start_time datetime default NULL,
+  is_finished tinyint(1) NOT NULL default '0',
+  finish_time datetime default NULL,
+  is_success tinyint(1) NOT NULL default '0',
+  error_text text,
+  job_type varchar(20) NOT NULL default '',
+  PRIMARY KEY  (job_id)
+) TYPE=MyISAM;
+

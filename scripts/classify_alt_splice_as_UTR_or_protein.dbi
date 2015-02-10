@@ -1,0 +1,854 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Pasa_conf;
+use Mysql_connect;
+use strict;
+use DBI;
+use Getopt::Std;
+use Ath1_cdnas;
+use CdbTools;
+use CDNA::CDNA_alignment;
+use CDNA::Alternative_splice_comparer;
+use CDNA::PASA_alignment_assembler;
+use Data::Dumper;
+use warnings;
+use Storable qw (nfreeze);
+use Carp;
+
+use vars qw ($opt_M $opt_p $opt_G $opt_d $opt_h);
+
+&getopts ('M:G:dh');
+my $usage =  <<_EOH_;
+
+## Localizing splicing variations to CDS or UTR regions of a reference gene structure:
+
+Within a subcluster, find a FL-assembly with the longest protein.  Compare all
+other assemblies to this and see if differences are found within this region, or limited
+to 5-prime or 3-prime utrs.  Positional splicing variation labels on other transcripts
+are compared to the reference gene structure, and the findings are stored in the 
+'alt_splice_FL_compare' table, with the following structure:
+
++-------------------+--------------+------+-----+---------+----------------+
+| Field             | Type         | Null | Key | Default | Extra          |
++-------------------+--------------+------+-----+---------+----------------+
+| row_id            | int(11)      |      | PRI |         | auto_increment |
+| template_cdna_acc | varchar(50)  | YES  |     |         |                |
+| classification    | varchar(250) |      |     |         |                |
+| lend              | int(11)      |      |     | 0       |                |
+| rend              | int(11)      |      |     | 0       |                |
+| orient            | char(1)      |      |     |         |                |
+| type              | varchar(50)  |      |     |         |                |
++-------------------+--------------+------+-----+---------+----------------+
+
+In the case of alternate_exon\'s and retained/skipped exons, the lend and rend coordinates extend to include the adjacent intron(s).
+
+
+
+## Ascertaining the impact of splicing variations on primary protein structure:
+
+
+Then, compares other FL-assemblies in the subcluster to the reference FL-assembly with the longest protein.
+Relative protein lengths, and a reading frame analysis is performed to ascertain the consequences of the
+splicing variation.
+The other FL-assemblies are required to encode an ORF at least MIN_FL_PROT_LENGTH (ie. 200 residues) long.
+Comparisons between assemblies that support an asymmetric variation in the reference structure are excluded.
+
+The percent of the longer reference protein length is computed.  The genome region between the first and last
+basepair of the template gene structure is compared to the alternate isoform, and the following attributes are 
+attained:
+
+have_same_frame : both encode at least one overlapping CDS basepair that is in the same reading frame.
+frame_change : both encode at least one overlapping CDS basepair that is in a different reading frame.
+diff_in_coding_region: a 'frame_change' above occurs, or an intron in the reference gene structure is coding
+in the alternate isoform.
+
+The results from each comparison are stored in the 'alt_splice_FL_to_FL_compare' table, with the following structure:
+
+
++---------------------+-------------+------+-----+---------+----------------+
+| Field               | Type        | Null | Key | Default | Extra          |
++---------------------+-------------+------+-----+---------+----------------+
+| row_id              | int(11)     |      | PRI |         | auto_increment |
+| template_acc        | varchar(50) |      |     |         |                |
+| other_acc           | varchar(50) |      |     |         |                |
+| diff_in_cds         | int(1)      |      |     | 0       |                |
+| frame_change        | int(1)      |      |     | 0       |                |
+| percent_prot_length | float       |      |     | 0       |                |
+| num_variations      | int(11)     |      |     | 0       |                |
+| same_frame_exists   | int(1)      |      |     | 0       |                |
++---------------------+-------------+------+-----+---------+----------------+
+
+
+Here, template_acc corresponds to the reference gene structure, and other_acc corresponds 
+to the other FL-assembly being compared to this reference gene structure.
+
+
+
+
+Script options:
+
+############################# Options ###############################
+# -M Mysql database name
+# -G genome_seq fasta db
+# -d Debug
+# 
+# -h print this option menu and quit
+#
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+our $SEE = 0;
+
+my $display_len = 100;
+
+my $MIN_FL_PROT_LENGTH = 200;
+
+if ($opt_h) {die $usage;}
+
+our $DEBUG = $opt_d;
+my $genomic_db = $opt_G or die $usage;
+
+
+my $MYSQLdb = $opt_M or die $usage;
+my $MYSQLserver = &Pasa_conf::getParam("MYSQLSERVER");
+my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+
+my ($dbproc) = &connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+&clear_tables();
+
+## get the list of FL-accessions:
+
+my %FL_assemblies;
+my $query = "select al.align_acc from align_link al, cdna_info ci  where ci.is_fli = 1 and ci.is_assembly = 1 and al.cdna_info_id = ci.id";
+my @results = &do_sql_2D($dbproc, $query);
+foreach my $result (@results) {
+    my ($cdna_acc) = @$result;
+    $FL_assemblies{$cdna_acc} = 1;
+}
+
+
+## get the links between subclusters and the genome annotdb_asmbl_id's:
+
+my %annotdb_to_subcluster_list;
+my %subcluster_id_to_annotdb_asmbl_id;
+$query = "select sl.subcluster_id, c.annotdb_asmbl_id from subcluster_link sl, align_link al, clusters c where sl.cdna_acc = al.align_acc and al.cluster_id = c.cluster_id";
+@results = &do_sql_2D($dbproc, $query);
+foreach my $result (@results) {
+    my ($subcluster_id, $asmbl_id) = @$result;
+
+    $subcluster_id_to_annotdb_asmbl_id{$subcluster_id} = $asmbl_id;
+    
+}
+
+
+
+## Get list of subclusters containing multiple assemblies
+$query = "select subcluster_id, count(*) from subcluster_link group by subcluster_id having count(*)>1";
+@results = &do_sql_2D($dbproc, $query);
+foreach my $result (@results) {
+    my $subcluster_id = $result->[0];
+    
+    my $asmbl_id = $subcluster_id_to_annotdb_asmbl_id{$subcluster_id};
+
+    my $list_aref = $annotdb_to_subcluster_list{$asmbl_id};
+    unless (ref $list_aref) {
+        $list_aref = $annotdb_to_subcluster_list{$asmbl_id} = [];
+    }
+    
+    push (@$list_aref, $subcluster_id);
+}
+
+
+## process each genome asmbl_id at a time:
+foreach my $genome_asmbl_id (keys %annotdb_to_subcluster_list) {
+
+    $dbproc->{dbh}->{AutoCommit} = 0;
+
+    my $genome_seq_entry = cdbyank ($genome_asmbl_id, $genomic_db);
+    my ($acc, $header, $genome_seq) = &linearize($genome_seq_entry);
+    $genome_seq_entry = ""; #release
+    
+    my $subclusters_aref = $annotdb_to_subcluster_list{$genome_asmbl_id};
+    
+    foreach my $subcluster_id (@$subclusters_aref) {
+        
+        print "\n\n\n\n\n*****************************************************\n"
+            . "// Processing subcluster: $subcluster_id\n";
+        
+        ## get the cDNA accs:
+        my $query = "select cdna_acc from subcluster_link where subcluster_id = ?";
+        my @results = &do_sql_2D($dbproc, $query, $subcluster_id);
+                
+        my @fl_alignments;
+        my @other_alignments;
+       
+        ## build alignment objects:
+        ## Partition into FL and non-FL sets:
+        
+        foreach my $result (@results) {
+            my $cdna_acc = $result->[0];
+            ## get the alignment obj:
+            my $alignment = &Ath1_cdnas::get_alignment_obj_via_align_acc($dbproc, $cdna_acc, \$genome_seq);
+            unless (ref $alignment) {
+                die "Error, no alignment obj for $cdna_acc\n";
+            }
+            print "$cdna_acc " . $alignment->toToken() . "\n";
+            
+            if ($alignment->is_fli()) {
+                push (@fl_alignments, $alignment);
+            } else {
+                push (@other_alignments, $alignment);
+            }
+        }
+
+        ## find the representative FL-entry:
+        if (@fl_alignments) {
+            print "FL_SUBCLUSTER: $subcluster_id\n";
+            my @fl_aligns_and_genes;
+            foreach my $fl_alignment (@fl_alignments) {
+                my $acc = $fl_alignment->get_acc();
+                my $gene_obj = $fl_alignment->get_gene_obj_via_alignment();
+                $gene_obj->create_all_sequence_types(\$genome_seq);
+                my $protein = $gene_obj->get_protein_sequence();
+                
+                if ($protein) {
+                    #print "protein: $protein\n";
+                    
+                    push (@fl_aligns_and_genes, { alignment => $fl_alignment,
+                                                  gene_obj => $gene_obj,
+                                                  protein_len => length($protein),
+                                                  genome_seq_ref => \$genome_seq,
+                                                  acc => $acc,
+                                              } 
+                          );
+                    
+                }
+		else {
+		    push (@other_alignments, $fl_alignment); #retain those that don't encode proteins.
+		}
+            }
+            
+            if (@fl_aligns_and_genes) {
+                ## sort by protein length:
+                @fl_aligns_and_genes = sort {$a->{protein_len}<=>$b->{protein_len}} @fl_aligns_and_genes;
+                
+                my $longest_prot_entry = pop @fl_aligns_and_genes;
+                foreach my $remaining_entry (@fl_aligns_and_genes) {
+                    
+                    push (@other_alignments, $remaining_entry->{alignment});
+                    
+                }
+                
+                ## Compare all other alignments to the representative FL-assembly:
+                &examine_alt_splice_diffs($longest_prot_entry, \@other_alignments);
+            }
+            else {
+                warn "no ORFs found in any FL-alignment for subcluster: $subcluster_id\n";
+            }
+            
+        } else {
+            print "Sorry, no FL-alignments here.\n";
+        }
+        
+        
+    }
+    $dbproc->{dbh}->commit;
+    $dbproc->{dbh}->{AutoCommit} = 1;
+    
+}
+
+
+
+$dbproc->disconnect;
+
+exit(0);
+
+
+####
+## Maps all alternative splicing variations labeled in other assemblies 
+## to the CDS or UTR of a full-length representative gene structure
+####
+sub examine_alt_splice_diffs {
+    my ($longest_prot_entry, $other_alignments_aref) = @_;
+    
+    unless (@$other_alignments_aref) {
+	confess "Error, no other alignments to perform comparisons with!";
+    }
+    
+
+    ## unpack reference structure attributes:
+    my ($template_alignment, 
+        $template_gene_obj, 
+        $template_protein_len, 
+        $genome_seq_ref) = (
+                            $longest_prot_entry->{alignment},
+                            $longest_prot_entry->{gene_obj},
+                            $longest_prot_entry->{protein_len},
+                            $longest_prot_entry->{genome_seq_ref},
+                            );
+    
+    my $template_acc = $template_alignment->get_acc();
+    
+    my $protein = $template_gene_obj->get_protein_sequence();
+    print "LONGEST Protein ($template_acc): $protein\n";
+    print "FL_Template: $template_acc\n";
+    
+    my $orientation = $template_gene_obj->get_orientation();
+    
+    ## Reference structure must encode a complete ORF and be at least $MIN_FL_PROT_LENGTH to proceed with comparison:
+    
+    unless ($protein =~ /^M/ && $protein =~ /\*$/) {
+        print "Skipping because not FL.\n";
+        return ();
+    }
+
+    unless (length($protein) > $MIN_FL_PROT_LENGTH) { 
+        print "Skipping short protein: length = " . length($protein) . "\n";
+        return ();
+    }
+    
+    my ($model_lend, $model_rend) = sort {$a<=>$b} $template_gene_obj->get_model_span();
+    my ($gene_lend, $gene_rend) = sort {$a<=>$b} $template_gene_obj->get_gene_span();
+
+    ## Rely on already computed alt-splice comparison results:
+    ## localize variations to utrs or cds:
+    
+    my $range_assigner = new GeneRangeAssigner ( { gene_lend => $gene_lend,
+                                                   gene_rend => $gene_rend,
+                                                   model_lend => $model_lend,
+                                                   model_rend => $model_rend,
+                                                   orientation => $orientation,
+                                               } );
+
+
+    my %acc_to_alignment_obj;
+    my %acc_to_gene_obj;
+    foreach my $other_alignment (@$other_alignments_aref) {
+	
+        my $acc = $other_alignment->get_acc() or die "error, no acc for " . $other_alignment->toToken();
+        print "\tOther alignment: $acc\n";
+	
+	my $gene_obj = $other_alignment->get_gene_obj_via_alignment();
+	unless (ref $gene_obj) { die "Error, no gene_obj obtained for acc $acc "; }
+        $acc_to_alignment_obj{$acc} = $other_alignment;
+        $acc_to_gene_obj{$acc} = $gene_obj;
+    }
+        
+
+    ## Examine differences (positional labels) found in other transcripts as it relates to the template:
+    ## Reference gene structure is stored as evidence in splice_variation_support for variation in other assemblies:
+    ## Variations examined are non-redundant:
+
+    my $query = qq { select distinct sv.type, sv.lend, sv.rend, sv.orient 
+                         from splice_variation sv, splice_variation_support svs 
+                         where svs.cdna_acc = ? and svs.sv_id = sv.sv_id 
+                     };
+    
+    my @results = &do_sql_2D($dbproc, $query, $template_acc);
+    
+    foreach my $result (@results) {
+        my ($type, $lend, $rend, $orient) = @$result;
+                    
+        ## get an example acc for this entry (there may be additional ones with the same variation):
+        my $query = qq { select sv.cdna_acc 
+                             from splice_variation sv, splice_variation_support svs 
+                             where sv.type = ? 
+                             and sv.lend = ? 
+                             and sv.rend = ? 
+                             and sv.sv_id = svs.sv_id 
+                             and svs.cdna_acc = ?
+                         };
+        
+        my $acc = &very_first_result_sql($dbproc, $query, $type, $lend, $rend, $template_acc);
+        unless ($acc) {
+            die "Error, can't find acc for $type, $lend, $rend in splice_variation table.";
+        }
+        
+        print "$template_acc supports variant $type, $lend, $rend, $orient, as classified in example $acc\n";
+        
+        ## extend range of coordinates for following types:
+        if ($type eq "alternate_exon" || $type eq "skipped_exon" || $type eq "retained_exon") {    
+            my $gene_obj = $acc_to_gene_obj{$acc} || die "Error, can't get gene_obj for $acc\n";
+            print "got gene for $acc\n";
+            if ($type eq "alternate_exon") {
+                ($lend, $rend) = &CDNA::Alternative_splice_comparer::adjust_alternate_exon_region_coords($gene_obj, $lend, $rend);
+            } 
+            elsif ($type eq "skipped_exon" || $type eq "retained_exon") {
+                
+                ($lend, $rend) = &CDNA::Alternative_splice_comparer::extend_coords_to_intron_bounds($gene_obj, $lend, $rend);
+            }
+            else {
+                die "whatsup!!";
+            }
+            print "Adjusted: $template_acc has variant $type, $lend, $rend\n";
+        }
+        
+        my %classify = $range_assigner->classify_coords($lend, $rend);
+        my @assignments = sort keys %classify;
+
+        unless (@assignments) {
+            die "Error, no assignments for $type, $lend, $rend ";
+        }
+        
+        my $classification = join (",", sort @assignments);
+
+        print "SPLICE_LOCALIZED:\ttemplate:$template_acc\t$type from $acc\t$classification\n";
+        
+        &insert_alt_splice_FL_compare($template_acc, $classification, $lend, $rend, $orient, $type);
+                
+    }
+    
+    ## Check for other supposedly FL-alignments and check for exact differences in proteins:
+    ## The other FL-entries must also encode complete ORFs, with a start and a stop.
+    
+    my @other_fl_entries;
+    
+    foreach my $acc (keys %acc_to_alignment_obj) {
+        my $alignment = $acc_to_alignment_obj{$acc};
+        if ($alignment->is_fli()) {
+            ## check the gene obj for complete protein
+            my $gene_obj = $acc_to_gene_obj{$acc};
+            $gene_obj->create_all_sequence_types($genome_seq_ref);
+            my $protein = $gene_obj->get_protein_sequence();
+            # $gene_obj->clear_sequence_info();
+            
+            if ($protein =~ /^M/ && $protein =~ /\*$/ && length($protein) > $MIN_FL_PROT_LENGTH) {
+                ## got complete entry
+                push (@other_fl_entries, { acc => $acc,
+                                           alignment => $alignment,
+                                           gene_obj => $gene_obj } );
+            }
+        }
+    }
+    
+    if (@other_fl_entries) {
+        print "got other FL entries, comparing FL to FL.\n";
+        &find_exact_changes ($longest_prot_entry, @other_fl_entries);
+    } 
+    else {
+        print "No other FL-entries to compare to.\n";
+    }
+    
+}
+
+
+####
+sub find_exact_changes {
+   
+    ## Want to limit our analysis here to only those FL-entries that have complete proteins
+    
+    my ($longest_prot_entry, @other_fl_entries) = @_;
+    
+    my $longest_prot_acc = $longest_prot_entry->{acc};
+    my $longest_prot_length = $longest_prot_entry->{protein_len};
+
+    foreach my $other_fl_entry (@other_fl_entries) {
+        my $acc = $other_fl_entry->{acc};
+
+        ## check for variations in other_transcript when compared to target transcript.
+        
+        print "FL-FL compare (template: $longest_prot_acc vs. other: $acc)\n";
+        
+        my $query = qq {
+            select sv.type, sv.lend, sv.rend, sv.orient 
+                from splice_variation sv, splice_variation_support svs 
+                where sv.sv_id = svs.sv_id 
+                and sv.cdna_acc = ? 
+                and svs.cdna_acc = ?
+            };
+        
+        my @results = &do_sql_2D($dbproc, $query, $acc, $longest_prot_acc); ## variation (label) found in other FL-entry, when compared to the reference FL-entry, serving as evidence only.
+        
+        unless (@results) {
+            print "-no variations found for this comparison. next. \n";
+            ## could be asymmetric, or non-overlapping FL-s tied to the same subcluster by some intermediate
+            next;
+        }
+        
+        my $count_variations = scalar (@results);
+        
+        #######################################################################################
+        ## EXCLUDING ASYMMETRIC SPLICING VARIATION IN REFERENCE STRUCTURE
+        ## make sure there are no asymetric labels on target that will confound our comparison.  
+        #    ie.  ends_in_intron, starts_in_intron
+        
+        $query = qq { select distinct type 
+                          from splice_variation sv, splice_variation_support svs 
+                          where sv.sv_id = svs.sv_id 
+                          and sv.cdna_acc = ? 
+                          and svs.cdna_acc = ?
+                      };
+        
+        @results = &do_sql_2D($dbproc, $query, $longest_prot_acc, $acc); ## looking for asymmetric label on reference supported by the other.
+        
+        my $found_confounding_type = 0;
+        foreach my $result (@results) {
+            my $type = $result->[0];
+            if ($type =~ /starts_in_intron|ends_in_intron/) {
+                $found_confounding_type = 1;
+                last;
+            }
+        }
+        
+        if ($found_confounding_type) {
+            print "Sorry, found confounding variation in template.\n";
+            next;
+        }
+        
+        &gene_structure_frame_analysis($longest_prot_acc, $longest_prot_entry->{gene_obj}, $acc, $other_fl_entry->{gene_obj}, $count_variations);
+        
+    }
+    
+
+}
+
+####
+sub gene_structure_frame_analysis {
+    my ($template_acc, $template_gene_obj, $other_acc, $other_gene_obj, $num_variations) = @_;
+    
+    print "-gene structure frame analysis: ($template_acc vs. $other_acc, $num_variations variations.\n";
+    my @coords = ($template_gene_obj->get_gene_span(), $other_gene_obj->get_gene_span());
+    
+    print "protein for $other_acc: " . $other_gene_obj->get_protein_sequence() . "\n";
+    
+    @coords = sort {$a<=>$b} @coords;
+
+    my $min_lend = shift @coords;
+    my $max_rend = pop @coords;
+
+    my $length = $max_rend - $min_lend + 1;
+
+    ## store frame for each bp.
+    my @template_frames;
+    my @other_frames;
+    # init
+    for (my $i = 0; $i <= $length; $i++) {
+        $template_frames[$i] = ".";
+        $other_frames[$i] = ".";
+    }
+    
+
+    ## build frame index for template
+    my $template_cds_length = 0;
+    my @cds_adj_coords;
+
+    foreach my $exon ($template_gene_obj->get_exons()) {
+        my $cds = $exon->get_CDS_obj();
+        if (ref $cds) {
+            my ($end5, $end3) = $cds->get_coords();
+            my $len = abs ($end3 - $end5) + 1;
+            $template_cds_length += $len;
+
+            $end5 -= $min_lend;
+            $end3 -= $min_lend;
+            
+            push (@cds_adj_coords, $end5, $end3);
+
+            my $phase = $cds->{phase};
+            unless (defined $phase) {
+                die "Error, phase is not set for cds." . Dumper($template_gene_obj);
+            }
+            
+            my $count = 1 + $phase;
+            if ($template_gene_obj->get_orientation() eq '+') {
+                for (my $i = $end5; $i <= $end3; $i++) {
+                    $template_frames[$i] = ($count - 1) % 3;
+                    $count++;
+                }
+            } 
+            else {
+                # minus strand
+                for (my $i = $end5; $i >= $end3; $i--) {
+                    $template_frames[$i] = ($count - 1) % 3;
+                    $count++;
+                }
+            }
+        }
+    }
+
+    @cds_adj_coords = sort {$a<=>$b} @cds_adj_coords;
+    my $cds_adj_lend = shift @cds_adj_coords;
+    my $cds_adj_rend = pop @cds_adj_coords;
+    
+    my $other_cds_length = 0;
+    foreach my $exon ($other_gene_obj->get_exons()) {
+        my $cds = $exon->get_CDS_obj();
+        if (ref $cds) {
+            my ($end5, $end3) =  $cds->get_coords();
+            my $len = abs ($end3 - $end5) + 1;
+            $other_cds_length += $len;
+
+            $end5 -= $min_lend;
+            $end3 -= $min_lend;
+            
+            my $phase = $cds->{phase};
+            
+            unless (defined $phase) {
+                die "Error, phase is not set for cds." . Dumper ($other_gene_obj);
+            }
+            my $count = 1 + $phase;
+            if ($other_gene_obj->get_orientation() eq '+') {
+                for (my $i = $end5; $i <= $end3; $i++) {
+                    $other_frames[$i] = ($count - 1) % 3;
+                    $count++;
+                }
+            }
+            else {
+                # minus strand
+                for (my $i = $end5; $i >= $end3; $i--) {
+                    $other_frames[$i] = ($count - 1) % 3;
+                    $count++;
+                }
+            }
+        }
+    }
+    
+    # print "TARGET(" . $template_gene_obj->get_orientation() . "): @template_frames\n\nOTHER:  @other_frames\n";
+    
+
+    ## just looking witin the model span of the template, ignoring utrs.
+    
+    my $frame_change = 0; # both in coding region, but have different frames for at least one basepair.
+    my $have_same_frame = 0; #at least one basepair is coding in both and is in the same frame.
+    my $have_diff_in_coding_region = 0; # any difference within the coding region (intron vs. coding) or (coding vs. coding)
+    
+    for (my $i = $cds_adj_lend; $i <= $cds_adj_rend; $i++) {
+        
+        ## case where template is coding:
+        if ($template_frames[$i] ne "." ) {
+            if ($template_frames[$i] eq $other_frames[$i]) {
+                ## coding vs. coding, same frame
+                $have_same_frame = 1;
+            }
+            elsif ($other_frames[$i] ne ".") {
+                ## coding vs. coding,  diff frame
+                $frame_change = 1;
+                $have_diff_in_coding_region = 1;
+            }
+        }
+
+        ## case where in intron but other is coding
+        elsif ($other_frames[$i] ne ".") {
+            ## intron vs. coding
+            $have_diff_in_coding_region = 1;
+        }
+    }
+
+    ## remove the stop codon:
+    $template_cds_length -= 3;
+    $other_cds_length -= 3;
+
+    print "Template cds length: $template_cds_length:\n";
+    print "Other cds length: $other_cds_length\n";
+    
+    my $percent_prot_length = sprintf("%.2f", $other_cds_length / $template_cds_length * 100);
+    
+    print "have_diff_in_coding_region:$have_diff_in_coding_region, have_same_frame:$have_same_frame, frame_change:$frame_change, percent_prot_len:$percent_prot_length\n";
+
+    &insert_alt_splice_FL_to_FL_compare ($template_acc, $other_acc, $have_diff_in_coding_region, $have_same_frame, $frame_change, $num_variations, $percent_prot_length);
+    
+    
+
+}
+
+
+####
+sub nucs_in_common {
+    my ($e5, $e3, $g5, $g3) = @_;
+    ($e5, $e3) = sort {$a<=>$b} ($e5, $e3);
+    ($g5, $g3) = sort {$a<=>$b} ($g5, $g3);
+    my $length = abs ($e3 - $e5) + 1;
+    my $diff1 = ($e3 - $g3);
+    $diff1 = ($diff1 > 0) ? $diff1 : 0;
+    my $diff2 = ($g5 - $e5);
+    $diff2 = ($diff2 > 0) ? $diff2 : 0;
+    my $overlap_length = $length - $diff1 - $diff2;
+    return ($overlap_length);
+}
+
+
+####
+sub insert_alt_splice_FL_compare {
+    my ($template_acc, $classification, $lend, $rend, $orient, $type) = @_;
+    
+    my $query = qq { insert alt_splice_FL_compare (template_cdna_acc, classification, lend, rend, orient, type) 
+                         values (?,?,?,?,?,?)
+                     };
+    &RunMod($dbproc, $query, $template_acc, $classification, $lend, $rend, $orient, $type);
+
+}
+
+sub insert_alt_splice_FL_to_FL_compare {
+    my ($template_acc, $other_acc, $diff_in_cds, $same_frame_exists, $frame_change, $num_variations, $percent_prot_length) = @_;
+
+    my $query = qq {insert alt_splice_FL_to_FL_compare ( template_acc, other_acc, diff_in_cds, same_frame_exists, frame_change, num_variations, percent_prot_length)
+                        values (?,?,?,?,?,?,?)
+                    };
+
+    &RunMod($dbproc, $query, $template_acc, $other_acc, $diff_in_cds, $same_frame_exists, $frame_change, $num_variations, $percent_prot_length);
+
+}
+
+
+
+
+####
+sub clear_tables {
+    foreach my $table ("alt_splice_FL_compare", "alt_splice_FL_to_FL_compare") {
+        my $query = "TRUNCATE TABLE $table";
+        &RunMod($dbproc, $query);
+    }
+}
+
+
+
+
+
+package GeneRangeAssigner;
+use strict;
+use warnings;
+
+sub new {
+    my $packagename = shift;
+    my $gene_coord_struct = shift;
+    
+    my ($gene_lend, $gene_rend, $model_lend, $model_rend, $orientation) = ($gene_coord_struct->{gene_lend},
+                                                                           $gene_coord_struct->{gene_rend},
+                                                                           $gene_coord_struct->{model_lend},
+                                                                           $gene_coord_struct->{model_rend},
+                                                                           $gene_coord_struct->{orientation}
+                                                                           );
+    
+    my ($cds_lend, $cds_rend) = ($model_lend, $model_rend);
+    my ($utr_5prime_lend, $utr_5prime_rend, 
+        $utr_3prime_lend, $utr_3prime_rend);
+    
+    if ($orientation eq '+') {
+        ($utr_5prime_lend, $utr_5prime_rend) = ($gene_lend, $model_lend-1);
+        ($utr_3prime_lend, $utr_3prime_rend) = ($model_rend+1, $gene_rend);
+    } else {
+        ($utr_5prime_lend, $utr_5prime_rend) = ($model_rend+1, $gene_rend);
+        ($utr_3prime_lend, $utr_3prime_rend) = ($gene_lend, $model_lend-1);
+    }
+    
+    
+
+    my $self = { cds_lend => $cds_lend,
+                 cds_rend => $cds_rend,
+                 utr_5prime_lend => $utr_5prime_lend,
+                 utr_5prime_rend => $utr_5prime_rend,
+                 utr_3prime_lend => $utr_3prime_lend,
+                 utr_3prime_rend => $utr_3prime_rend
+                 };
+    bless ($self, $packagename);
+    return ($self);
+}
+
+
+####
+sub classify_coords {
+    my $self = shift;
+    my ($lend, $rend) = @_;
+    ($lend, $rend) = sort {$a<=>$b} ($lend, $rend); #ensure sorted.
+    
+    my %classification;
+    if ($self->_is_cds_contained($lend, $rend)) {
+        $classification{cds_contained} = 1;
+    }
+    elsif ($self->_is_cds_overlap($lend, $rend)) {
+        $classification{cds_overlap} = 1;
+    }
+
+    if ($self->_is_utr_5prime_contained($lend, $rend)) {
+        $classification{utr_5prime_contained} = 1;
+    }
+    elsif ($self->_is_utr_5prime_overlap($lend, $rend)) {
+        $classification{utr_5prime_overlap} = 1;
+    }
+
+    if ($self->_is_utr_3prime_contained($lend, $rend)) {
+        $classification{utr_3prime_contained} = 1;
+    }
+    elsif ($self->_is_utr_3prime_overlap($lend, $rend)) {
+        $classification{utr_3prime_overlap} = 1;
+    }
+
+    return (%classification);
+}
+
+
+sub _is_cds_contained {
+    my $self = shift;
+    my ($lend, $rend) = @_;
+    
+    if ($lend >= $self->{cds_lend} && $rend <= $self->{cds_rend}) {
+        return (1);
+    } else {
+        return (0);
+    }
+}
+
+sub _is_cds_overlap {
+    my $self = shift;
+    my ($lend, $rend) = @_;
+    
+    if ($lend <= $self->{cds_rend} && $rend >= $self->{cds_lend}) {
+        return (1);
+    } else {
+        return (0);
+    }
+}
+
+sub _is_utr_5prime_contained {
+    my $self = shift;
+    my ($lend, $rend) = @_;
+    
+    if ($lend >= $self->{utr_5prime_lend} && $rend <= $self->{utr_5prime_rend}) {
+        return (1);
+    } else {
+        return (0);
+    }
+}
+
+sub _is_utr_5prime_overlap {
+    my $self = shift;
+    my ($lend, $rend) = @_;
+    
+    if ($lend <= $self->{utr_5prime_rend} && $rend >= $self->{utr_5prime_lend}) {
+        return (1);
+    } else {
+        return (0);
+    }
+}
+
+sub _is_utr_3prime_contained {
+    my $self = shift;
+    my ($lend, $rend) = @_;
+    
+    if ($lend >= $self->{utr_3prime_lend} && $rend <= $self->{utr_3prime_rend}) {
+        return (1);
+    } else {
+        return (0);
+    }
+}
+
+
+sub _is_utr_3prime_overlap {
+    my $self = shift;
+    my ($lend, $rend) = @_;
+    
+    if ($lend <= $self->{utr_3prime_rend} && $rend >= $self->{utr_3prime_lend}) {
+        return (1);
+    } else {
+        return (0);
+    }
+}

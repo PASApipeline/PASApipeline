@@ -1,0 +1,288 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Pasa_conf;
+use Mysql_connect;
+use strict;
+use DBI;
+use Getopt::Std;
+use Ath1_cdnas;
+use CDNA::CDNA_alignment;
+use CDNA::Alternative_splice_comparer;
+use CDNA::PASA_alignment_assembler;
+use Carp;
+use Data::Dumper;
+use threads;
+use Thread_helper;
+
+use vars qw ($opt_M $opt_v $opt_G $opt_d $opt_h $opt_T);
+
+&getopts ('M:G:dhvT:');
+my $usage =  <<_EOH_;
+
+Responsible for identifying all splicing variations found between PASA assemblies found in distinct subclusters.
+An All-vs-all comparison is performed among assemblies in each subcluster containing multiple assemblies.
+
+Each specific variation found is stored in the table 'splice_variation' with the following structure:
+
++--------------------------+--------------+------+-----+---------+----------------+
+| Field                    | Type         | Null | Key | Default | Extra          |
++--------------------------+--------------+------+-----+---------+----------------+
+| sv_id                    | int(11)      |      | PRI |         | auto_increment |
+| cdna_acc                 | varchar(250) |      | MUL |         |                |
+| lend                     | int(11)      |      |     | 0       |                |
+| rend                     | int(11)      |      |     | 0       |                |
+| orient                   | char(1)      |      |     |         |                |
+| type                     | varchar(50)  |      |     |         |                |
+| num_subfeatures_included | int(11)      | YES  |     | 0       |                |
+| subtype                  | varchar(50)  | YES  |     |         |                |
++--------------------------+--------------+------+-----+---------+----------------+
+
+
+The num_subfeatures_included indicates the number of exons included in a specific alt-splicing variation.  For example, the 'alternate_exon' classification can include several exons.  So can the 'retained_exon' category, where if, for example, 3 exons are found skipped in another transcript, then the num_subfeatures_inclouded would be 3.
+
+The 'subtype' field is currently used to store a subclassification for a given entry. For example, some 'retained_exon's might be found later to be mututally exclusive, in which case we populate this field with 'alternate_internal_exons'.  This part is performed in a subsequent script './find_alternate_internal_exons.dbi'.
+
+
+The underlying transcripts responsible for the variations found in the assemblies are found by identifying those transcript alignments that overlap the region of the splicing variation, and are unequally represented by the assemblies (found in one assembly and not the other).  This support data is stored in the 'splice_variation_support' table, with the following structure:
+
++-------------------+--------------+------+-----+---------+-------+
+| Field             | Type         | Null | Key | Default | Extra |
++-------------------+--------------+------+-----+---------+-------+
+| sv_id             | int(11)      |      | PRI | 0       |       |
+| cdna_acc          | varchar(250) |      | PRI |         |       |
+| transcripts_A     | text         | YES  |     |         |       |
+| transcripts_B     | text         | YES  |     |         |       |
+| num_transcripts_A | int(11)      | YES  |     |         |       |
+| num_transcripts_B | int(11)      | YES  |     |         |       |
++-------------------+--------------+------+-----+---------+-------+
+
+where sv_id links back to the splice_variation table, cdna_acc here identifies the other PASA assembly that supports the splicing variation found in the original assembly, and the identity of the transcripts supporting the variation in each assembly is listed in the transcript_A and transcripts_B table, where transcript_A identifies the transcripts responsible for the variation of the assembly in the splice_variation table identified by the sv_id, and transcripts_B identifies the transcripts corresponding to the cdna_acc in the splice_variation_support table.  The count of transcripts responsible for each variation is provided by the additional fields shown above.
+
+
+Correlations between splicing variations including alternate donor or acceptor splice sites are stored in the table 'alt_splice_link'
+
++---------+---------+------+-----+---------+-------+
+| Field   | Type    | Null | Key | Default | Extra |
++---------+---------+------+-----+---------+-------+
+| sv_id_A | int(11) |      | PRI | 0       |       |
+| sv_id_B | int(11) |      | PRI | 0       |       |
++---------+---------+------+-----+---------+-------+
+
+This is used later to group together alternative donors and acceptors, and compute the distance between them.
+
+
+
+############################# Options ###############################
+# -M Mysql database name
+# -d Debug
+# 
+# -T <int>   number of threads (default: 2)
+# -h print this option menu and quit
+# -v verbose
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+our $SEE = $opt_v;
+our $DB_SEE = $opt_v;
+
+my $NUM_THREADS = $opt_T || 2;
+
+if ($opt_h) {die $usage;}
+
+
+my $MYSQLdb = $opt_M or die $usage;
+my $MYSQLserver = &Pasa_conf::getParam("MYSQLSERVER");
+my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+our $DEBUG = $opt_d;
+
+
+my ($dbproc) = &connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+$|++;
+
+&init_alt_splice_tables(); # purge existing data in case of rerun.
+
+
+main: {
+
+    ## get the gene associations
+    my %pasa_acc_to_gene;
+    my $compare_id = &Ath1_cdnas::get_max_compare_id($dbproc);
+    
+    if ($compare_id) {
+        my $query = "select cdna_acc, gene_id from annotation_link where compare_id = $compare_id";
+        my @results = &do_sql_2D($dbproc, $query);
+        foreach my $result (@results) {
+            my ($cdna_acc, $gene_id) = @$result;
+            $pasa_acc_to_gene{$cdna_acc} = $gene_id;
+        }
+    }
+    
+    
+    ## Get list of subclusters containing multiple assemblies
+    my $query = "select subcluster_id, count(*) from subcluster_link group by subcluster_id having count(*)>1";
+    my @results = &do_sql_2D($dbproc, $query);
+
+
+    my @subcluster_ids;
+    foreach my $result_aref (@results) {
+        push (@subcluster_ids, $result_aref->[0]);
+    }
+    my $thread_helper = new Thread_helper($NUM_THREADS);
+    my $outdir = "__tmp_classify_alt_isoforms";
+    if (-d $outdir) {
+        print STDERR "WARNING: $outdir exists and will be removed in 10 seconds unless you cntrl-c ...";
+        sleep(10);
+        print STDERR " bye $outdir\n\n";
+        `rm -rf $outdir`;
+    }
+    mkdir($outdir) or die "Error, cannot mkdir $outdir";
+    
+    foreach my $id (@subcluster_ids) {
+        my $outfile = $outdir .'/'. $id.'.out';
+        #next if -s $outfile ; # not sure if we want that
+        my $thread = threads->create('process_subcluster', $id,$outfile);
+        $thread_helper->add_thread($thread);
+    }
+
+    $thread_helper->wait_for_all_threads_to_complete();
+    my @failed_threads = $thread_helper->get_failed_threads();
+    if (@failed_threads) {
+        die "Error, " . scalar(@failed_threads) . " threads failed.\n";
+        exit(1);
+    }
+    # concan all output to one file
+    my @res_files = glob("$outdir/*out");
+    foreach my $file (sort @res_files){
+        open (IN,$file);
+        open (OUT,">alt_splicing_analysis.results.out");
+        while (my $ln=<IN>){
+            print OUT $ln;
+        }
+        close (IN);
+        close (OUT);
+    }
+    
+    &summarize_labels();
+
+    $dbproc->disconnect;
+    
+    `rm -rf $outdir`;
+
+    exit(0);
+    
+
+}
+
+
+
+
+####
+sub init_alt_splice_tables {
+
+    my @tables = qw (splice_variation splice_variation_support alt_splice_link
+                     alt_splice_tokens alt_splice_token_assignment 
+                     alt_splice_FL_compare alt_splice_FL_to_FL_compare
+                     );
+    
+    foreach my $table (@tables) {
+        my $query = "TRUNCATE TABLE $table";
+        &RunMod($dbproc, $query);
+    }
+    
+    return;
+
+}
+
+
+####
+sub summarize_labels() {
+    my $query = "select distinct cdna_acc from splice_variation order by cdna_acc";
+    my @results = &do_sql_2D($dbproc, $query);
+    
+    $dbproc->{dbh}->{AutoCommit} = 0;
+
+    my @cdna_accs;
+    foreach my $result (@results) {
+        my ($cdna_acc) = @$result;
+        push (@cdna_accs, $cdna_acc);
+    }
+
+    my %label_to_token_id;
+
+    foreach my $cdna_acc (@cdna_accs) {
+        my $query = "select distinct type from splice_variation where cdna_acc = ?";
+        my @results = &do_sql_2D($dbproc, $query, $cdna_acc);
+        
+        my @types;
+        foreach my $result (@results) {
+            my ($type) = @$result;
+            push (@types, $type);
+        }
+
+        @types = sort @types;
+        my $label = join (", ", @types);
+        print "ALTSPLICE_LABEL\t$cdna_acc\t$label\n";
+
+        my $token_id = $label_to_token_id{$label};
+        unless ($token_id) {
+            $token_id = $label_to_token_id{$label} = &get_splice_token($label);
+        }
+
+        my $query = "insert alt_splice_token_assignment (cdna_acc, token_id) values (?,?)";
+        &RunMod($dbproc, $query, $cdna_acc, $token_id);
+
+    }
+
+    $dbproc->{dbh}->commit;
+    $dbproc->{dbh}->{AutoCommit} = 1;
+    
+    return;
+
+}
+
+
+####
+sub get_splice_token {
+    my $label = shift;
+
+    my $query = "insert alt_splice_tokens (alt_splice_token) values (?)";
+    &RunMod($dbproc, $query, $label);
+    
+    my $token_id = &get_last_insert_id($dbproc);
+    return ($token_id);
+}
+
+
+###
+sub process_subcluster(){
+    my $subcluster_id = shift;
+    my $outfile = shift;
+    my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password); # refresh it per thread
+    # had to redirect output to each file to make it thread safe
+    #cmd if are skipping files: make sure it has really finished?
+    #       my $cmd = $FindBin::Bin . "/classify_alt_splice_isoforms_per_subcluster.dbi -M $opt_M -s $subcluster_id > $outfile.temp";
+    my $cmd = $FindBin::Bin . "/classify_alt_splice_isoforms_per_subcluster.dbi -M $opt_M -s $subcluster_id > $outfile";
+ 
+    my $ret = system ($cmd);
+    
+    if ($ret) {
+        die "Error, command $cmd died with ret ($ret). Maybe see $outfile.temp for information";
+    }
+    # only if we are skipping existing files: it finished ok so move it.
+    #        rename("$outfile.temp",$outfile);
+    
+
+    return;
+}
+
+
+

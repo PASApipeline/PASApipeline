@@ -1,0 +1,130 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Mysql_connect;
+use strict;
+use DBI;
+use CDNA::PASA_alignment_assembler;
+use CDNA::CDNA_alignment;
+use Ath1_cdnas;
+use Storable;
+use File::Basename;
+use Getopt::Long qw(:config no_ignore_case bundling);
+
+use vars qw ($opt_h $opt_D $opt_p $opt_d $DEBUG $opt_S $opt_M $opt_G $opt_v $GFF3 $include_PASA);
+
+&GetOptions ('M=s' => \$opt_M,
+             'p=s' => \$opt_p,
+             'd' => \$DEBUG,
+             'h' => \$opt_h,
+             'GFF3' => \$GFF3,
+             'v' => \$opt_v,
+             'include_PASA' => \$include_PASA,
+            );
+
+$|=1;
+our $DB_SEE = $opt_v;
+
+open (STDERR, "&>STDOUT");
+
+my $usage =  <<_EOH_;
+
+Retrieves the transcript alignments for every cluster of overlapping alignments. 
+The output can be fed into the stand-alone PASA assembler scripts.
+
+############################# Options ###############################
+#
+# -M Mysql database/server ie. ("ath1_cdnas:haasbox")
+# -p passwordinfo  (contains "username:password")
+# 
+# -d Debug 
+# -h print this option menu and quit
+# -v verbose
+#
+# --GFF3  (use GFF3 format)
+#
+# --include_PASA  (includes the PASA alignment assemblies too; default are just the input clusters.)
+# 
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+
+if ($opt_h) {die $usage;}
+my $MYSQLstring = $opt_M or die $usage;
+my ($MYSQLdb, $MYSQLserver) = split (/:/, $MYSQLstring); 
+my $passwordinfo = $opt_p or die $usage;
+
+my ($user, $password) = split (/:/, $passwordinfo);
+
+my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+$dbproc = &Mysql_connect::reconnect_to_server($dbproc); #just for the fun of it
+
+my $match_id = 0;
+
+
+my $query = "select distinct annotdb_asmbl_id from clusters";
+my @asmbl_ids;
+my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+foreach my $result_aref (@results) {
+    push (@asmbl_ids, $result_aref->[0]);
+}
+
+foreach my $asmbl_id (@asmbl_ids) {
+        
+    ## Get clusters based on that chromo
+    my @cluster_ids = Ath1_cdnas::get_cluster_ids_via_annotdb_asmbl_id($dbproc, $asmbl_id);
+    
+    foreach my $cluster_id (@cluster_ids) {
+        
+        
+                
+        my $query = "select cdl.cdna_acc, cdl.align_id, cdl.prog from cluster_link cl, cdna_link cdl where cl.cluster_id = $cluster_id and cl.cdna_acc = cdl.cdna_acc and cdl.validate = 1 ";
+        unless ($include_PASA) {
+            $query .= " and cl.is_assembly = 0 ";
+        }
+        
+        $query .= " order by cdl.cdna_acc"; 
+        
+        my @results = &Mysql_connect::do_sql_2D ($dbproc, $query);
+        if (@results) {
+            print "\n\n// cluster: $cluster_id\n";
+            
+            foreach my $result (@results) {
+                my ($cdna_acc, $align_id, $prog) = @$result;
+                my $alignment_obj = &Ath1_cdnas::create_alignment_obj($dbproc, $align_id);
+                $alignment_obj->{genome_acc} = $asmbl_id;
+
+                if ($GFF3) {
+                    $match_id++;
+                    print $alignment_obj->to_GFF3_format( match_id => $match_id,
+                                                          source => $prog,
+                                                          );
+                }
+                
+
+                else {
+
+
+                    my $spliced_orient = $alignment_obj->get_spliced_orientation();
+                    
+                    my @segments = $alignment_obj->get_alignment_segments();
+                    my $alignment_text = "$cdna_acc,$spliced_orient";
+                    foreach my $segment (@segments) {
+                        my ($lend, $rend) = $segment->get_coords();
+                        $alignment_text .= ",$lend-$rend";
+                    }
+                    print "$alignment_text\n";
+                }
+            }
+        }
+    }
+}
+
+$dbproc->disconnect;
+
+

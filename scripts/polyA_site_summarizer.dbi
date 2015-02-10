@@ -1,0 +1,149 @@
+#!/usr/bin/env perl
+
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Mysql_connect;
+use strict;
+use DBI;
+use Ath1_cdnas;
+use CdbTools;
+use Getopt::Std;
+use Nuc_translator;
+
+use vars qw ($opt_M $opt_g $opt_f $opt_d $opt_h $opt_v $opt_U $opt_D );
+
+&getopts ('M:dhvg:U:D:');
+
+
+$|=1;
+our $SEE = 0;
+
+open (STDERR, "&>STDOUT");
+
+my $usage =  <<_EOH_;
+
+The polyA coordinate is the base to which polyA is added.
+
+############################# Options ###############################
+#
+# -M Mysql database name
+# -g genome multi-fasta file
+# -d Debug
+#
+# -U upstream bp to retrieve (default 50)
+# -D downstream bp to retrieve (default 50)
+#
+# 
+# -h print this option menu and quit
+# -v verbose
+#
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+if ($opt_h) {die $usage;}
+
+my $MYSQLdb = $opt_M or die $usage;
+my $MYSQLserver = &Pasa_conf::getParam("MYSQLSERVER");
+my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+
+my $DEBUG = $opt_d;
+our $SEE = $opt_v;
+my $genome_db = $opt_g or die $usage;
+
+my $upstream_length = $opt_U || 50;
+my $downstream_length = $opt_D || 50;
+
+my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+###################################################################
+## Begin program here
+
+## get genomes containing polyA site annotations
+my $query = qq { select distinct c.annotdb_asmbl_id 
+                     from clusters c, align_link al, cdna_info ci, transcriptPolyA t
+                     where c.cluster_id = al.cluster_id 
+                     and al.align_id = t.align_id 
+                     and al.cdna_info_id = ci.id
+                     and ci.is_assembly = 0
+                 };
+my @results = &do_sql_2D($dbproc, $query);
+my @asmbls;
+foreach my $result (@results) {
+    my $asmbl_id = $result->[0];
+    push (@asmbls, $asmbl_id);
+}
+
+foreach my $asmbl_id (@asmbls) {
+    my $genome_seq = cdbyank_linear($asmbl_id, $genome_db, 'n');
+    
+    my $query = qq { select ci.cdna_acc, t.genomicCoord, t.transcribedOrient
+                         from clusters c, align_link al, transcriptPolyA t, cdna_info ci
+                         where c.cluster_id = al.cluster_id 
+                         and al.align_id = t.align_id 
+                         and al.cdna_info_id = ci.id
+                         and ci.is_assembly = 0
+                         and c.annotdb_asmbl_id = "$asmbl_id"
+                     };
+
+    my %polyA_data;
+    
+    my @results = &do_sql_2D($dbproc, $query);
+    foreach my $result (@results) {
+        my ($cdna_acc, $genomic_coord, $orient) = @$result;
+
+        my $key = "$genomic_coord,$orient";
+        
+        my $transcript_list_aref = $polyA_data{$key};
+        unless (ref $transcript_list_aref) {
+            $transcript_list_aref = $polyA_data{$key} = [];
+        }
+
+        push (@$transcript_list_aref, $cdna_acc);
+    }
+    
+    foreach my $polyA_site (keys %polyA_data) {
+        my ($coord, $orient) = split (/,/, $polyA_site);
+
+        my $transcript_list_aref = $polyA_data{$polyA_site};
+        my $num_transcripts = scalar (@$transcript_list_aref);
+        
+        my $transcript_txt = join (",", @$transcript_list_aref);
+
+        my $genomic_coord_acc = "$asmbl_id-${coord}_$orient";
+        
+        my $seq_region = "";
+
+        if ($orient eq '+') {
+            $seq_region = uc substr($genome_seq, $coord - $upstream_length, $upstream_length + $downstream_length); # want first polyA base as the 51st bp
+        }
+        else {
+            # reverse strand
+            $seq_region = uc substr($genome_seq, $coord - $downstream_length -1, $upstream_length + $downstream_length); 
+            $seq_region = reverse_complement($seq_region);
+        }
+        
+        my @chars = split (//, $seq_region);
+        for (my $i = $upstream_length; $i < $upstream_length + $downstream_length; $i++) {
+            $chars[$i] = lc $chars[$i]; 
+        }
+            
+        print ">$genomic_coord_acc $num_transcripts transcripts: $transcript_txt\n"
+            . join ("", @chars) . "\n\n";
+        
+    }
+}
+
+exit(0);
+
+
+    
+        
+        
+

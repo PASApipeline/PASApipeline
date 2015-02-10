@@ -1,0 +1,26 @@
+body {
+     margin: 10px 10px 10px 10px;
+}
+
+#alignmentAssemblySearchForm {  border: 1px solid black;
+                             padding-left: 50px;
+                             padding-bottom: 10px;
+                             padding-right: 50px;
+                             float: left;
+                             background-color: rgb(225,225,225);
+                             }
+.searchToken { 
+             font-size: 110%;
+             color: rgb(170,0,204);
+                   
+}
+
+.noSearchResults {
+                color: rgb(255,00,00);
+}
+
+.searchResults {
+              background-color: rgb(200,200,255);
+              padding: 3px 3px 3px 3px;
+              
+}

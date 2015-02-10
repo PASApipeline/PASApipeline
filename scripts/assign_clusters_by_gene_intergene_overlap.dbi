@@ -1,0 +1,428 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Mysql_connect;
+use strict;
+use DBI;
+use Getopt::Std;
+use SingleLinkageClusterer;
+use BinaryFeatureSearch;
+use Overlap_piler;
+
+use vars qw ($opt_V $opt_M $opt_d $opt_h $opt_v $opt_L $opt_G $opt_X);
+
+&getopts ('M:dhvV:L:G:X');
+
+
+$|=1;
+
+
+my $usage =  <<_EOH_;
+
+
+############################# Options ###############################
+#
+# -M Mysql database name
+# 
+# -L min percent of shorter length for linking pairs. (default: 30%)
+# -G gene annotations in gff3 format.
+#
+# -d Debug
+# -h print this option menu and quit
+# -v verbose
+#
+# -X no updates to db, debugging purposes.
+#
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+if ($opt_h) {die $usage;}
+
+
+my $MYSQLdb = $opt_M or die $usage;
+my $MYSQLserver = &Pasa_conf::getParam("MYSQLSERVER");
+my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+our $DEBUG = $opt_d;
+our $SEE = ($opt_v || $DEBUG);
+our $DB_SEE = $opt_v || $DEBUG;
+
+my $MOCK_RUN = $opt_X;
+
+my $genes_gff3 = $opt_G || die $usage;
+
+my $require_valid = 1;
+
+my $min_percent_shorter_length = 50;
+if ($opt_L) {
+	$min_percent_shorter_length = $opt_L;
+}
+
+my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+
+my %scaffold_to_genes = &parse_genes_from_gff3($genes_gff3);
+
+&sort_and_add_list_index(\%scaffold_to_genes);
+
+my $bfs = new BinaryFeatureSearch(\%scaffold_to_genes);
+
+print STDERR "// retrieving valid alignments.\n";
+
+# get the list of annot-db asmbl_id and corresponding cdna_accs
+my $query = "select c.annotdb_asmbl_id, al.align_acc, al.spliced_orient "
+    . " from clusters c, align_link al, cdna_info ci "
+    . " where c.cluster_id = al.cluster_id "
+    . " and al.cdna_info_id = ci.id and ci.is_assembly = 0 "
+    . " and al.validate = 1";
+my %asmbl_id_to_cdna_accs;
+my @results = &do_sql_2D($dbproc, $query);
+
+foreach my $result (@results) {
+    my ($asmbl_id, $cdna_acc, $spliced_orient) = @$result;
+
+	$asmbl_id .= ";$spliced_orient";
+	
+    if (my $aref = $asmbl_id_to_cdna_accs{$asmbl_id}) {
+        push (@$aref, $cdna_acc);
+    } else {
+        $asmbl_id_to_cdna_accs{$asmbl_id} = [$cdna_acc];
+    }
+}
+
+print STDERR "// retrieving transcript coordinate data.\n";
+
+
+#unless ($MOCK_RUN) {
+#	{ # purge the clusters table
+#		
+#		my $query = "delete from clusters";
+#		&RunMod($dbproc, $query);
+#	}
+#}
+
+## Perform new overlap analysis, populate/update db.
+foreach my $asmbl_id_info (keys %asmbl_id_to_cdna_accs) {
+    
+	my ($asmbl_id, $spliced_orient) = split(/;/, $asmbl_id_info);
+
+    my @transcripts;
+
+    ## Get list of cDNA_accs
+    my @cdna_accs = @{$asmbl_id_to_cdna_accs{$asmbl_id_info}};
+    ## Get cdna span for each alignment:
+
+	my %acc_to_struct;
+
+    foreach my $cdna_acc (@cdna_accs) {
+        my $align_id = &get_align_id($cdna_acc);
+        if ($align_id) {
+            my ($lend, $rend) = sort {$a<=>$b} &get_alignment_span($align_id);
+			
+			my $struct = { cdna_acc => $cdna_acc,
+						   acc => $cdna_acc, 
+						   lend => $lend,
+						   rend => $rend,
+					   };
+			
+
+			push (@transcripts, $struct);
+			
+			$acc_to_struct{$cdna_acc} = $struct;
+			
+
+		}
+    }
+    
+
+	@transcripts = sort {$a->{lend}<=>$b->{lend}} @transcripts;
+	
+	my @pairs;
+
+	foreach my $transcript (@transcripts) {
+		
+		my $trans_lend = $transcript->{lend};
+		my $trans_rend = $transcript->{rend};
+		
+		if (my $overlapping_feature = $bfs->find_overlapping_feature($asmbl_id, $trans_lend, $trans_rend)) {
+			
+			my $feature_list_aref = $overlapping_feature->{_list_aref};
+			my $feature_index = $overlapping_feature->{_index};
+			
+			## search left, including current.
+			my $i = $feature_index;
+			while ($i >= 0) {
+				my $feature = $feature_list_aref->[$i];
+				if (&features_overlap($transcript, $feature)) {
+					if (&substantial_overlap($transcript, $feature)) {
+						push (@pairs, [$transcript->{acc}, $feature->{acc}]);
+					}
+				}
+				else {
+					last;
+				}
+				$i--;
+			}
+
+			$i = $feature_index + 1;
+			while ($i <= $#$feature_list_aref) {
+				my $feature = $feature_list_aref->[$i];
+				if (&features_overlap($transcript, $feature)) {
+					if (&substantial_overlap($transcript, $feature)) {
+						push (@pairs, [$transcript->{acc}, $feature->{acc}]);
+					}
+				}
+				else {
+					last;
+				}
+				$i++;
+			}
+		}
+	}
+	
+	
+	my @clusters = &SingleLinkageClusterer::build_clusters(@pairs);
+
+	my %seen;
+	foreach my $cluster (@clusters) {
+		my @accs = @$cluster;
+		
+		unless ($MOCK_RUN) {
+			@accs = grep { $_ !~ /__GENE__/ } @accs;
+		}
+
+		print "Cluster: " . join("\t", @accs) . "\n";
+		
+		foreach my $acc (@accs) {
+			$seen{$acc} = 1;
+		}
+
+		unless ($MOCK_RUN) {
+			&insert_cluster($dbproc, $asmbl_id, $cluster, \%acc_to_struct);
+		}
+	}
+
+	## perform overlap piling for unseen transcripts (intergenic)
+	
+	my $overlap_piler = new Overlap_piler();
+
+	foreach my $acc (keys %acc_to_struct) {
+		unless ($seen{$acc}) {
+			
+			my $struct = $acc_to_struct{$acc};
+			my $acc = $struct->{acc};
+			my ($lend, $rend) = ($struct->{lend}, $struct->{rend});
+			
+			$overlap_piler->add_coordSet($acc, $lend, $rend);
+			
+		}
+	}
+
+	my @piled_accs = $overlap_piler->build_clusters();
+
+	foreach my $pile (@piled_accs) {
+		
+		print "Intergenic pile: " . join("\t", @$pile) . "\n";
+		
+		unless ($MOCK_RUN) {
+			&insert_cluster($dbproc, $asmbl_id, $pile, \%acc_to_struct);
+		}
+	}
+}
+
+
+$dbproc->disconnect;
+exit(0);
+
+
+
+
+
+####
+sub insert_cluster {
+	my ($dbproc, $asmbl_id, $accs_aref, $accs_to_struct_href) = @_;
+
+	
+
+	## Get new cluster_id:
+	my $cluster_id;
+	if ($DEBUG) {
+		$cluster_id = "DEBUG_cluster_id";
+	} else {
+		my $query = "insert clusters (annotdb_asmbl_id) values (\"$asmbl_id\")";
+		&RunMod($dbproc, $query);
+		$query = "select LAST_INSERT_ID()";
+		$cluster_id = &very_first_result_sql($dbproc, $query);
+	}
+	
+	## update cdna_accs to new cluster_id:
+	my @cdnas = @$accs_aref;
+	my @coords;
+	foreach my $cdna (@cdnas) {
+		my $query = "update align_link set cluster_id = $cluster_id where align_acc = ?";
+		&RunMod($dbproc, $query, $cdna);
+        
+		my $struct = $accs_to_struct_href->{$cdna};
+		
+
+		push (@coords, $struct->{lend}, $struct->{rend});
+	}
+	
+	@coords = sort {$a<=>$b} @coords;
+	my $lend = shift @coords;
+	my $rend = pop @coords;
+	my $query = "update clusters set lend = ?, rend = ? where cluster_id = ?";
+	&RunMod($dbproc, $query, $lend, $rend, $cluster_id);
+	
+
+	return;
+
+}
+
+
+
+
+####
+sub get_align_id {
+    my $cdna_acc = shift;
+    my $query = "select align_id from align_link where align_acc = ?";
+    if ($require_valid) {
+        $query .= " and validate = 1 ";
+    }
+    
+    my $align_id = &very_first_result_sql($dbproc, $query, $cdna_acc);
+    return ($align_id);
+}
+
+sub get_alignment_span {
+    my ($align_id) = shift;
+    my $query = "select lend, rend from alignment where align_id = $align_id";
+    my @results = &do_sql_2D($dbproc, $query);
+    my @coords;
+    foreach my $result (@results) {
+        push (@coords, @$result);
+    }
+    @coords = sort {$a<=>$b} @coords;
+    my $min = shift @coords;
+    my $max = pop @coords;
+    return ($min, $max);
+}
+
+####
+sub parse_genes_from_gff3 {
+	my ($gff_file) = @_;
+
+	my %scaffold_to_genes;
+	
+	open (my $fh, $gff_file) or die "Error, cannot open file $gff_file";
+	while (<$fh>) {
+		chomp;
+		unless (/\w/) { next; }
+		my @x = split(/\t/);
+		
+		if ($x[2] eq 'gene') {
+			$x[8] =~ /ID=([^;\s]+)/;
+			my $id = $1 or die "Error, cannot parse gene id from $_";
+			my $strand = $x[6];
+			my $lend = $x[3];
+			my $rend = $x[4];
+			my $contig = $x[0];
+
+			my $gene_struct = { acc => "__GENE__:$id",
+								scaff => $contig,
+								lend => $lend,
+								rend => $rend,
+								strand => $strand,
+							};
+
+			
+			push (@{$scaffold_to_genes{$contig}}, $gene_struct);
+		}
+	}
+
+	return(%scaffold_to_genes);
+}
+
+####
+sub sort_and_add_list_index {
+	my ($scaff_to_genes_href) = @_;
+
+
+	foreach my $gene_list (values %$scaff_to_genes_href) {
+
+		@$gene_list = sort {$a->{lend}<=>$b->{lend}} @$gene_list;
+
+		for (my $i = 0; $i <= $#$gene_list; $i++) {
+			
+			$gene_list->[$i]->{_index} = $i;
+			$gene_list->[$i]->{_list_aref} = $gene_list;
+		}
+	}
+
+	return;
+}
+
+####
+sub features_overlap {
+	my ($featA, $featB) = @_;
+
+	if ($featA->{lend} <= $featB->{rend}
+		&&
+		$featA->{rend} >= $featB->{lend}) {
+		return(1);
+	}
+   
+	return(0);
+}
+
+####
+sub substantial_overlap {
+	my ($featA, $featB) = @_;
+
+
+	unless (&features_overlap($featA, $featB)) {
+		return(0); ## just be sure.
+	}
+
+	($featA, $featB) = sort {$a->{lend}<=>$b->{lend}} ($featA, $featB);
+	
+	my $lenA = $featA->{rend} - $featA->{lend} + 1;
+	my $lenB = $featB->{rend} - $featB->{lend} + 1;
+
+	my $overlap_len;
+	if ($featB->{rend} < $featA->{rend}) {
+		$overlap_len = $lenB;
+	}
+	else {
+		$overlap_len = $featA->{rend} - $featB->{lend} + 1;
+	}
+
+	#print "A: " . $featA->{lend} . "-" . $featA->{rend}
+	#. "\tB: " . $featB->{lend} . "-" . $featB->{rend} . "\t";
+
+
+	my $percent_overlap_A = sprintf("%.2f", $overlap_len / $lenA * 100);
+	my $percent_overlap_B = sprintf("%.2f", $overlap_len / $lenB * 100);
+	
+	#print "$percent_overlap_A %, $percent_overlap_B %\n";
+	
+	
+	if ($percent_overlap_A >= $min_percent_shorter_length
+		||
+	    $percent_overlap_B >= $min_percent_shorter_length) {
+		
+		return(1);
+	}
+
+	else {
+		return(0);
+	}
+}
+
+

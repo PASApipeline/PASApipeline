@@ -1,0 +1,91 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Mysql_connect;
+use strict;
+use DBI;
+use Getopt::Std;
+use Ath1_cdnas;
+use CDNA::CDNA_alignment;
+
+use vars qw ($opt_M $opt_p $opt_G $opt_d $opt_h);
+open (STDERR, "&>STDOUT");
+&getopts ('M:p:G:dh');
+my $usage =  <<_EOH_;
+
+############################# Options ###############################
+# -M Mysql database/server ie. ("ath1_cdnas:haasbox")
+# -p passwordinfo  (contains "username:password")
+# -d Debug
+# 
+# -h print this option menu and quit
+#
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+our $SEE = 0;
+
+if ($opt_h) {die $usage;}
+my $MYSQLstring = $opt_M or die $usage;
+my ($MYSQLdb, $MYSQLserver) = split (/:/, $MYSQLstring); 
+my $passwordinfo = $opt_p or die $usage;
+our $DEBUG = $opt_d;
+
+my ($user, $password) = split (/:/, $passwordinfo);
+
+my ($dbproc) = &connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+
+my $compare_id = &Ath1_cdnas::get_max_compare_id($dbproc);
+
+
+my %acc_to_asmbl_id;
+my $query = "select c.annotdb_asmbl_id, cl.cdna_acc from clusters c, cluster_link cl where cl.cluster_id = c.cluster_id and cl.is_assembly = 0";
+my @results = &do_sql_2D($dbproc, $query);
+foreach my $result (@results) {
+    my ($asmbl_id, $cdna_acc) = @$result;
+    $acc_to_asmbl_id{$cdna_acc} = $asmbl_id;
+}
+
+
+my $query = "select al.gene_id, tpa.cdna_acc, tpa.genomicCoord from annotation_link al, transcriptPolyA tpa, asmbl_link asml where al.compare_id = $compare_id and al.cdna_acc = asml.asmbl_acc and asml.cdna_acc = tpa.cdna_acc";
+
+
+my %data;
+my @results = &do_sql_2D($dbproc, $query);
+foreach my $result (@results) {
+    my ($gene_id, $cdna_acc, $coord) = @$result;
+ 
+    my $asmbl_id = $acc_to_asmbl_id{$cdna_acc} or die "No asmbl_id for $cdna_acc\n";
+    
+    $coord = "asm:$asmbl_id,coord:$coord";
+    
+    unless ($gene_id) {
+	$gene_id = "NULL";
+    }
+    $data{coords}->{$coord}->{$cdna_acc} = 1;
+    $data{genes}->{$coord}->{$gene_id} = 1;
+    
+}
+
+foreach my $coordinate (sort keys %{$data{coords}}) {
+    my @geneList = sort keys %{$data{genes}->{$coordinate}};
+    my @cdna_accs = sort keys %{$data{coords}->{$coordinate}};
+    my $num_cdnas = scalar (@cdna_accs);
+    
+    ## output tab-delmited file: coord, numTranscriptSupport, genes, transcripts
+    print "$coordinate\t$num_cdnas\t@geneList\t@cdna_accs\n";
+}
+
+
+
+$dbproc->disconnect;
+
+
+
+	

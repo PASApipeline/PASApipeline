@@ -1,0 +1,371 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Pasa_conf;
+use Mysql_connect;
+use DBI;
+use Data::Dumper;
+use Ath1_cdnas;
+use Getopt::Std;
+use Storable qw (thaw);
+use PASA_UPDATES::Pasa_annot_update_retriever;
+use PASA_UPDATES::Annot_update;
+
+
+use vars qw ($opt_O $opt_o $opt_n $opt_s $opt_N $opt_P $opt_h $opt_D $opt_p $opt_d $DEBUG $opt_S $opt_M $opt_X $opt_v $opt_U);
+
+&getopts ('hD:dp:S:M:XvU:O:n:o:s:N:P:');
+
+
+$|=1;
+
+my $usage =  <<_EOH_;
+
+script updates annotations based on cDNA assemblies.
+
+
+############################# Options ###############################
+#
+# -M Mysql database:server:user:password ie. ("ath1_cdnas:haasbox:bhaas:password")
+# -P param string for data adapter: HOOK_GENE_STRUCTURE_UPDATER
+#                             At TIGR, this would be "SYBTIGR,Sybase,user,password,annotdb"
+#
+# -U list of Update_ids to process.  Updates will be restricted to these entries only.
+#     -N  the opposite of -U, a list of Update IDs NOT to process
+# 
+# -d Debug
+# -X don't update the database, just go through the motions (testing purposes).
+# -h print this option menu and quit
+# -v verbose
+#
+# -O only perform these updates:
+#              provide a list:  "update, split, merge, novel, altsplice"
+#
+#     If using the 'update' option, you can limit updates to specific status_id's like so:
+#        -s "4,8,13,14,16"          
+# 
+#
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+if ($opt_h) {die $usage;}
+
+if ($opt_o) {
+    die "Error, option (o) not supported.\n"; #prevent from accidental use of lower-case o when O is wanted.
+    # yes, this has happened before.  No longer. He he he.
+}
+
+my $MYSQLstring = $opt_M or die $usage;
+
+my $adapter_param_string = $opt_P;
+my ($MYSQLdb, $MYSQLserver, $MYSQLuser, $MYSQLpassword) = split (/:/, $MYSQLstring); 
+
+
+## Create update adapter:
+my $annot_updater = &Pasa_conf::call_hook("HOOK_GENE_STRUCTURE_UPDATER", $adapter_param_string, $MYSQLdb);
+unless ($annot_updater) {
+    die "Error, no annot_updater.\n";
+}
+
+
+my $DEBUG = $opt_d;
+my $DONT_UPDATE_GENES = $opt_X;
+my $SEE = $opt_v;
+my $update_ID_file = $opt_U;
+my %UPDATE_IDS;
+
+# list of status_id's to restrict updates too.
+my %RESTRICTED_UPDATE_STATUS_IDS;
+if (my $status_id_list = $opt_s) {
+    my @status_ids = split (/,/, $status_id_list);
+    foreach my $status_id (@status_ids) {
+        $status_id =~ s/\s+//g;
+        if ($status_id) {
+            $RESTRICTED_UPDATE_STATUS_IDS{$status_id} = 1;
+        }
+    }
+}
+
+
+
+
+
+my $MINIMUM_NOVEL_CDS_LENGTH = $opt_n || 0;
+my %TARGETED_UPDATES = (update => 1,
+                        split => 1,
+                        merge => 1,
+                        novel => 1,
+                        altsplice => 1 );
+
+if (my $specified_updates = $opt_O) {
+    # clear all options
+    print STDERR "\*Updates specified: $specified_updates\n";
+    %TARGETED_UPDATES = ();
+    
+    if ($specified_updates =~ /update/) {
+        $TARGETED_UPDATES{update} = 1;
+    }
+    if ($specified_updates =~ /split/) {
+        $TARGETED_UPDATES{split} = 1;
+    }
+    if ($specified_updates =~ /merge/) {
+        $TARGETED_UPDATES{merge} = 1;
+    }
+    if ($specified_updates =~ /novel/) {
+        $TARGETED_UPDATES{novel} = 1;
+    }
+    if ($specified_updates =~ /altsplice/) {
+        $TARGETED_UPDATES{altsplice} = 1;
+    }
+}
+
+if (%RESTRICTED_UPDATE_STATUS_IDS && ! $TARGETED_UPDATES{update}) {
+    die "Error, you have restricted updates, but the 'update' action is not a target of gene modifications.\n";
+}
+
+
+
+## get specific entries to limit updates to:
+if ($update_ID_file) {
+    open (UPDATE, $update_ID_file)  or die "Cannot open $update_ID_file\n";
+    while (<UPDATE>) {
+        $_ =~ s/\s//g;
+        if ($_ !~ /^\d+$/) {
+            die "Sorry, $_ does not appear to be an update ID.\n";
+        }
+        $UPDATE_IDS{$_} = 1;
+    }
+    close UPDATE;
+}
+
+## get entries NOT to update:
+my %DO_NOT_UPDATE_IDS;
+if ($opt_N) {
+    my $list_of_updates_NOT_to_process = $opt_N;
+    open (my $fh, $list_of_updates_NOT_to_process) or die "Error, cannot open file $opt_N ";
+    while (<$fh>) {
+        s/\s+//g;
+        unless (/\w/) { next;}
+        if (/^\d+$/) {
+            $DO_NOT_UPDATE_IDS{$_} = 1;
+        }
+        else {
+            die "Error, could not parse entry $_ from file $opt_N ";
+        }
+    }
+    close $fh;
+}
+
+
+my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$MYSQLuser,$MYSQLpassword);
+
+
+my $PASA_update_retriever = new PASA_UPDATES::Pasa_annot_update_retriever($dbproc);
+
+if ($DONT_UPDATE_GENES) {
+    $annot_updater->{debug} = 1;
+}
+
+my @failed_updates; #tracking
+
+############################################################################
+#### First, perform routine single gene model updates ######################
+############################################################################
+
+my $count = 0;
+
+if ($TARGETED_UPDATES{update}) {
+    my @annot_updates = $PASA_update_retriever->get_single_gene_updates(\%UPDATE_IDS, \%RESTRICTED_UPDATE_STATUS_IDS, \%DO_NOT_UPDATE_IDS);
+    foreach my $annot_update (@annot_updates) {
+        $count++;
+        print STDERR "Processing annot_update: " . $annot_update->toString() . "\n";
+        eval {
+            $annot_updater->update_gene($annot_update);
+        };
+
+        if ($@) {
+            print STDERR "\tFailure processing update: " . $annot_update->toString() . "\n$@\n";
+            push (@failed_updates, $annot_update);
+        }
+
+    }
+}
+
+
+
+
+##########################################################################################
+#### Split Genes #########################################################################
+##########################################################################################
+
+$count = 0; 
+
+if ($TARGETED_UPDATES{split}) {
+    my @annot_updates = $PASA_update_retriever->get_split_gene_updates(\%UPDATE_IDS, \%DO_NOT_UPDATE_IDS);
+    foreach my $annot_update (@annot_updates) {
+        $count++;
+        print STDERR "Processing annot_update: " . $annot_update->toString() . "\n";
+        eval {
+            my @updated_genes = $annot_updater->split_gene($annot_update);
+            
+            # report the new identifiers.  First gene should be the updated one. Others are new.
+            foreach my $gene_obj (@updated_genes) {
+                my $gene_id = $gene_obj->{TU_feat_name};
+                my $model_id = $gene_obj->{Model_feat_name};
+                print STDERR "split gene product: $gene_id, $model_id\n";
+            }
+
+        };
+
+        if ($@) {
+            print STDERR "\tFailure processing update: " . $annot_update->toString() . "\n$@\n";
+            push (@failed_updates, $annot_update);
+        }
+
+        
+    }
+
+    
+}
+
+
+
+##################################################################################################
+#### Merge Genes #################################################################################
+##################################################################################################
+
+
+$count = 0;
+
+if ($TARGETED_UPDATES{merge}) {
+    my @annot_updates = $PASA_update_retriever->get_merge_gene_updates(\%UPDATE_IDS, \%DO_NOT_UPDATE_IDS);
+    foreach my $annot_update (@annot_updates) {
+        $count++;
+        print STDERR "Processing annot_update: " . $annot_update->toString() . "\n";
+        eval {
+            $annot_updater->merge_genes($annot_update);
+        };
+
+        if ($@) {
+            print STDERR "\tFailure processing update: " . $annot_update->toString() . "\n$@\n";
+            push (@failed_updates, $annot_update);
+        }
+        
+    }
+    
+}
+
+
+
+###################################################################################################
+#### Add novel genes ##############################################################################
+###################################################################################################
+
+
+$count = 0;
+
+if ($TARGETED_UPDATES{novel}) {
+    my @annot_updates = $PASA_update_retriever->get_novel_gene_updates(\%UPDATE_IDS, \%DO_NOT_UPDATE_IDS);
+    foreach my $annot_update (@annot_updates) {
+        $count++;
+        print STDERR "Processing annot_update: " . $annot_update->toString() . "\n";
+        eval {
+            my ($gene_info_struct) = $annot_update->get_genes_data();
+            my $temp_gene_id = $gene_info_struct->{gene_id};
+            my $temp_model_id = $gene_info_struct->{model_id};
+
+            my $new_gene_obj = $annot_updater->create_new_gene($annot_update);
+            my $new_gene_id = $new_gene_obj->{TU_feat_name};
+            my $new_model_id = $new_gene_obj->{Model_feat_name};
+            print STDERR "new gene created: $new_gene_id, $new_model_id\n";
+
+
+            ## update temp novel gene_id with new gene_id. 
+            #Required for next step where alt-splicing isoforms are added.
+            
+            print STDERR "-resetting temp_id: $temp_gene_id to $new_gene_id in annotation_updates\n";
+            unless ($DONT_UPDATE_GENES) {
+                                
+                my $compare_id = $PASA_update_retriever->get_compare_id();
+                my ($update_id) = $annot_update->get_update_ids();
+                
+                ## this part is non-critical, and write access back to the mysql db may not be enabled.
+                eval {
+                	my $query = "update annotation_updates set gene_id = \"$new_gene_id\" "
+                    	. "where gene_id = \"$temp_gene_id\" and compare_id = $compare_id ";
+                	&Mysql_connect::RunMod($dbproc, $query);
+                };
+                if ($@) {
+                	print STDERR $@;
+                }
+            }
+            
+        };
+        
+        
+        if ($@) {
+            print STDERR "\tFailure processing update: " . $annot_update->toString() . "\n$@\n";
+            push (@failed_updates, $annot_update);
+        }
+
+    }
+    
+}
+
+
+#####################################################################################################
+#### Add alt splicing isoforms ######################################################################
+#####################################################################################################
+
+$count = 0;
+
+if ($TARGETED_UPDATES{altsplice}) {
+    my @annot_updates = $PASA_update_retriever->get_alt_splice_isoform_updates(\%UPDATE_IDS, \%DO_NOT_UPDATE_IDS);
+    foreach my $annot_update (@annot_updates) {
+        $count++;
+        
+        print STDERR "Processing annot_update: " . $annot_update->toString() . "\n";
+        eval {
+            my $new_isoform = $annot_updater->add_splicing_isoform($annot_update);
+            my $isoform_gene_id = $new_isoform->{TU_feat_name};
+            my $isoform_model_id = $new_isoform->{Model_feat_name};
+            print STDERR "new isoform added: $isoform_gene_id, $isoform_model_id\n";
+        };
+        
+        if ($@) {
+            print STDERR "\tFailure processing update: " . $annot_update->toString() . "\n$@\n";
+            push (@failed_updates, $annot_update);
+        }
+       
+    }
+}
+
+
+####################################
+## Done ############################
+####################################
+
+
+if (@failed_updates) {
+    print STDERR "\n\n\n\n\n**************************************************************\n\n"
+        . "Errors were encountered in processing the following annotation updates:\n";
+   
+    foreach my $annot_update (@failed_updates) {
+        print STDERR $annot_update->toString() . "\n";
+    }
+}
+
+
+print STDERR "\n\nFinished!\n\n\n";
+
+exit(0);
+
+
+

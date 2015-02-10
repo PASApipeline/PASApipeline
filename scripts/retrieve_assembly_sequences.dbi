@@ -1,0 +1,70 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Mysql_connect;
+use strict;
+use DBI;
+use Data::Dumper;
+use Getopt::Std;
+use Ath1_cdnas;
+use CDNA::CDNA_alignment;
+
+
+use vars qw ($opt_g $opt_h $opt_M $opt_b $opt_d $opt_p $opt_S);
+open (STDERR, "&>STDOUT");
+&getopts ('hD:dp:M:S:b:g:');
+my $usage =  <<_EOH_;
+
+############################# Options ###############################
+# -M Mysql database/server ie. ("ath1_cdnas:haasbox")
+# -p passwordinfo  (contains "username:password")
+# -g genomic_seq.db
+# 
+# -d Debug
+# 
+# -h print this option menu and quit
+#
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+our $SEE = 0;
+
+if ($opt_h) {die $usage;}
+my $MYSQLstring = $opt_M or die $usage;
+my ($MYSQLdb, $MYSQLserver) = split (/:/, $MYSQLstring); 
+my $passwordinfo = $opt_p or die $usage;
+my $DEBUG = $opt_d;
+my ($user, $password) = split (/:/, $passwordinfo);
+
+my ($dbproc) = &connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+my $genomic_seq_db = $opt_g or die $usage;
+
+
+my $query = "select c.annotdb_asmbl_id, cdl.cdna_acc, cdl.align_id from clusters c, cluster_link cl, cdna_link cdl where c.cluster_id = cl.cluster_id and cl.is_assembly = 1 and cl.cdna_acc = cdl.cdna_acc order by c.annotdb_asmbl_id";
+my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+my $curr_asmbl_id = 0;
+my $sequence = "";
+foreach my $result (@results) {
+    my ($asmbl_id, $cdna_acc, $align_id) = @$result;
+    if ($asmbl_id != $curr_asmbl_id) {
+	$curr_asmbl_id = $asmbl_id;
+	$sequence = &Ath1_cdnas::get_seq_from_fasta($asmbl_id, $genomic_seq_db);
+    }
+
+    my $cdna_alignment = &Ath1_cdnas::create_alignment_obj($dbproc, $align_id, \$sequence);
+    #my $alignment = $cdna_alignment->toToken();
+    #print "$cdna_acc\t$alignment\n\n";
+    my $assembly_seq = $cdna_alignment->extractSplicedSequence();
+    $assembly_seq =~ s/(\w{60})/$1\n/g; #make FASTA format.
+    print ">$cdna_acc\n$assembly_seq\n";
+}
+
+$dbproc->disconnect;
+
+
+	

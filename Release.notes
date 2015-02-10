@@ -1,0 +1,143 @@
+
+
+-GFF3_utils.pm:  allow for multiple parent transcript features assigned to a given exon or CDS feature.
+
+
+########################
+Release r20140417
+########################
+
+
+   Turned off extended donor consensus requirement for AT-AC introns.
+   Comprehensive transcriptome build compatible w/ latest Trinity (April 2014 release).
+   Minor tweaks to the web scripts
+   Works w/ Just Annotate My Genome (JAMg) // as per Alexie Papanicolaou
+
+#######################
+Release: r2013-09-07
+#######################
+
+Compatible with '|' in the genome accessions.  ex.  gi|xxxxx|yyyyyy
+
+
+######################
+Release: r2013-08-14
+#####################
+
+Improvements in memory usage during BLAT output processing, comprehensive transcriptome-generation, and assembly description writer.
+
+Parallel cluster reassignment, and faster uploading to mysql.
+
+
+
+##############################
+# Release: PASA2-r20130605p1
+#############################
+
+alignment validation:
+    -alignment validation is now not case-sensitive (but introduced in the most recent release).
+    -includes a 'resume' mode in case the process breaks partially into this stage.
+
+PASA_transcripts_and_assemblies_to_GFF3.dbi:
+    -include 'gene' clustering information in pasa assembly GTF output.
+
+
+
+
+#################################
+# Stable Release PASA2-r20130605
+#################################
+
+Web portal:
+    -all the CGI scripts in the PASA web portal are now compatible with PASA2
+
+Alignment validation:
+    -uses memory-lean indexing of fasta files rather than storing all seqs in RAM. Additional improvements to multi-threading and mem-sharing.
+
+Alignment assembly:
+    -individual alignment clusters capped at 5k alignments, sampled according to alignment score and alignment position.
+
+BLAT alignments:
+    -use file-based sorting to reduce RAM requirements.
+
+
+#############################################
+## Beta release of PASA2 on April 25-2013:
+#############################################
+
+
+PASA2-related improvements:
+
+1. both GMAP and BLAT can be run simultaneously, and multiple high quality validating alignments at different genome locations can be leveraged for defining gene structures via PASA assembly.
+
+2. Lots of multithreading.   Use the new --CPU parameter to take advantage of multiple threads.  Overall, the system is much faster that earlier versions due to parallel processing.  Also, database interaction has vastly sped up.
+
+3. Transdecoder (use --TRANSDECODER) can be executed as part of running PASA.  Transcripts that appear to be coding and full-length are flagged by PASA and treated accordingly.
+
+4.  A new process is available that combines Trinity de novo RNA-Seq assemblies along with genome-based transcript reconstructions (cufflinks and genome-guided Trinity) to generate a comprehensive transcriptome database.  This facilitates the identification of 'missing' genes and captures those transcripts that may be insufficiently represented by a draft genome assembly.  Instructions for this are available here:
+
+http://pasa.sourceforge.net/#A_ComprehensiveTranscriptome
+// Version: PASA2-v20130425beta
+
+-schema restructured, allows for storing multiple mappings per transcript
+-run blat and gmap simultaneously
+-generic gff3 loader for alignments
+-incorporation of Trinity full-denovo special status (--TDN parameter)
+-include --CPU parameter and use parallel processing for assembly, validation, alignment
+-much faster loading into mysql
+-not including mysql user/pass info in pipeline commands, instead using pasa_conf/conf.txt settings internally.
+-incorporates transdecoder to identify candidate full-length transcripts
+-added process for building a comprehensive genome-based + de novo transcriptome assembly-based trancriptome database.
+-including gtf along with bed and gff3 output formats.
+
+
+
+
+// Version: 2012-06-25
+
+
+    -pass max intron length parameter to the alignment validation step.
+
+	-removed type=isam from the pasa database schema; caused problems during mysql db installation using the latest mysql version 5.6.
+	-validated_transcripts.gff3 file now contains the valid transcript alignments.  It was inadvertently reporting the PASA assembly structures- only impacted previous release.  Thanks to Shengqiang Shu @ JGI for pointing this out.
+
+
+
+// Version: May-20-2011
+
+-further refinement to pasa_asmbls_to_training_set.dbi: those ORFs with sum(log-likelihood) scores > 0 are examined to see if the coding score is maximal within the proposed frame of the ORF. If the score is better in any other reading frame, the ORF is excluded.  This has been found to be very useful for de novo coding gene annotations based on RNA-Seq data.
+-write gff3 and bed files for valid and failed transcript alignments (failing validation, that is) as separate files.
+-reintroduced the sim4 chaser option based on user feedback
+
+
+// Version: Jan-09-2011
+
+-pasa_asmbls_to_training_set.dbi: now scores ORFs based on a Markov model and hexamer composition.  These best ORFs (complete or partial) are extracted and reported separately.
+
+-Launch_PASA_pipeline.pl:
+		-removed the blat/sim4 option and relying entirely on GMAP
+		-provides a simplified interface for both the alignment-assembly and for annotation comparison steps
+		-the --MAX_INTRON_LENGTH parameter is moved from the configuration file to a command-line parameter that is forwarded on to GMAP during the alignment stage and separately to the subsequent alignment validation stage.
+		-the analysis of alternative splicing now is included in the alignment-assembly stage.  No reason to run it separately now.
+		-key output files generated by PASA are now separated from the voluminous other output files, which are now written to a separate log directory.
+		-BED format is now output along with GFF3 for many of the various alignment and gene structure output files.  BED format has excellent support in browsers such as UCSC or IGV.
+		-annotation updates are improved:
+				-bugfix wrt reporting merged gene products in addition to the genes that were involved in the merge operation.
+				-improved logic in handling the merging of annotated genes based on transcript alignment evidence, requiring protein homology-tests to be passed for all input genes with the merged gene structure in addition to exon overlap.
+		-RNA-Seq: in filtering lowly expressed artifacts resulting from the Inchworm strand-specific assembly process, both valid and invalid best alignments are considered when pruning artifacts.  This is important because an invalid alignment (non-consensus splice site or mapping to half the length) might be only partially invalid, but still properly represents the expression level at that locus.
+
+
+-Sample data and pipeline:
+		-simplified pipeline execution illustrated in: sample_data/run_sample_pipeline.pl
+		
+
+-Web displays:
+		-the central status report now indicates the number of protein-coding sequences that change as a result of the annotation update (excluding UTR-only and alt-splice additions).
+		-since the alternative splicing is now mandatory as part of the alignment-assembly page, the corresponding data are immediately accessible from the alternative splicing report pages.
+		-in the alternative splicing pages, the transcript identifiers link to the full assembly report for that subcluster (gene).
+
+-General:
+     -CdbTools will be treated as a third party tool and we'll require that users download and install this from the Dana Farber tools page, instead of including a version within the PASA distro.
+	-including this CHANGELOG file in the PASA distro to include a record of the updates to the software and related processes.
+
+

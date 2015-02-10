@@ -1,0 +1,496 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+
+use FindBin;
+use lib ("$FindBin::Bin");
+use Pasa_init;
+use Pasa_conf;
+use Mysql_connect;
+use ConfigFileReader;
+use DBI;
+use Cwd;
+use Ath1_cdnas;
+use Overlap_info;
+use Getopt::Long qw(:config no_ignore_case bundling pass_through);
+use Fasta_reader;
+use Carp;
+
+our $SEE = 0;
+
+my $usage =  <<_EOH_;
+
+############################# Options ###############################
+#
+# -c  <filename>         configuration file for align-assembly
+#
+# -t <filename>          transcripts fasta file input to PASA
+#
+# Mapping criteria: (if not met, considered not mapping at all)
+#
+# --prefix <string>        prefix for output file names. (default: compreh_init_build)
+#
+# --min_per_ID <int>       default: 95
+#
+# --min_per_aligned <int>   default: 30
+# 
+#
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+
+our $DEBUG = 0;
+
+my $configfile;
+my $min_per_ID = 95;
+my $min_per_aligned = 30;
+my $transcripts_fasta;
+my $prefix = "compreh_init_build";
+
+&GetOptions("c=s" => \$configfile,
+            "min_per_ID=i" => \$min_per_ID,
+            "min_per_aligned=i" => \$min_per_aligned,
+            "t=s" => \$transcripts_fasta,
+            "prefix=s" => \$prefix,
+            'd' => \$DEBUG,
+            );
+
+unless ($configfile && $transcripts_fasta) {
+    die $usage;
+}
+
+unless (-s $transcripts_fasta) {
+    die "Error, cannot locate file: $transcripts_fasta";
+}
+
+
+my $outdir = $prefix;
+unless (-d $outdir) {
+    mkdir $outdir or die "Error, cannot mkdir $outdir";
+}
+
+
+## Read configuration file.
+my %config = &readConfig($configfile);
+
+
+my $mysql_db = $config{MYSQLDB} or die "Error, couldn't extract mysql_db name from config file " . cwd() . "/$configfile\n";
+my $mysql_server = &Pasa_conf::getParam("MYSQLSERVER");
+my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+my ($dbproc) = &connect_to_db($mysql_server,$mysql_db,$user,$password);
+
+my $query = "use $mysql_db";
+&RunMod($dbproc, $query);
+
+main: {
+
+    {
+        
+        
+        
+        my $query = "select c.annotdb_asmbl_id, al.lend, al.rend, al.align_acc, al.align_id, al.spliced_orient" 
+            . " from align_link al, clusters c, cdna_info ci "
+            . " where al.cluster_id = c.cluster_id "
+            #. " and c.annotdb_asmbl_id = \"$scaffold\" "
+            . " and al.cdna_info_id = ci.id "
+            . " and ci.is_assembly = 1 "
+            . " and al.validate = 1 "
+            #. " and al.lend < $rend and al.rend > $lend and al.spliced_orient = \'$spliced_orient\' ";
+            ;
+        
+        my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+        
+        open (my $ofh, ">data_dump.tmp") or die $!;
+
+        foreach my $result (@results) {
+            my @vals = @$result;
+            print $ofh join("\t", @vals) . "\n";
+        }
+        
+        close $ofh;
+        
+		#sort
+        system("sort -k1,1 -k2,2g data_dump.tmp | bgzip > data_dump.gz");
+		#tabix
+		system("tabix -fp bed data_dump.gz")
+
+    }
+
+
+    
+    my @transcripts;
+    my %trans_to_gene;
+
+    #############################################
+    ## get PASA assemblies linked by subcluster
+    #############################################
+    {
+        my $query = "select subcluster_id, cdna_acc from subcluster_link";
+        my @results = &do_sql_2D($dbproc, $query);
+        foreach my $result (@results) {
+            my ($subcluster_id, $cdna_acc) = @$result;
+            
+            push (@transcripts, { trans => $cdna_acc,
+                                  gene => $subcluster_id,
+                                  type => 'pasa',
+                              });
+            
+            $trans_to_gene{$cdna_acc} = $subcluster_id;
+        
+        }
+    }
+    
+    ######################################################
+    ## Get Trinity transcripts that fail to align at all.
+    ######################################################
+    
+    {
+        # alter table cdna_info add is_TDN int default 0;
+        my $query = "select ci.cdna_acc "
+            . " from cdna_info ci where ci.is_TDN = 1 and not exists ("
+            . "     select 1 from align_link al "
+            . "     where al.cdna_info_id = ci.id "
+            . " )\n";
+        
+        my @results = &do_sql_2D($dbproc, $query);
+        foreach my $result (@results) {
+            my ($cdna_acc) = @$result;
+            
+            my $component = &get_TDN_component($cdna_acc);
+            
+            push (@transcripts, { trans => $cdna_acc,
+                                  gene => $component,
+                                  type => "TDN_noMap",
+                                  
+                              });
+            
+            $trans_to_gene{$cdna_acc} = $component;
+            
+        }
+    }
+
+    
+    ###################################################
+    # examine those TDN that align but fail validation
+    ###################################################
+    {
+        
+        my $query = "select ci.cdna_acc, al.align_id, al.avg_per_id, al.percent_aligned \n"
+            . " from cdna_info ci, align_link al \n"
+            . " where ci.id = al.cdna_info_id \n"
+            . " and ci.is_TDN = 1 \n"
+            . " and not exists ( \n"
+            . "      select 1 from asmbl_link, align_link \n"
+            . "      where asmbl_link.cdna_acc = align_link.align_acc \n"
+            . "      and align_link.cdna_info_id = ci.id \n"
+            . " )\n";
+        
+        
+        my %cdna_to_aligns;
+        my @results = &do_sql_2D($dbproc, $query);
+        
+        foreach my $result (@results) {
+            my ($cdna_acc, $align_id, $avg_per_id, $percent_aligned) = @$result;
+            
+            push (@{$cdna_to_aligns{$cdna_acc}}, { cdna_acc => $cdna_acc,
+                                                   align_id => $align_id,
+                                                   avg_per_id => $avg_per_id,
+                                                   percent_aligned => $percent_aligned,
+                                               });
+        }
+        
+        
+        my $counter = 0;
+        my $total_cdnas = scalar(keys %cdna_to_aligns);
+        foreach my $cdna_acc (keys %cdna_to_aligns) {
+            $counter++;
+            
+            print STDERR "\r[$counter / $total_cdnas] processing map/fail $cdna_acc"; # if $DEBUG;
+
+
+            my @met_align_thresholds;
+            my @treat_as_unaligned;
+
+            foreach my $align (@{$cdna_to_aligns{$cdna_acc}}) {
+
+                if ($align->{avg_per_id} >= $min_per_ID && $align->{percent_aligned} >= $min_per_aligned) {
+                    my $score = $align->{avg_per_id} * $align->{percent_aligned};
+                    $align->{score} = $score;
+                    push (@met_align_thresholds, $align);
+                }
+                else {
+                    push (@treat_as_unaligned, $align);
+                }
+                
+            }
+            
+            if (@met_align_thresholds) {
+                # take the best scoring alignment as its mapping position:
+                @met_align_thresholds = sort {$a->{score} <=> $b->{score}} @met_align_thresholds;
+                
+                my $align_use = pop @met_align_thresholds;
+                
+                ## see if maps to already assembled PASA:
+                if (my $pasa_subcluster = &maps_to_PASA_asm($dbproc, $align_use)) {
+                    ## add to the PASA 'gene'
+                    
+                    push (@transcripts, { trans => $cdna_acc,
+                                          gene => $pasa_subcluster,
+                                          type => "InvalidQualityAlignment_YES_PASAmap",
+                                      } );
+                    $trans_to_gene{$cdna_acc} = $pasa_subcluster;
+                    
+                    print STDERR "\tinvalidAlignment_YES_PASAmap\n" if $DEBUG;
+
+                }
+                else {
+                    # add as new entry
+                    
+                    my $component = &get_TDN_component($cdna_acc);
+                    push (@transcripts, { trans => $cdna_acc,
+                                          gene => $component,
+                                          type => "InvalidQualityAlignment_NO_PASAmap",
+                                      } );
+                    $trans_to_gene{$cdna_acc} = $component;
+                    
+                    print STDERR "\tinvalidAlignment_NO_PASAmap\n" if $DEBUG;
+                    
+                }
+
+                
+            }
+            else {
+                # didn't align meeting thresholds.
+                # add as unaligned
+                    
+                my $component = &get_TDN_component($cdna_acc);
+                push (@transcripts, { trans => $cdna_acc,
+                                      gene => $component,
+                                      type => "PoorAlignment_TreatUnmapped",
+                                  } );
+                
+                $trans_to_gene{$cdna_acc} = $component;
+                
+                print STDERR "\tpoor_alignment\n" if $DEBUG;
+            
+            }
+            
+        }
+        
+        
+        
+    }
+    print "\n";
+
+    ## generate output files
+    
+    my $gene_trans_map_outfile = "$outdir/$prefix.geneToTrans_mapping";
+    {
+        my @gene_to_trans;
+        foreach my $trans (keys %trans_to_gene) {
+            my $gene = $trans_to_gene{$trans};
+            push (@gene_to_trans, [$gene, $trans]);
+        }
+        @gene_to_trans = sort {$a->[0] cmp $b->[0]} @gene_to_trans;
+
+        open (my $ofh, ">$gene_trans_map_outfile") or die $!;
+        foreach my $pair (@gene_to_trans) {
+            print $ofh join("\t", @$pair) . "\n";
+        }
+        close $ofh;
+    }
+
+    ## summary file, including type info
+    my $summary_file = "$outdir/$prefix.details";
+    {
+        
+        open (my $ofh, ">$summary_file") or die "Error, cannot write to $summary_file";
+        
+        
+        @transcripts = sort {$a->{gene} cmp $b->{gene}
+                             ||
+                                 $a->{trans} cmp $b->{trans} } @transcripts;
+        
+        foreach my $transcript (@transcripts) {
+            print $ofh join("\t", $transcript->{gene}, 
+                            $transcript->{trans},
+                            $transcript->{type}) . "\n";
+        }
+
+        close $ofh;
+        
+    }
+    
+    my $fasta_outfile = "$outdir/$prefix.fasta";
+    {
+        open (my $ofh, ">$fasta_outfile") or die $!;
+        {
+            ## incorporate the PASA assemblies
+            my $query = "select accession, sequence from cdna_sequence";
+            my @results = &do_sql_2D($dbproc, $query);
+            foreach my $result (@results) {
+                my ($acc, $seq) = @$result;
+                print $ofh ">$acc\n$seq\n";
+            }
+        }
+        
+        ## add the TDN-failures
+        my $fr = new Fasta_reader($transcripts_fasta);
+        while (my $seq_obj = $fr->next()) {
+
+            my $acc = $seq_obj->get_accession();
+            if ($trans_to_gene{$acc}) {
+                my $seq = $seq_obj->get_sequence();
+                print $ofh ">$acc\n$seq\n";
+            }
+        }
+        
+        close $ofh;
+    }
+
+    ## Generate GTF and BED files describing alignments
+    my $gff3_file = "$outdir/$prefix.gff3";
+    {
+        my $cmd = "$FindBin::Bin/PASA_transcripts_and_assemblies_to_GFF3.dbi -M $mysql_db -F $fasta_outfile > $gff3_file";
+        &process_cmd($cmd);
+    }
+    my $bed_file = "$outdir/$prefix.bed";
+    {
+        my $cmd = "$FindBin::Bin/PASA_transcripts_and_assemblies_to_GFF3.dbi -M $mysql_db -F $fasta_outfile -B > $bed_file";
+        &process_cmd($cmd);
+    }
+    
+    print "\n\nDone.\n\nSee files: $fasta_outfile and $gene_trans_map_outfile\n\n";
+    
+    exit(0);
+    
+}
+
+####
+sub get_TDN_component {
+    my ($cdna_acc) = @_;       
+    
+    my $component;
+
+    if ($cdna_acc =~ /^(.*comp\d+_c\d+)/) {
+        # orig style of trin accessions
+        $component = $1;
+    }
+    elsif ($cdna_acc =~ /^(c\d+_g\d+)/) {
+        $component = $1;
+    }
+    else {
+        confess "Error, cannot extract component info from trinity de novo assembly: $cdna_acc";
+    }
+    
+    return($component);
+}
+
+####
+sub maps_to_PASA_asm {
+    my ($dbproc, $align_struct) = @_;
+
+    my $align_id = $align_struct->{align_id};
+    
+    my $alignment_obj = &Ath1_cdnas::create_alignment_obj($dbproc, $align_id);
+    
+    print STDERR "Query alignment: " . $alignment_obj->toString() . "\n" if $DEBUG;
+    
+    ## get overlapping PASA assemblies.
+    my $scaffold = $alignment_obj->{genome_acc};
+    my ($lend, $rend) = $alignment_obj->get_coords();
+    my $spliced_orient = $alignment_obj->get_spliced_orientation();
+
+    my @pasa_alignments = &get_overlapping_pasa_alignments($dbproc, $scaffold, $lend, $rend, $spliced_orient);
+    
+    foreach my $pasa_obj (@pasa_alignments) {
+        
+        print STDERR "Comparing to: " . $pasa_obj->toString() if $DEBUG;
+        
+        if ($alignment_obj->has_overlapping_segment($pasa_obj)) {
+            
+            print STDERR " ** Got overlap\n" if $DEBUG;
+            
+            ## get subcluster
+            my $acc = $pasa_obj->get_acc();
+            my $query = "select subcluster_id from subcluster_link where cdna_acc = \"$acc\"";
+            my $subcluster_id = &Mysql_connect::very_first_result_sql($dbproc, $query);
+            print STDERR "\tSUBCLUSTER = $subcluster_id\n" if $DEBUG;
+            return($subcluster_id);
+            
+            
+        }
+        else {
+            print STDERR " # no overlap detected.\n" if $DEBUG;
+            }
+    }
+    
+    return undef;
+}
+
+
+####
+sub get_overlapping_pasa_alignments {
+    my ($dbproc, $scaffold, $lend, $rend, $spliced_orient) = @_;
+	
+    print STDERR "-retrieving overlapping pasa alignments for $scaffold, $lend-$rend, $spliced_orient\n" if $DEBUG;
+    
+    #my $query = "select al.align_id "
+	#    . " from align_link al, clusters c, cdna_info ci "
+    #    . " where al.cluster_id = c.cluster_id "
+    #    . " and c.annotdb_asmbl_id = \"$scaffold\" "
+    #    . " and al.cdna_info_id = ci.id "
+    #    . " and ci.is_assembly = 1 "
+    #    . " and al.validate = 1 "
+    #    . " and al.lend < $rend and al.rend > $lend and al.spliced_orient = \'$spliced_orient\' ";
+    
+    #my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+	
+
+	$scaffold =~ s/\|/\\|/g;
+	system("tabix data_dump.gz $scaffold:$lend-$rend | cut -f5 > data_subset.tmp");
+	#open (FILE, "data_subset.tmp") || die "Can't open data_subset.tmp\n";
+	
+	#open my $ofh, "<", "data_subset.tmp" or die "could not open data_subset.tmp.";
+
+	#my @results = <$ofh>;
+	#close $ofh;
+
+	my @results = `tabix data_dump.gz $scaffold:$lend-$rend | grep $spliced_orient | cut -f5`;
+	chomp @results;
+
+   	#print $results
+
+	my @align_objs;
+    
+    foreach my $result (@results) {
+        my ($align_id) = $result;
+
+        my $cdna_obj = &Ath1_cdnas::create_alignment_obj($dbproc, $align_id);
+        
+        print STDERR "\t-found " . $cdna_obj->toString() if $DEBUG;
+
+        push (@align_objs, $cdna_obj);
+    }
+
+    return(@align_objs);
+}
+
+
+####
+sub process_cmd {
+    my ($cmd) = @_;
+
+    print STDERR "CMD: $cmd\n";
+    my $ret = system($cmd);
+    if ($ret) {
+        die "Error, cmd: $cmd died with ret $ret";
+    }
+    return;
+}

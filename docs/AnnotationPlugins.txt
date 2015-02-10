@@ -1,0 +1,199 @@
+## Genome Annotation Plugins
+
+In order for groups outside of TIGR to benefit from the annotation comparison and annotation update capabilities of this system, two 'plug-in' components require development:
+
+            1. Genome Annotation Import Script.
+            2. Updated Genome Annotation Export Script.
+
+
+###################################################################
+## 1.  Genome Annotation Import ###################################
+###################################################################
+
+Importing genome annotation into the PASA pipeline involves two steps:
+
+A. Assigning a version number to the annotation which will be imported.  
+
+      Perform a single insert directly to this table and retrieve the auto-incremented version_id, like so:
+
+      my $query = "insert annotation_admin (date) values (now())";
+      &Mysql_connect::RunMod($dbproc, $query);
+
+      $query  = "select LAST_INSERT_ID()";
+      my $annot_version = &Mysql_connect::very_first_result_sql($dbproc, $query);
+
+      see the ../scripts/Annotation_store_preloader.dbi script for an example of how you can use the supplied library to connect to the MySQL database and establish a new version_id.
+
+
+
+B.  Load your genome annotations into the 'annotation_store' table.  The annotation_store table has the following fields:
+
++--------------------+------------------+
+| Field              | Type             |
++--------------------+------------------+
+| annot_id           | int(11)          | database-generated auto-incremented primary key gene identifier
+| gene_id            | varchar(200)     | accession to uniquely identify a gene transcriptional unit in the current annotation version
+| model_id           | varchar(200)     | accession to uniquely identify a gene isoform in the current annotation version
+| annotdb_asmbl_id   | varchar(200)     | accession for the genomic contig from which this gene resides
+| lend               | int(10) unsigned | left-most coordinate for the gene transcriptional unit  (end5 for +, end3 for - orient)
+| rend               | int(10) unsigned | right-most coordinate for the gene transcriptional unit (end3 for +, end5 for - orient)
+| orient             | char(1)          | orientation of the gene on this genomic contig
+| gene_obj           | mediumblob       | persistent perl object for an instance of Gene_obj.pm which represents the gene (function and structure)
+| annotation_version | int(10) unsigned | the 'version_id' obtained from step A above.
++--------------------+------------------+
+
+In cases where you have alternative splicing isoforms, you should have each isoform stored as a separate entry in this table.  All isoforms of a single gene should have identical 'gene_id's, but unique 'model_id's.
+
+The most challenging aspect of this step is the creation of the 'gene_obj's.  The PerlLib/Gene_obj.pm module provides the Gene_obj class from which individual gene_obj's can be instantiated using Perl's object oriented programming facilities.  This module is well documented and provides examples of how a gene_obj can be constructed.  Once a gene_obj is constructed, it can be converted into a persistent object by using the Storable.pm module (available from CPAN), using the nfreeze() method like so:
+
+         my $gene_obj = new Gene_obj(); #create it as per Gene_obj.pm documentation (use perldoc)
+	 # The gene_id and model_id fields of annotation store must correspond to the following fields of the gene_obj:
+	 $gene_obj->{TU_feat_name} = $gene_id;
+	 $gene_obj->{Model_feat_name} = $model_id;
+	 
+	 # create persistent gene object
+         my $persistent_obj = Storable::nfreeze($gene_obj);
+
+	 Now, store the $persistent_obj into the 'annotation_store.gene_obj' field.
+
+For the example data set and PASA pipeline run, Gene_obj's are created based on the annotations stored in the sample XML files and then loaded into the 'annotation_store' table.  This is done by the ../scripts/TIGR_XML_cdna_mysqldb_loader.dbi script, which provides a useful example.
+
+
+Once the genome annotations have been loaded, the annotation comparison can be run via ../scripts/Launch_PASA_pipeline with the -A option.  
+*An elaboration on gene_id's and model_id's:
+     Within a given version of the annotation, each gene_id must be unique.  Also, each model_id must be unique.  In the case of alternative splicing isoforms, a single 'gene' consists of multiple models.  In this case, each model would be a separate gene_obj, with the same gene_id, but different model_id's.
+
+
+
+######################################################################
+## 2.  Updated Genome Annotation Export ##############################
+######################################################################
+
+Each time an annotation comparison is launched, a new 'compare_id' is generated.  The results of an annotation comparison are stored in the tables: 'status', 'annotation_link', and 'annotation_updates'.  These tables are queried by the cgi-scripts and presented in the web displays.  For the purpose of retrieving the tentative annotation updates (including new alternative splicing variations and new genes), only the 'annotation_updates' table need be examined.
+
+The fields in the 'annotation_updates' table are as follows:
+
++-----------------+---------------------+
+| update_id       | int(11)             | auto-incremented primary key, unique gene update identifier
+| gene_id         | varchar(200)        | same as annotation_store.gene_id
+| model_id        | varchar(200)        | same as annotation_store.model_id
+| alt_splice_flag | tinyint(1) unsigned | flag indicating an alternative splicing variation for the gene identified with gene_id
+| before_gene_obj | mediumblob          | persistent gene_obj (before any update occurred) (same as annotation_store.gene_obj) legacy field to be deprecated.
+| after_gene_obj  | mediumblob          | persistent gene_obj ** Tentatively Updated Gene Integrating Alignment Assemblies **
+| compare_id      | int(11)             | compare_id corresponding to this comparison (described above)
+| is_valid        | tinyint(1) unsigned | flag indicating that the tentative update passed validation tests (alignment parameters from config file)
+| have_before     | tinyint(1) unsigned | flag indiciating that the before_gene_obj field is populated
+| have_after      | tinyint(1) unsigned | flag indicating that the after_gene_obj field is populated
+| is_novel_flag   | tinyint(1) unsigned | flag indicating that the gene is a new gene; lacked mapping to any existing gene annotation.
++-----------------+---------------------+
+
+
+There are three major operations that can be performed based on this data:
+  
+          -Updating existing gene annotations:   retrieve gene_id, model_id, after_gene_obj where have_after = 1, is_valid = 1, and alt_splice_flag = 0
+                    The gene structure provided by the after_gene_obj has been deemed capable of replacing the current gene structure for the isoform specified by model_id of gene_id.
+
+          -Addition of new alternative splicing isoforms: retrieve gene_id, after_gene_obj where have_after = 1, is_valid = 1, and alt_splice_flag = 1
+                    The gene structure provided by after_gene_obj provides the structure for a new isoform for the gene specified by gene_id.
+
+          -Addition of a new gene: retrieve after_gene_obj where have_after = 1, is_valid = 1, and is_novel_flag = 1
+
+
+The after_gene_obj's can be revived from their persistent state by using the Storable::thaw($gene_obj) method, and then treated as genuine Gene_obj's.
+
+
+Using the included Perl modules, you can implement the following in order to carry out these operations:
+
+
+use Mysql_connect;
+use strict;
+use DBI;
+use Gene_obj;
+use Ath1_cdnas;
+use Storable qw (thaw);
+
+my $compare_id = &Ath1_cdnas::get_max_compare_id($dbproc);
+
+my $query = "select distinct a.update_id, a.gene_id, a.model_id, a.alt_splice_flag, a.is_novel_flag from annotation_updates a, status s, status_link sl where a.compare_id = $compare_id and a.is_valid = 1 and a.have_after = 1 and sl.compare_id = $compare_id and s.status_id = sl.status_id and s.requires_update = 1 and sl.annot_update_id = a.update_id";
+
+my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+foreach my $result (@results) {
+    my ($update_id, $gene_id, $model_id, $alt_splice_flag, $is_novel_flag) = @$result;
+    print "\n//$update_id, $gene_id, $model_id, altsplice: $alt_splice_flag, novel: $is_novel_flag\n";
+    my $query = "select after_gene_obj from annotation_updates where update_id = $update_id";
+    my $after_gene_obj = &Mysql_connect::very_first_result_sql($dbproc, $query);
+    my $annotdb_asmbl_id = &get_asmbl_id_via_update_id($update_id); #genomic contig identifier
+    my $new_gene_obj = thaw($after_gene_obj);
+    if ($alt_splice_flag) {
+	&add_alt_splice($annotdb_smbl_id, $gene_id, $new_gene_obj);
+    } elsif ($is_novel_flag) {
+	&create_new_gene($annotdb_asmbl_id, $new_gene_obj);
+    } elsif ($model_id) { #update
+	&update_existing_gene($annotdb_asmbl_id, $model_id, $new_gene_obj);
+    }
+}
+
+
+
+################################################################################################
+## Final Comments ##############################################################################
+################################################################################################
+
+Although for each PASA pipeline run, you will build transcript alignment assemblies once, you will probably perform annotation comparisons and annotation updates in multiple rounds.  After performing your first round of annotation comparison and annotation updates, some of the updated annotations, when compared again to the alignment assemblies, will allow for some few number of additional updates.  This is because genes, in their previous context which failed validation tests due to percent alignment values or percent overlap values, pass the validation tests with their most current updated structures.  
+
+For the Arabidopsis genome annotation (> 27,000 gene annotations), it would generally take two rounds of annotation comparisons/ annotation updates.  On the third round ofan annotation comparison, all assemblies capable of being integrated into gene structures in an automated fashion were already incorporated, and hence no more tentative updates were provided.
+
+As stated previously, each time an annotation comparison is performed, an incremented annotation 'compare_id' is generated within the database.  When annotation updates are extracted from the 'annotation_updates' table, only the results from the last annotation comparison should be retrieved.  After each annotation comparison, the web display can be used to navigate the latest results as well as the results from all the previous comparisons.
+
+A typical complete PASA pipeline run would be as follows:
+
+PASA transcript alignments, alignment assembly
+                  ||
+                  \/
+Load Genome Annotations (current Version 1)
+                  ||
+                  \/
+Annotation Comparison (comparison 1)
+                  ||
+                  \/
+Export Annotation Updates, Commit Updates to an External Database (Updated Genes from Version 1, 'annotation_updates.compare_id'=1)
+                  ||
+                  \/
+## Round 2
+Load Genome Annotations (current Version 2)
+                  ||     
+                  \/
+Annotation Comparison (comparison 2)
+                  ||
+                  \/
+Export Annotation Updates, Commit Updates to an External Database (Updated Genes from Version 2, 'annotation_updates.compare_id'=2)
+                  ||
+                  \/
+## Round 3
+Load Genome Annotations (current Version 3)
+                  ||
+                  \/
+Annotation Comparison (comparison 3)
+                  ||
+                  \/
+  Typically, no more tentative updates.  Done.
+  If more updates are available, go another round until all updates are incorporated.
+
+
+
+ 
+###########################################################################################################################
+
+Questions, comments, etc., contact Brian Haas (bhaas@tigr.org)
+
+
+
+
+
+ 
+
+
+
+
+
+

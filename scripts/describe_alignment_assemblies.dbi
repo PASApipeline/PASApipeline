@@ -1,0 +1,88 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Mysql_connect;
+use strict;
+use DBI;
+use Data::Dumper;
+use Gene_obj;
+use Getopt::Std;
+use Storable qw (freeze thaw);
+use CDNA::CDNA_alignment;
+use Ath1_cdnas;
+use vars qw ($opt_g $opt_h $opt_D $opt_p $opt_d $DEBUG $opt_S $opt_M $opt_u $opt_i);
+
+&getopts ('hD:dp:S:M:u:ig:');
+
+
+$|=1;
+our $SEE = 0;
+
+open (STDERR, "&>STDOUT");
+
+my $usage =  <<_EOH_;
+
+
+############################# Options ###############################
+#
+# -M Mysql database/server ie. ("ath1_cdnas:haasbox")
+# 
+# -p password file  (contains "username\\npassword")
+#
+# -g genomic_seq_db
+# -d Debug
+# 
+# -h print this option menu and quit
+#
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+if ($opt_h) {die $usage;}
+my $MYSQLstring = $opt_M or die $usage;
+
+my ($MYSQLdb, $MYSQLserver) = split (/:/, $MYSQLstring); 
+my $passwordinfo = $opt_p or die $usage;
+my $DEBUG = $opt_d;
+my ($user, $password) = split (/:/, $passwordinfo);
+my $genomic_seq_db = $opt_g or die $usage;
+my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+
+my $query = "select c.annotdb_asmbl_id, al.align_id "
+    . " from clusters c, align_link al, cdna_info ci "
+    . " where c.cluster_id = al.cluster_id and al.cdna_info_id = ci.id and ci.is_assembly = 1";
+
+my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+
+my %asmbl_id_to_align_ids;
+foreach my $result (@results) {
+    my ($asmbl_id, $align_id) = @$result;
+    push (@{$asmbl_id_to_align_ids{$asmbl_id}}, $align_id);
+}
+
+my $current_seq = "";
+my $current_annotdb_asmbl_id = "";
+
+
+foreach my $asmbl_id (sort keys %asmbl_id_to_align_ids) {
+    if ($asmbl_id != $current_annotdb_asmbl_id) {
+        $current_annotdb_asmbl_id = $asmbl_id;
+        $current_seq = &Ath1_cdnas::get_seq_from_fasta($asmbl_id, $genomic_seq_db);
+    }
+    
+    foreach my $align_id (@{$asmbl_id_to_align_ids{$asmbl_id}}) {
+        my $cdna_obj = &Ath1_cdnas::create_alignment_obj($dbproc, $align_id, \$current_seq);
+        my $cdna = $cdna_obj->get_acc();
+        print "$cdna\t" . $cdna_obj->toToken() . "\n";
+    }
+}
+
+$dbproc->disconnect;
+
+exit(0);
+

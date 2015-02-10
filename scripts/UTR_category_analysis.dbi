@@ -1,0 +1,157 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+use Pasa_init;
+use Pasa_conf;
+use Mysql_connect;
+use DBI;
+use Getopt::Std;
+use Gene_obj;
+use Nuc_translator;
+use CdbTools;
+use Ath1_cdnas;
+use Storable qw (thaw);
+
+use vars qw ($opt_G $opt_M $opt_h $opt_v $opt_g $opt_m);
+
+&getopts ('M:hvg:m:G:');
+
+my $usage =  <<_EOH_;
+
+############################# Options ###############################
+#
+# -M Mysql database name
+# -g genome fasta file
+#
+# -h print this option menu and quit
+# -v verbose
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+
+if ($opt_h) {die $usage;
+}
+
+
+my $genomic_db = $opt_g or die "Error, need genomic fasta database\n\n$usage\n";
+
+my $MYSQLdb = $opt_M or die $usage;
+my $MYSQLserver = &Pasa_conf::getParam("MYSQLSERVER");
+my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+
+$|++;
+
+our $SEE = $opt_v;
+
+
+my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user, $password);
+
+## map pasa assemblies to genomic sequence
+my %asmbls_to_acc_list;
+
+my $query = "select c.annotdb_asmbl_id, cl.cdna_acc from clusters c, cluster_link cl, status_link sl where c.cluster_id = cl.cluster_id and cl.is_assembly = 1 and sl.cdna_acc = cl.cdna_acc and sl.compare_id = 1 and sl.status_id = 13";
+my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+foreach my $result (@results) {
+    my ($asmbl_id, $cdna_acc) = @$result;
+    ## list of each pasa acc attached to asmbl_id
+    
+    my $acc_list_aref = $asmbls_to_acc_list{$asmbl_id};
+    unless (ref $acc_list_aref) {
+	$acc_list_aref = $asmbls_to_acc_list{$asmbl_id} = [];
+    }
+    push (@$acc_list_aref, $cdna_acc);
+    
+}
+my %sequences_via_asmbl_id;
+
+foreach my $asmbl_id (sort keys %asmbls_to_acc_list) {
+
+    #print "Processing contig $asmbl_id\n";
+    
+    # get genome sequence
+    my $seq_entry = cdbyank ($asmbl_id, $genomic_db);
+    my ($genome_acc, $genome_header, $genomic_seq) = linearize($seq_entry);
+    
+    
+    my $genomic_ref = \$genomic_seq;
+    
+    foreach my $pasa_acc (sort @{$asmbls_to_acc_list{$asmbl_id}}) {
+    
+	#print "\tprocessing $pasa_acc\n";
+	
+	my $alignment_obj = Ath1_cdnas::get_alignment_obj_via_acc($dbproc, $pasa_acc, $genomic_ref);
+	my $align_orient = $alignment_obj->get_orientation();
+	my ($align_end5, $align_end3) = $alignment_obj->get_coords();
+	if ($align_orient eq '-') {
+	    ($align_end5, $align_end3) = ($align_end3, $align_end5);
+	}
+	
+	## get the corresponding model 
+    $query = "select model_id from annotation_link al where al.cdna_acc = ? and al.compare_id = 1";
+	my $model_id = &very_first_result_sql($dbproc, $query, $pasa_acc);
+	die "Error, no model id for $pasa_acc" unless $model_id;
+	
+	my $query = "select gene_obj from annotation_store where model_id = ?";
+	my $blob = &very_first_result_sql($dbproc, $query, $model_id);
+	my $gene_obj = thaw($blob);
+	my ($gene_end5, $gene_end3) = $gene_obj->get_model_span();
+	my $gene_orient = $gene_obj->get_orientation();
+	
+	print "PASA($pasa_acc) ";
+		
+	## check for encapsulation
+	my ($align_lend, $align_rend) = sort {$a<=>$b} ($align_end5, $align_end3);
+	my ($gene_lend, $gene_rend) = sort {$a<=>$b} ($gene_end5, $gene_end3);
+	
+	if ($gene_lend > $align_lend && $gene_rend < $align_rend) {
+	    ## encapsulation:
+	    print "  gene encapsulated by assembly.\n";
+	    next;
+	}
+	
+	
+	## Compare for 5' vs. 3' extensions.
+	
+	my $good_flag = 0;
+	print "align: $align_end5-$align_end3, gene: $gene_end5-$gene_end3   ";
+	if ($gene_orient eq '+') {
+	    ($align_end5, $align_end3) = ($align_lend, $align_rend); #make forward orient like gene.
+	    if ($align_end5 < $gene_end5) {
+		print "5-prime extension, plus strand.  GOOD!\n";
+		$good_flag = 1;
+	    } elsif ($align_end3 > $gene_end3) {
+		print "3-prime extension, plus strand.\n";
+	    } else {
+		die "Error plus strand!!! gene: $gene_end5-$gene_end3, alignment: $align_end5-$align_end3   ";
+	    }
+		     
+	} else {
+	    # (-)strand
+	    ($align_end5, $align_end3) = ($align_rend, $align_lend); # make reverse orient, like gene.
+	    if ($align_end5 > $gene_end5) {
+		print "5-prime extension, reverse strand.  GOOD!\n";
+		$good_flag = 1;
+	    } elsif ($align_end3 < $gene_end3)  {
+		print "3-prime extension, reverse strand.\n";
+	    } else {
+		die "Error minus strand!!! gene: $gene_end5-$gene_end3, alignment: $align_end5-$align_end3   ";
+	    }
+	}
+	
+	
+    }
+    
+}
+
+
+$dbproc->disconnect;
+
+exit(0);
+
+

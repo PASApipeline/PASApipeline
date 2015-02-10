@@ -1,0 +1,56 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Pasa_conf;
+use Mysql_connect;
+use strict;
+use ConfigFileReader;
+use DBI;
+use Cwd;
+use Ath1_cdnas;
+use Getopt::Std;
+
+
+$|=1;
+our $SEE = 0;
+
+
+my $usage = "usage: $0 db_list_file.txt\n\n";
+
+my $db_list_file = $ARGV[0] or die $usage;
+
+
+my $mysql_server = &Pasa_conf::getParam("MYSQLSERVER");
+my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+## Create the database
+my $admin_db = ""; # just forcing a connection.
+my ($dbproc) = &connect_to_db($mysql_server,$admin_db,$user,$password);
+
+
+open (my $fh, $db_list_file) or die $!;
+while (<$fh>) {
+    unless (/\w/) { next; }
+    my $db_name = $_;
+    chomp $db_name;
+
+    print STDERR "-dropping $db_name\n";
+
+	my $query = "drop database $db_name";
+	eval {
+        &RunMod($dbproc, $query);
+    };
+    if ($@) {
+        print STDERR "$@\n";
+    }
+}
+close $fh;
+
+$dbproc->disconnect;
+
+print STDERR "\n\nDone.\n\n";
+
+exit(0);

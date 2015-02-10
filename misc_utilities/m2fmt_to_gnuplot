@@ -1,0 +1,76 @@
+#!/usr/bin/env perl
+
+use strict;
+
+unless (@ARGV) {
+	print STDERR "\n\nusage: $0 <per_id_cutoff> <seqlen_X> <seqlen_Y>\n\n";
+}
+
+my $spec_per_id = ($ARGV[0])? ($ARGV[0]) : undef();
+my $seqlenX = $ARGV[1];
+my $seqlenY = $ARGV[2];
+
+open (my $DATA, ">data.dat");
+
+
+my $start = 1;
+my ($accession_x, $accession_y, $max_x, $max_y) = (0,0,0,0);
+
+if ($seqlenX) {
+	$max_x = $seqlenX;
+}
+if ($seqlenY) {
+	$max_y = $seqlenY;
+}
+
+
+while (<STDIN>) {
+	chomp;
+    unless (/\w/) {next;}
+	if (/^\#/) { next; }
+    my @btab = split (/\t/);
+    my $per_id = $btab[10];
+    if ( defined ($spec_per_id) && ($per_id < $spec_per_id)) {
+		next;
+    }
+    ($accession_x, $accession_y) = ($btab[0], $btab[1]);
+    if ($start) {
+		print $DATA "#" . $accession_x . "\t" . $accession_y . "\n";
+    }
+    my ($x1, $x2, $y1, $y2) = ($btab[17], $btab[18], $btab[20], $btab[21]);
+    print $DATA "$x1\t$y1\n$x2\t$y2\n\n";
+    my $temp_max_x = ($x1 > $x2) ? $x1 : $x2;
+    my $temp_max_y = ($y1 > $y2) ? $y1 : $y2;
+    $max_x = $temp_max_x if ($temp_max_x > $max_x);
+    $max_y = $temp_max_y if ($temp_max_y > $max_y);
+    $start = 0;
+}
+
+close $DATA;
+
+open (my $GNUPLOT, ">gnuscript_dat.scr");
+
+print $GNUPLOT <<_eofgnu_;
+
+
+    set xlabel \'$accession_x\'
+    set ylabel \'$accession_y\'
+    set xrange [0:$max_x]
+    set yrange [0:$max_y]
+    set data style linespoints
+    plot 'data.dat'
+    
+_eofgnu_
+   
+	;
+
+my $cmd = "gnuplot gnuscript_dat.scr -"; 
+
+print "\n$cmd\n\n";
+
+#my $ret = system($cmd);
+
+#exit($ret);
+
+exit(0);
+

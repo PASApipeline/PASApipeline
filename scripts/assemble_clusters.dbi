@@ -1,0 +1,328 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Pasa_conf;
+use Mysql_connect;
+use strict;
+use DBI;
+use CDNA::PASA_alignment_assembler;
+use CDNA::CDNA_alignment;
+use CDNA::Splice_graph_assembler;
+use Ath1_cdnas;
+use Storable qw (nstore);
+use Getopt::Std;
+use File::Basename;
+use threads;
+use Thread_helper;
+use Carp;
+
+use vars qw ($opt_h $opt_D $opt_X $opt_p $opt_d $DEBUG $opt_S $opt_M $opt_G $opt_v $opt_T $opt_n);
+
+
+$ENV{PATH} = "$FindBin::Bin/../bin:$ENV{PATH}";  #so can find the 'pasa' binary needed for assembly.
+
+&getopts ('hD:dS:M:G:vXT:n:');
+
+
+our $SEE = $opt_v;
+
+my $max_num_aligns_assemble_per_cluster = $opt_n || 5000;
+
+
+my $usage =  <<_EOH_;
+
+Script assembles the predefined clusters of cDNAs/ESTs, one annotationdb asmbl_id (genomic sequence) at a time.
+The 'assemblies' directory is created and the assemblies are stored in that directory for future loading using
+assembly_db_loader.dbi
+
+############################# Options ###############################
+#
+# -M Mysql database name
+# -G genomic_sequence fasta db.
+# 
+# -d Debug
+# 
+# -h print this option menu and quit
+# -v verbose
+# -X use Splice_graph_assembler
+# -T <int>   number of threads (default: 2)
+#
+# -n <int>   maximum number of alignments to assemble per cluster (default: $max_num_aligns_assemble_per_cluster)
+#
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+
+if ($opt_h) {die $usage;}
+my $genomic_seq_db = $opt_G or die $usage;
+
+my $MYSQLdb = $opt_M or die $usage;
+my $MYSQLserver = &Pasa_conf::getParam("MYSQLSERVER");
+my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+
+my $DEBUG = $opt_d;
+my $USE_SPLICE_GRAPH_ASSEMBLER = ($opt_X);
+my $NUM_THREADS = $opt_T || 2;
+
+
+
+unless (-s "$genomic_seq_db.cidx") {
+    system ("cdbfasta $genomic_seq_db");
+}
+
+## check for 'pasa' binary
+my $pasa = `which pasa`;
+unless ($pasa =~ /\w/) {
+    die "Error, cannot locate pasa binary. ";
+}
+
+
+my %contigs_already_processed;
+
+if (-d "assemblies") {
+        
+    my @already_ran_files = glob ("assemblies/*.assemblies");
+    foreach my $file (@already_ran_files) {
+        my $contig = basename($file);
+        $contig =~ s/\.assemblies$//;
+        print STDERR "Already processed: $contig\n";
+        $contigs_already_processed{$contig} = 1;
+    }
+
+    print STDERR "It appears that some assemblies were generated from an earlier pass.  Only contigs w/o existing alignment assemblies will be pursued.  Otherwise, kill this process and remove the 'assemblies' directory, then restart.\n";
+    
+    sleep(10);
+    
+} 
+else {
+    mkdir "assemblies" or die "Error, cannot mkdir assemblies";
+}
+
+
+
+main: {
+    my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+    $dbproc = &Mysql_connect::reconnect_to_server($dbproc); #just for the fun of it
+    
+    
+    my $query = "select distinct annotdb_asmbl_id from clusters";
+    my @asmbl_ids;
+    my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+    foreach my $result_aref (@results) {
+        push (@asmbl_ids, $result_aref->[0]);
+    }
+    
+    my $thread_helper = new Thread_helper($NUM_THREADS);
+    
+    foreach my $asmbl_id (@asmbl_ids) {
+        
+        if ($contigs_already_processed{$asmbl_id}) {
+            next;
+        }
+                        
+        my $thread = threads->create('assemble_transcripts_on_scaffold', $asmbl_id);
+        
+        $thread_helper->add_thread($thread);
+
+    }
+    
+    $thread_helper->wait_for_all_threads_to_complete();
+    
+    $dbproc->disconnect;
+
+
+    my @failed_threads = $thread_helper->get_failed_threads();
+    if (@failed_threads) {
+        die "Error, " . scalar(@failed_threads) . " threads failed.\n";
+        exit(1);
+    }
+    else {
+        print STDERR "processes completed successfully.\n";
+        exit(0);
+    }
+    
+}
+
+
+####
+sub assemble_transcripts_on_scaffold {
+    my ($asmbl_id) = @_;
+    
+    my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password); # refresh it per thread
+
+    my @all_assemblies;
+    my $sequence = &Ath1_cdnas::get_seq_from_fasta ($asmbl_id, $genomic_seq_db);
+    
+    ## Get clusters based on that chromo
+    my @cluster_ids = Ath1_cdnas::get_cluster_ids_via_annotdb_asmbl_id($dbproc, $asmbl_id);
+    
+    foreach my $cluster_id (@cluster_ids) {
+        
+        print "\n\n// cluster: $cluster_id\n";
+        my $assembler;
+        if ($USE_SPLICE_GRAPH_ASSEMBLER) {
+            $assembler = new CDNA::Splice_graph_assembler();
+        }
+        else {
+            $assembler = new CDNA::PASA_alignment_assembler();
+        }
+        
+        ## get the cdnas on that cluster
+
+        ## refreshen db connection (sometimes assembly takes way tooo long and mysql server goes away)
+        $dbproc = &Mysql_connect::reconnect_to_server($dbproc);
+        
+        my $query = "select al.align_acc, al.align_id, al.lend, al.score from align_link al where al.cluster_id = $cluster_id and al.validate = 1";
+        my @results = &Mysql_connect::do_sql_2D ($dbproc, $query);
+
+        if (scalar @results > $max_num_aligns_assemble_per_cluster) {
+
+            print STDERR "Note: have " . scalar(@results) . " alignments in cluster_id: " . $cluster_id . "; Sampling $max_num_aligns_assemble_per_cluster to assemble.\n";
+                        
+            @results = &select_aligns_to_assemble(\@results, $max_num_aligns_assemble_per_cluster);
+            
+        }
+        
+        my @alignments;
+        foreach my $result (@results) {
+            my ($cdna_acc, $align_id, $align_lend, $score) = @$result;
+            print "cdna_acc: $cdna_acc\talign_id: $align_id\n";
+            
+            my $alignment_obj = &Ath1_cdnas::create_alignment_obj($dbproc, $align_id, \$sequence);
+            $alignment_obj->set_acc($cdna_acc);
+            my $aligned_orient = $alignment_obj->get_orientation();
+            my $spliced_orient = $alignment_obj->get_spliced_orientation();
+            print "$cdna_acc (a$aligned_orient, s$spliced_orient)\n";
+            unless ($aligned_orient =~ /[\+\-]/) {
+                die "Error, $cdna_acc lacs aligned orient!";
+            }
+            
+            print $alignment_obj->toToken() . "\n";
+            push (@alignments, $alignment_obj);
+        }
+        
+        if (@alignments) {
+            $assembler->assemble_alignments(@alignments);
+            print $assembler->toAlignIllustration(150);
+            print "\n\n\n";
+            my @assemblies = $assembler->get_assemblies();
+            push (@all_assemblies, @assemblies);
+            foreach my $assembly (@assemblies) {
+                my $acc = $assembly->get_acc();
+                print "ASSEMBLY: " . $assembly->toToken() . "\t$acc\n";
+                $assembly->{cluster_id} = $cluster_id;
+            }
+        } else {
+            print "Sorry, no validating cDNA alignments in this cluster.\n";
+        }
+        
+    }
+    
+
+    my $asmbl_id_for_filename = $asmbl_id;
+    $asmbl_id_for_filename =~ s/\W/_/g;
+    
+    nstore (\@all_assemblies, "assemblies/${asmbl_id_for_filename}.assemblies");
+    
+    open (my $ofh, ">assemblies/${asmbl_id_for_filename}.assemblies.described") or die $!;
+    foreach my $assembly (@all_assemblies) {
+        my $acc = $assembly->get_acc();
+        print $ofh $acc . "\t" . $assembly->toToken() . "\n";
+    }
+    close $ofh;
+    
+    return;
+}
+
+####
+sub select_aligns_to_assemble {
+    my ($results_aref, $max_aligns_select) = @_;
+
+    ## convert to align structs
+    my $min_lend;
+    
+    my @align_structs;
+    foreach my $result (@$results_aref) {
+        my ($align_acc, $align_id, $lend, $score) = @$result;
+        push (@align_structs, { align_acc => $align_acc,
+                                align_id => $align_id,
+                                lend => $lend,
+                                score => $score,
+                                result => $result,
+                            } );
+        
+        if ( (! $min_lend) || $lend < $min_lend) {
+            $min_lend = $lend;
+        }
+    }
+    
+
+    ## bin by start position mod 1k
+    my %bin_to_align;
+    foreach my $struct (@align_structs) {
+        my $lend = $struct->{lend};
+        
+        my $bin = int(  ($lend - $min_lend) / 1000);
+        push (@{$bin_to_align{$bin}}, $struct);
+    }
+    
+    ## now sort by score desc in each bin
+    foreach my $binned_structs (values %bin_to_align) {
+
+        @$binned_structs = reverse sort {$a->{score}<=>$b->{score}} @$binned_structs;
+
+    }
+    
+
+    my @selected_aligns;
+    my $num_selected_aligns = 0;
+
+  round_robin:
+    while ($num_selected_aligns < $max_aligns_select) {
+        
+        if (! %bin_to_align) {
+            confess "Error, ran out of binned alignments. This shouldn't happen.";
+        }
+        
+        my %bins_to_delete;
+        
+        foreach my $bin (keys %bin_to_align) {
+            
+            my $list_aref = $bin_to_align{$bin};
+            my $struct = shift @$list_aref;
+            push (@selected_aligns, $struct);
+            $num_selected_aligns++;
+            if ($num_selected_aligns >= $max_aligns_select) {
+                last round_robin;
+            }
+            
+            unless (@$list_aref) {
+                # none left, delete this bin.
+                $bins_to_delete{$bin}++;
+            }
+
+        }
+
+        foreach my $bin (keys %bins_to_delete) {
+            delete $bin_to_align{$bin};
+        }
+        
+    }
+
+    ## return results in same format as input.
+    my @ret;
+
+    foreach my $align (@selected_aligns) {
+        push (@ret, $align->{result});
+    }
+
+    return(@ret);
+}
+    

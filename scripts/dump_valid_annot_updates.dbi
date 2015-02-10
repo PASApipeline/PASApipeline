@@ -1,0 +1,371 @@
+#!/usr/bin/env perl
+
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Pasa_conf;
+use Mysql_connect;
+use strict;
+use DBI;
+use Ath1_cdnas;
+use Getopt::Long qw(:config no_ignore_case bundling);
+use Gene_obj;
+use Storable ("thaw");
+use Data::Dumper;
+use CdbTools;
+
+use vars qw ($opt_M $opt_C $opt_V $opt_d $opt_h $opt_v $opt_R $GTF $genome_db);
+
+&GetOptions ('M=s' => \$opt_M,
+             'C=i' => \$opt_C,
+             'V' => \$opt_V,
+             'd' => \$opt_d,
+             'h' => \$opt_h,
+             'v' => \$opt_v,
+             'R' => \$opt_R,
+             'GTF' => \$GTF, 
+             'g=s' => \$genome_db);
+
+
+
+$|=1;
+our $SEE = 0;
+
+my $usage =  <<_EOH_;
+
+This script retrieves all the proposed annotation updates from the annotation_store table and dumps the gene structures in GFF format.
+This includes successes and failures.
+
+
+############################# Options ###############################
+#
+# -M Mysql database name
+# -g genome_fasta_db
+#
+# -V valid updates only (otherwise both pass and fail updates are reported)
+#
+# -C compare_id (default is latest comparison)
+#
+# -d Debug 
+# -h print this option menu and quit
+# -v verbose
+#
+# -R  report the superset of valid updates and remaining annotations (assumes -V)
+#
+# --GTF  report in GTF format instead of GFF3(default) format
+#
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+if ($opt_h) {die $usage;}
+
+my $DEBUG = $opt_d;
+my $compare_id = $opt_C;
+our $SEE = $opt_v;
+
+my $MYSQLdb = $opt_M or die $usage;
+my $MYSQLserver = &Pasa_conf::getParam("MYSQLSERVER");
+my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+my $VALID_ONLY = $opt_V;
+my $FULL_RELEASE = $opt_R;
+if ($FULL_RELEASE) {
+	$VALID_ONLY = $opt_V = 1; #turn it on if not on already
+}
+
+if (! $genome_db || ! -s $genome_db) {
+    die "Error, must specify -g with the genome fasta database";
+}
+
+my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+unless ($compare_id) {
+    ## get the most recent one
+    $compare_id = &Ath1_cdnas::get_max_compare_id($dbproc);
+    unless ($compare_id) {
+        die "Error, no annotation comparison performed yet.\n";
+    }
+}
+
+## get annotation version:
+my $query = "select annotation_version from annotation_compare where compare_id = $compare_id";
+my $annotation_version = &very_first_result_sql($dbproc, $query);
+
+
+## get list of all previous model identifiers so that we do not reuse them w/ new alt-splice isoforms
+my $query = "select model_id from annotation_store where annotation_version = $annotation_version";
+my %prev_model_ids;
+my @results = &do_sql_2D($dbproc, $query);
+foreach my $result (@results) {
+  my ($model_id) = @$result;
+  $prev_model_ids{$model_id} = 1;
+}
+
+
+my %cdna_acc_to_asmbl_id;
+my $query = "select al.align_acc, c.annotdb_asmbl_id "
+    . " from clusters c, align_link al, cdna_info ci "
+    . " where al.cluster_id = c.cluster_id and al.cdna_info_id = ci.id and ci.is_assembly = 1 ";
+my @results = &do_sql_2D($dbproc, $query);
+foreach my $result (@results) {
+    my ($cdna_acc, $asmbl_id) = @$result;
+    $cdna_acc_to_asmbl_id{$cdna_acc} = $asmbl_id;
+}
+
+my $temp_model_id = 0;
+my $temp_gene_id = 0;
+
+# get tentative (or actual) updates
+my $query = "select update_id, gene_id, model_id, alt_splice_flag, is_novel_flag, after_gene_obj, is_valid "
+    . " from annotation_updates "
+    . " where compare_id = $compare_id and have_after = 1 and after_gene_obj is not null";
+if ($VALID_ONLY) {
+    $query .= " and is_valid = 1";  # not just tentative anymore.
+}
+
+my %models_updated;
+my %model_counter;
+
+
+
+my $genome_acc = "";
+my $genome_sequence = "";
+
+my %contig_id_to_gene_IDs;
+my %gene_id_to_gene_objs;
+
+
+
+my @results = &do_sql_2D($dbproc, $query);
+foreach my $result (@results) {
+    my ($update_id, $gene_id, $model_id, $alt_splice_flag, $is_novel_flag, $after_gene_obj, $is_valid) = @$result;
+    my $gene_obj = thaw($after_gene_obj);
+
+	
+
+    unless (ref $gene_obj) {
+        print STDERR "Error, have_after = 1 but no gene_obj! update_id: $update_id\n";
+        next;
+    }
+ 
+	# remember all models seen so later we can spit out the untouched models as requested.
+    
+	my @model_ids = split(/\s+/, $model_id);
+	
+	foreach my $model (@model_ids) {   # merged genes are space-separated.
+    	$models_updated{$model} = 1;
+    }
+	
+	if ($gene_id) {
+	  $gene_id =~ s/ /_/g;
+	}
+	else {
+	  $gene_id = "temp_gene_" . ++ $temp_gene_id;
+    }
+	if ($model_id) {
+	  $model_id =~ s/ /_/g;
+	} 
+	else {
+	  $model_id = "temp_model_" . ++$temp_model_id;
+    }
+        
+    ## get the pasa accs responsible for the update
+    my $query = "select sl.cdna_acc, sl.status_id "
+        . " from status_link sl, status s "
+        . " where sl.status_id = s.status_id and sl.annot_update_id = $update_id";
+    my @results = &do_sql_2D($dbproc, $query);
+    
+    unless (@results) {
+        print STDERR "** ERROR, no accs found linked to update $update_id\n";
+        next;
+    }
+    
+    my @pasa_accs;
+    my $status_info = "";
+    foreach my $result (@results) {
+        my ($cdna_acc, $status_id) = @$result;
+        push (@pasa_accs, $cdna_acc);
+        $status_info .= "[pasa:$cdna_acc,status:$status_id],";
+    }
+    chop $status_info; #remove trailing comma
+    
+    my $asmbl_id = $cdna_acc_to_asmbl_id{$pasa_accs[0]} or die "Error, no asmbl_id based on " . Dumper (\@pasa_accs);
+    
+	my $com_name = "";
+	
+	## Capture original annotation attributes
+	{
+		my @com_names;
+		my @pub_loci;
+
+		foreach my $model_id (@model_ids) {
+
+			
+			my $orig_gene_obj = &get_orig_gene_obj($model_id, $annotation_version);
+			my $name = $orig_gene_obj->{com_name};
+			
+			push (@com_names, $name);
+			
+			if (my $pub_locus = $orig_gene_obj->{pub_locus}) {
+				push (@pub_loci, $pub_locus);
+			}
+		}
+
+		my $pub_locus;
+		if (scalar @com_names > 1) {
+			$com_name = "MERGED: " . join("; ", @com_names);
+			if (@pub_loci) {
+				$pub_locus = "MERGED: " . join(";", @pub_loci);
+			}
+		}
+		else {
+			$com_name = shift @com_names;
+		}
+		
+		if ($pub_locus) {
+			$gene_obj->{pub_locus} = $pub_locus;
+		}
+	}
+	
+	unless ($com_name) {
+		$com_name = "** NO NAME ASSIGNED **";
+	}
+	
+
+    $gene_obj->{asmbl_id} = $asmbl_id;
+    $gene_obj->{TU_feat_name} = $gene_id;
+	$gene_obj->{com_name} = $com_name;
+    $gene_obj->{Model_feat_name} = $model_id;
+    my $note = "";
+    
+
+    if ($alt_splice_flag) {
+        ## ensure model identifier is unique.
+        my $model_incrementer = ++$model_counter{$gene_id};
+		my $tentative_model_name = $gene_obj->{Model_feat_name} . ".$model_incrementer." . sprintf("%x", time());
+		while ($prev_model_ids{$tentative_model_name}) {
+		  $model_incrementer = ++$model_counter{$gene_id};
+		  $tentative_model_name = $gene_obj->{Model_feat_name} . ".$model_incrementer" . sprintf("%x", time());;
+		}
+		$model_id = $gene_obj->{Model_feat_name} = $tentative_model_name;
+		$note = "$model_id, alt-splice addition, valid-$is_valid";
+        
+	} elsif ($is_novel_flag) {
+        $note = "$model_id, new gene addition, valid-$is_valid";
+    } else {
+        $note = "$model_id, single gene model update, valid-$is_valid";
+    }
+    $note .= ", status:$status_info, valid-$is_valid";
+ 
+
+	$gene_obj->{comment} = "PASA_UPDATE: $note";
+	
+	$contig_id_to_gene_IDs{$asmbl_id}->{$gene_id} = 1;
+	push (@{$gene_id_to_gene_objs{$gene_id}}, $gene_obj);
+	
+
+}
+
+
+if ($FULL_RELEASE) {
+	my $query = "select model_id from annotation_store where annotation_version = $annotation_version";
+	my @results = &do_sql_2D($dbproc, $query);
+	foreach my $result (@results) {
+		my $model_id = $result->[0];
+		unless ($models_updated{$model_id}) {
+			
+			my $gene_obj = &get_orig_gene_obj($model_id, $annotation_version);
+			
+            $gene_obj->{comment} = "ORIGINAL: $model_id original gene structure, not modified by PASA";
+
+            my $asmbl_id = $gene_obj->{asmbl_id};
+			my $gene_id = $gene_obj->{TU_feat_name};
+			push (@{$gene_id_to_gene_objs{$gene_id}}, $gene_obj);
+			$contig_id_to_gene_IDs{$asmbl_id}->{$gene_id} = 1;
+			
+		}
+	}
+}
+
+
+## report the full release:
+foreach my $asmbl_id (keys %contig_id_to_gene_IDs) {
+  
+  my $genome_sequence = cdbyank_linear($asmbl_id, $genome_db);
+  
+  my @gene_ids = keys %{$contig_id_to_gene_IDs{$asmbl_id}};
+  
+  unless (@gene_ids) {
+	die "Error, no gene_ids reproted for contig $asmbl_id";
+  }
+
+  my @gene_objs;
+  foreach my $gene_id (@gene_ids) {
+	my @gene_objs = @{$gene_id_to_gene_objs{$gene_id}} or die "Error, no gene obj retrieved for gene id: $gene_id";
+
+	## report the note fields
+	foreach my $gene_obj (@gene_objs) {
+	  if (my $note = $gene_obj->{comment}) {
+		print "# $note\n";
+	  }
+	}
+	
+	  
+	my $template_gene_obj = shift @gene_objs;
+	
+	foreach my $other_obj (@gene_objs) {
+	  $template_gene_obj->add_isoform($other_obj);
+	}
+	
+	$template_gene_obj->refine_gene_object();
+	
+	my $gene_obj = $template_gene_obj;
+	
+	if ($GTF) {
+	  eval {
+		print $gene_obj->to_GTF_format(\$genome_sequence) . "\n\n";
+	  };
+	  if ($@) {
+		print STDERR $@ . "\nreporting in pseudogene GTF mode.\n";
+		# phase info will not be computed; neither will start or stop codons.
+		$gene_obj->set_pseudogene(1);
+		print $gene_obj->to_GTF_format(\$genome_sequence) . "\n\n";
+	  }
+	  
+	}
+	else {
+	  print $gene_obj->to_GFF3_format() . "\n\n";
+	}
+	
+	$gene_obj->create_all_sequence_types(\$genome_sequence);
+	foreach my $isoform ($gene_obj, $gene_obj->get_additional_isoforms()) {
+	  my $protein = $isoform->get_protein_sequence();
+	  my $model_id = $isoform->{Model_feat_name};
+	  my $gene_id = $isoform->{TU_feat_name};
+	  print "#PROT $model_id $gene_id\t$protein\n\n";
+	}
+  }
+}
+
+exit(0);			
+
+
+
+####
+sub get_orig_gene_obj {
+	my ($model_id, $annot_version) = @_;
+	
+	my $query = qq { select gene_obj from annotation_store 
+                                 where annotation_version = $annotation_version 
+                                 and model_id = "$model_id"
+                             };
+	my $gene_obj_blob = &very_first_result_sql($dbproc, $query);
+	my $gene_obj = thaw($gene_obj_blob);
+
+	return($gene_obj);
+}

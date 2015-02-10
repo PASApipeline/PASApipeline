@@ -1,0 +1,88 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Pasa_conf;
+use Mysql_connect;
+use strict;
+use DBI;
+use Getopt::Std;
+use Ath1_cdnas;
+use CDNA::CDNA_alignment;
+
+
+use vars qw ($opt_M $opt_G $opt_d $opt_h);
+open (STDERR, "&>STDOUT");
+&getopts ('M:G:dh');
+my $usage =  <<_EOH_;
+
+Script loads the alignment textual representation for the pasa assemblies.
+
+############################# Options ###############################
+# -M Mysql database name
+# -G genome_seq fasta db
+# -d Debug
+# 
+# -h print this option menu and quit
+#
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+our $SEE = 0;
+
+if ($opt_h) {die $usage;}
+
+my $MYSQLdb = $opt_M or die $usage;
+my $MYSQLserver = &Pasa_conf::getParam("MYSQLSERVER");
+
+my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+our $DEBUG = $opt_d;
+my $genomic_db = $opt_G or die $usage;
+
+my ($dbproc) = &connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+my $query = "select c.annotdb_asmbl_id, al.align_acc, al.align_id from clusters c, align_link al, cdna_info ci "
+    . " where c.cluster_id = al.cluster_id and al.cdna_info_id = ci.id "
+    . " and ci.is_assembly = 1 order by c.annotdb_asmbl_id";
+my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+my $curr_asmbl_id = 0;
+my $sequence = "";
+
+$dbproc->{dbh}->{AutoCommit} = 0;
+my $process = 0;
+
+foreach my $result (@results) {
+    my ($asmbl_id, $cdna_acc, $align_id) = @$result;
+    if ($asmbl_id ne $curr_asmbl_id) {
+	$curr_asmbl_id = $asmbl_id;
+	$sequence = &Ath1_cdnas::get_seq_from_fasta($asmbl_id, $genomic_db);
+    }
+
+    my $cdna_alignment = &Ath1_cdnas::create_alignment_obj($dbproc, $align_id, \$sequence);
+    my $alignment = $cdna_alignment->toToken();
+    print "$cdna_acc\t$alignment\n\n" if $SEE;
+
+    my $query = "update align_link set alignment = \"$alignment\" where align_id = $align_id ";
+    &Mysql_connect::RunMod($dbproc, $query);
+
+    if ($process % 100 == 0){
+        $dbproc->{dbh}->commit;
+        print STDERR "\rcommitted [$process] ";
+    }
+    $process++;
+        
+}
+
+$dbproc->{dbh}->commit;
+
+print STDERR "\nDone.\n";
+
+$dbproc->disconnect;
+
+exit(0);

@@ -1,0 +1,488 @@
+-- MySQL dump 8.22
+--
+-- Host: bhaas-lx    Database: Testing_pasa2_B
+
+-- Server version	3.23.57
+
+--
+-- Table structure for table 'URL_templates'
+--
+
+CREATE TABLE URL_templates (
+  url_name varchar(20) NOT NULL default '',
+  url_template varchar(255) default NULL,
+  url_var_name varchar(20) NOT NULL default '',
+  PRIMARY KEY  (url_name)
+) ;
+
+--
+-- Table structure for table 'URL_var_names'
+--
+
+CREATE TABLE URL_var_names (
+  url_var_name varchar(20) NOT NULL default '',
+  PRIMARY KEY  (url_var_name)
+) ;
+
+--
+-- Table structure for table 'alignment'
+--
+
+CREATE TABLE alignment (
+  feat_id int(11) NOT NULL auto_increment,
+  align_id int(11) NOT NULL default '0',
+  lend int(11) NOT NULL default '0',
+  rend int(11) NOT NULL default '0',
+  mlend int(11) NOT NULL default '0',
+  mrend int(11) NOT NULL default '0',
+  orient char(1) default NULL,
+  per_id float default NULL,
+  PRIMARY KEY  (feat_id),
+  KEY align_idx (align_id),
+  KEY feat_id_idx (feat_id)
+) ;
+
+--
+-- Table structure for table 'alt_splice_FL_compare'
+--
+
+CREATE TABLE alt_splice_FL_compare (
+  row_id int(11) NOT NULL auto_increment,
+  template_cdna_acc varchar(50) default NULL,
+  classification varchar(250) NOT NULL default '',
+  lend int(11) NOT NULL default '0',
+  rend int(11) NOT NULL default '0',
+  orient char(1) NOT NULL default '',
+  type varchar(50) NOT NULL default '',
+  PRIMARY KEY  (row_id)
+) ;
+
+--
+-- Table structure for table 'alt_splice_FL_to_FL_compare'
+--
+
+CREATE TABLE alt_splice_FL_to_FL_compare (
+  row_id int(11) NOT NULL auto_increment,
+  template_acc varchar(50) NOT NULL default '',
+  other_acc varchar(50) NOT NULL default '',
+  diff_in_cds int(1) NOT NULL default '0',
+  frame_change int(1) NOT NULL default '0',
+  percent_prot_length float NOT NULL default '0',
+  num_variations int(11) NOT NULL default '0',
+  same_frame_exists int(1) NOT NULL default '0',
+  PRIMARY KEY  (row_id)
+) ;
+
+--
+-- Table structure for table 'alt_splice_link'
+--
+
+CREATE TABLE alt_splice_link (
+  sv_id_A int(11) NOT NULL default '0',
+  sv_id_B int(11) NOT NULL default '0',
+  UNIQUE KEY sv_ab_idx (sv_id_A,sv_id_B),
+  KEY sv_idx_A (sv_id_A),
+  KEY sv_idx_B (sv_id_B)
+) ;
+
+--
+-- Table structure for table 'alt_splice_token_assignment'
+--
+
+CREATE TABLE alt_splice_token_assignment (
+  cdna_acc varchar(250) NOT NULL default '',
+  token_id int(11) NOT NULL default '0'
+) ;
+
+--
+-- Table structure for table 'alt_splice_tokens'
+--
+
+CREATE TABLE alt_splice_tokens (
+  token_id int(11) NOT NULL auto_increment,
+  alt_splice_token varchar(250) NOT NULL default '',
+  PRIMARY KEY  (token_id)
+) ;
+
+--
+-- Table structure for table 'annotation_admin'
+--
+
+CREATE TABLE annotation_admin (
+  version_id int(11) NOT NULL auto_increment,
+  date datetime NOT NULL default '0000-00-00 00:00:00',
+  PRIMARY KEY  (version_id)
+) ;
+
+--
+-- Table structure for table 'annotation_compare'
+--
+
+CREATE TABLE annotation_compare (
+  compare_id int(11) NOT NULL auto_increment,
+  date datetime NOT NULL default '0000-00-00 00:00:00',
+  annotation_version int(10) unsigned NOT NULL default '0',
+  PRIMARY KEY  (compare_id)
+) ;
+
+--
+-- Table structure for table 'annotation_link'
+--
+
+CREATE TABLE annotation_link (
+  annotation_link_id int(11) NOT NULL auto_increment,
+  cdna_acc varchar(250) default NULL,
+  gene_id varchar(200) default NULL,
+  model_id varchar(200) default NULL,
+  compare_id int(11) NOT NULL default '0',
+  PRIMARY KEY  (annotation_link_id),
+  KEY cdna_acc_idx (cdna_acc),
+  KEY gene_id_idx (gene_id),
+  KEY mod_idx (model_id),
+  KEY compare_idx (compare_id),
+  KEY comp_id_acc_idx (compare_id,cdna_acc)
+) ;
+
+--
+-- Table structure for table 'annotation_store'
+--
+
+CREATE TABLE annotation_store (
+  annot_id int(11) NOT NULL auto_increment,
+  gene_id varchar(200) NOT NULL default '',
+  model_id varchar(200) NOT NULL default '',
+  annotdb_asmbl_id varchar(200) NOT NULL default '',
+  lend int(10) unsigned NOT NULL default '0',
+  rend int(10) unsigned NOT NULL default '0',
+  orient char(1) NOT NULL default '',
+  gene_obj mediumblob NOT NULL,
+  annotation_version int(10) unsigned NOT NULL default '0',
+  PRIMARY KEY  (annot_id),
+  KEY gene_index_coords (annotdb_asmbl_id,lend,rend),
+  KEY geneid_idx (gene_id),
+  KEY modelid_idx (model_id),
+  KEY annot_version_idx (annotation_version),
+  KEY gene_idx (annotation_version,gene_id)
+) ;
+
+--
+-- Table structure for table 'annotation_updates'
+--
+
+CREATE TABLE annotation_updates (
+  update_id int(11) NOT NULL auto_increment,
+  gene_id varchar(200) default NULL,
+  model_id varchar(200) default NULL,
+  alt_splice_flag tinyint(1) unsigned NOT NULL default '0',
+  before_gene_obj mediumblob,
+  after_gene_obj mediumblob,
+  compare_id int(11) NOT NULL default '0',
+  is_valid tinyint(1) unsigned NOT NULL default '0',
+  have_before tinyint(1) unsigned NOT NULL default '0',
+  have_after tinyint(1) unsigned NOT NULL default '0',
+  is_novel_flag tinyint(1) unsigned default '0',
+  PRIMARY KEY  (update_id),
+  KEY is_valid_idx (is_valid),
+  KEY alt_splice_idx (alt_splice_flag),
+  KEY lotsastuff_idx (gene_id,model_id,is_valid,alt_splice_flag),
+  KEY modelidx (model_id)
+) ;
+
+--
+-- Table structure for table 'asmblPolyA'
+--
+
+CREATE TABLE asmblPolyA (
+  asmbl_acc varchar(250) NOT NULL default '',
+  genomicCoord int(11) NOT NULL default '0',
+  asmblCoord int(11) NOT NULL default '0',
+  numSupportTranscripts int(11) NOT NULL default '0',
+  PRIMARY KEY  (asmbl_acc)
+) ;
+
+--
+-- Table structure for table 'asmbl_gene_objs'
+--
+
+CREATE TABLE asmbl_gene_objs (
+  id int(11) NOT NULL auto_increment,
+  cdna_acc varchar(50) NOT NULL default '',
+  allow_5prime_partial tinyint(1) unsigned NOT NULL default '0',
+  allow_3prime_partial tinyint(1) unsigned NOT NULL default '0',
+  gene_obj mediumblob NOT NULL,
+  PRIMARY KEY  (id),
+  UNIQUE KEY obj_idx (cdna_acc,allow_5prime_partial,allow_3prime_partial)
+) ;
+
+--
+-- Table structure for table 'asmbl_link'
+--
+
+CREATE TABLE asmbl_link (
+  asmbl_acc varchar(100) NOT NULL default '',
+  cdna_acc varchar(100) NOT NULL default '',
+  PRIMARY KEY  (asmbl_acc,cdna_acc),
+  KEY asmbl_idx (asmbl_acc),
+  KEY cdna_idx (cdna_acc)
+) ;
+
+--
+-- Table structure for table 'align_link'
+--
+
+CREATE TABLE align_link (
+  align_id int(11) NOT NULL auto_increment,
+  cdna_info_id int(11) default  NULL,
+  align_acc varchar(100) default NULL,
+  cluster_id int(11) default NULL,
+  prog varchar(15) NOT NULL default '',
+  validate tinyint(1) unsigned default NULL,
+  spliced_orient char(1) default NULL,
+  num_segments smallint unsigned default NULL,
+  comment text,
+  alignment text,
+  avg_per_id double default NULL,
+  percent_aligned double default NULL,
+  score double default 0,
+  aligned_orient char(1) default NULL,
+  lend int(11) default 0,
+  rend int(11) default 0,
+  PRIMARY KEY  (align_id),
+  UNIQUE KEY prog_align_acc_idx (prog,align_acc),
+  KEY align_acc_idx (align_acc),
+  KEY align_id_idx (align_id),
+  KEY cdna_info_id_idx (cdna_info_id),
+  KEY cluster_id_idx (cluster_id),
+  KEY progvalididx (prog,validate)
+) ;
+
+--
+-- Table structure for table 'cdna_sequence'
+--
+
+CREATE TABLE cdna_sequence (
+  accession varchar(250) NOT NULL default '',
+  sequence MEDIUMTEXT,
+  PRIMARY KEY  (accession)
+) ;
+
+--
+-- Table structure for table 'cdna_info'
+--
+
+CREATE TABLE cdna_info (
+  cdna_acc varchar(100) default NULL,
+  id int(11) NOT NULL auto_increment,
+  is_assembly tinyint(1) unsigned NOT NULL default '0',
+  is_fli tinyint(1) unsigned NOT NULL default '0',
+  is_TDN tinyint(1) unsigned NOT NULL default '0',
+  length int(10) unsigned default NULL,
+  header text,
+  is_EST tinyint(1) unsigned default '0',
+  PRIMARY KEY  (id),
+  UNIQUE KEY cdna_acc_idx (cdna_acc),
+  KEY is_fli_idx (is_fli),
+  KEY is_assembly_idx (is_assembly)
+) ;
+
+--
+-- Table structure for table 'clusters'
+--
+
+CREATE TABLE clusters (
+  cluster_id int(11) NOT NULL auto_increment,
+  lend int(10) unsigned default NULL,
+  rend int(10) unsigned default NULL,
+  annotdb_asmbl_id varchar(200) default NULL,
+  PRIMARY KEY  (cluster_id),
+  KEY cluster_idx (cluster_id),
+  KEY asmbl_id_idx (annotdb_asmbl_id)
+) ;
+
+--
+-- Table structure for table 'splice_variation'
+--
+
+CREATE TABLE splice_variation (
+  sv_id int(11) NOT NULL auto_increment,
+  cdna_acc varchar(250) NOT NULL default '',
+  lend int(11) NOT NULL default '0',
+  rend int(11) NOT NULL default '0',
+  orient char(1) NOT NULL default '',
+  type varchar(50) NOT NULL default '',
+  num_subfeatures_included int(11) default '0',
+  subtype varchar(50) default NULL,
+  PRIMARY KEY  (sv_id),
+  UNIQUE KEY sv_idx (cdna_acc,lend,rend,orient,type)
+) ;
+
+--
+-- Table structure for table 'splice_variation_support'
+--
+
+CREATE TABLE splice_variation_support (
+  sv_id int(11) NOT NULL default '0',
+  cdna_acc varchar(250) NOT NULL default '',
+  transcripts_A text,
+  transcripts_B text,
+  num_transcripts_A int(11) default NULL,
+  num_transcripts_B int(11) default NULL,
+  UNIQUE KEY svs_idx (cdna_acc,sv_id),
+  KEY sv_idx (sv_id)
+) ;
+
+--
+-- Table structure for table 'status'
+--
+
+CREATE TABLE status (
+  status_id int(11) NOT NULL auto_increment,
+  status_descr varchar(255) default NULL,
+  requires_update tinyint(1) unsigned default '0',
+  fails_incorporation tinyint(1) unsigned default '0',
+  rank float default '0',
+  PRIMARY KEY  (status_id),
+  KEY status_id_idx (status_id)
+) ;
+
+--
+-- Table structure for table 'status_link'
+--
+
+CREATE TABLE status_link (
+  status_link_id int(11) NOT NULL auto_increment,
+  cdna_acc varchar(100) NOT NULL default '',
+  status_id int(11) NOT NULL default '0',
+  is_chromo tinyint(1) unsigned NOT NULL default '0',
+  comment text,
+  curated_exception tinyint(1) unsigned NOT NULL default '0',
+  curator_comment text,
+  compare_id int(11) NOT NULL default '0',
+  annot_update_id int(11) default NULL,
+  PRIMARY KEY  (status_link_id),
+  KEY status_link_acc_idx (cdna_acc),
+  KEY updateididx (annot_update_id),
+  KEY compare_idx (compare_id)
+) ;
+
+--
+-- Table structure for table 'subcluster_link'
+--
+
+CREATE TABLE subcluster_link (
+  subcluster_id int(11) NOT NULL default '0',
+  cdna_acc varchar(100) NOT NULL default '',
+  PRIMARY KEY  (subcluster_id,cdna_acc),
+  KEY subcl_link_id_idx (subcluster_id),
+  KEY subcl_link_acc_idx (cdna_acc)
+) ;
+
+--
+-- Table structure for table 'subclusters'
+--
+
+CREATE TABLE subclusters (
+  subcluster_id int(11) NOT NULL auto_increment,
+  cluster_id int(11) NOT NULL default '0',
+  PRIMARY KEY  (subcluster_id),
+  KEY subcluster_id_idx (subcluster_id),
+  KEY subcluster_cluster_id_idx (cluster_id)
+) ;
+
+--
+-- Table structure for table 'transcriptPolyA'
+--
+
+CREATE TABLE transcriptPolyA (
+  align_id int(11) NOT NULL,
+  genomicCoord int(11) NOT NULL default '0',
+  transcribedOrient char(1) NOT NULL default '',
+  trimType varchar(20) NOT NULL default '',
+  alignEndOffset int(11) NOT NULL default '0',
+  PRIMARY KEY  (align_id)
+) ;
+
+-- MySQL dump 8.22
+--
+-- Host: bhaas-lx    Database: Testing_pasa2_B
+
+-- Server version	3.23.57
+
+--
+-- Dumping data for table 'status'
+--
+
+
+INSERT INTO status VALUES (1,'fl-cdna assembly fails validation tests.',0,1,1);
+INSERT INTO status VALUES (2,'fl-cdna assembly encodes inconsistent isoform (deprecated)',0,1,2);
+INSERT INTO status VALUES (3,'gene-compatible fl-cdna assembly incorporated',0,0,3);
+INSERT INTO status VALUES (4,'gene-compatible fl-cdna assembly alters UTRs.',1,0,4);
+INSERT INTO status VALUES (5,'fl-cdna assembly matches multiple genes suggesting gene merging required. (deprecated)',0,1,5);
+INSERT INTO status VALUES (6,'gene-compatible fl-cdna assembly alters protein, passed validation.',1,0,6);
+INSERT INTO status VALUES (7,'gene-compatible fl-cdna assembly alters protein, fails validation.',0,1,7);
+INSERT INTO status VALUES (8,'incompatible fl-cdna assembly alignment updates gene structure.',1,0,8);
+INSERT INTO status VALUES (9,'incompatible fl-cdna assembly provides alternative splicing isoform, passes validation.',1,0,9);
+INSERT INTO status VALUES (10,'fl-cdna assembly provides a novel gene.',1,0,10);
+INSERT INTO status VALUES (11,'EST assembly matches multiple genes, suggesting gene merging required.  (deprecated)',0,1,11);
+INSERT INTO status VALUES (12,'EST assembly incorporated.',0,0,12);
+INSERT INTO status VALUES (13,'EST assembly extends UTRs.',1,0,13);
+INSERT INTO status VALUES (14,'EST assembly alters protein sequence, passes validation.',1,0,14);
+INSERT INTO status VALUES (15,'EST assembly alters protein sequence, fails validation.',0,1,15);
+INSERT INTO status VALUES (16,'EST assembly properly stitched into gene structure.',1,0,16);
+INSERT INTO status VALUES (17,'EST assembly stitched into Gene model requires alternative splicing isoform. (deprecated, see status_ids: 24,25)',1,0,17);
+INSERT INTO status VALUES (24,'FL-cDNA assembly stitched by EST assembly to provide alt splicing isoform.',1,0,10.5);
+INSERT INTO status VALUES (18,'EST assembly stitched into gene model fails validation.',0,1,18);
+INSERT INTO status VALUES (19,'EST assembly aligns to intergenic region.',0,1,19);
+INSERT INTO status VALUES (20,'EST assembly overlaps non-validating existing annotated gene. (deprecated)',0,1,20);
+INSERT INTO status VALUES (21,'fl-cdna assembly provides alternate splicing isoform, fails validation',0,1,10.2);
+INSERT INTO status VALUES (22,'fl-cdna assembly provides novel gene which overlaps existing annotations',0,1,10.3);
+INSERT INTO status VALUES (23,'incompatible fl-cdna assembly fails validation',0,1,10.4);
+INSERT INTO status VALUES (25,'EST assembly stitched into Gene model requires alternative splicing isoform.',1,0,21);
+INSERT INTO status VALUES (26,'FL-cDNA spans single gene and allowed to STOMP it.',1,0,10.6);
+INSERT INTO status VALUES (27,'EST-assembly stitched into a FL-alignment providing new alt splice isoform.',1,0,21);
+INSERT INTO status VALUES (28,'EST-assembly stitched into a FL-alignment but fails validation tests.',0,1,22);
+INSERT INTO status VALUES (29,'FL-cDNA found capable of merging multiple genes',1,0,10.7);
+INSERT INTO status VALUES (30,'FL-cDNA overlaps multiple genes, but found incapable of merging them.',0,1,10.8);
+INSERT INTO status VALUES (31,'EST-stitched assembly STOMPS model lacking transcript support.',1,0,23);
+INSERT INTO status VALUES (32,'EST-stitched gene w/preexisting transcript support STOMPS a new alt splicing variation.',1,0,24);
+INSERT INTO status VALUES (33,'FL-assembly STOMPS new splice isoform',1,0,10.84);
+INSERT INTO status VALUES (34,'single-exon EST-assembly  fails gene compatibility test',0,1,25);
+INSERT INTO status VALUES (35,'EST-assembly  overlaps multiple genes, but found incapable of merging them.',0,1,26);
+INSERT INTO status VALUES (36,'EST-assembly found capable of merging multiple genes.',1,0,25.5);
+INSERT INTO status VALUES (37,'Delayed incorporation of FL-assembly due to successful merging operation.',0,1,10.89);
+INSERT INTO status VALUES (38,'Delayed incorporation of EST-assembly due to successful merging operation.',0,1,27);
+INSERT INTO status VALUES (39,'Delayed incorporation of FL-assembly due to successful splitting operation',0,1,10.92);
+INSERT INTO status VALUES (40,'FL-cDNAs split single gene into multiple genes',1,0,10.94);
+INSERT INTO status VALUES (41,'FL-cDNAs suggest split single gene into multiple genes, failed automation',0,1,10.95);
+INSERT INTO status VALUES (42,'FL-cDNA aligns as antisense to existing annotated gene',0,1,10.96);
+INSERT INTO status VALUES (43,'EST assembly aligns as antisense to existing annotated gene',0,1,25.6);
+INSERT INTO status VALUES (44,'FL-cDNA provides alt splicing isoform of a novel gene',1,0,10.97);
+INSERT INTO status VALUES (45,'fl-cdna assembly provides isoform for novel gene which overlaps existing annotations',0,1,10.35);
+
+-- MySQL dump 8.22
+--
+-- Host: bhaas-lx    Database: Testing_pasa2_B
+
+-- Server version	3.23.57
+
+
+INSERT INTO URL_templates VALUES ('manatee','http://manatee.tigr.org/tigr-scripts/euk_manatee/shared/ORF_infopage.cgi?db=__ANNOT_DB_NAME__;orf=__URLVAR__','model_id');
+INSERT INTO URL_templates VALUES ('GenomeViewer','http://intranet.tigr.org/tigr-scripts/AnnotationStation/AssemblyNavigator/euk_assembly_navigator.cgi?db=__ANNOT_DB_NAME__&LEND=__END5__&REND=__END3__&asmbl_id=__URLVAR__&submit=1','contig_id');
+
+-- MySQL dump 8.22
+--
+-- Host: bhaas-lx    Database: Testing_pasa2_B
+
+-- Server version	3.23.57
+
+--
+-- Dumping data for table 'URL_var_names'
+--
+
+
+INSERT INTO URL_var_names VALUES ('cdna_acc');
+INSERT INTO URL_var_names VALUES ('contig_id');
+INSERT INTO URL_var_names VALUES ('gene_id');
+INSERT INTO URL_var_names VALUES ('model_id');
+INSERT INTO URL_var_names VALUES ('pasa_acc');
+

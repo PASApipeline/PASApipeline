@@ -1,0 +1,245 @@
+CDB (Constant DataBase) indexing and retrieval tools for FASTA files
+=====================================================================
+
+This is a brief introduction to a couple of platform independent file-based
+hashing tools (cdbfasta and cdbyank) that can be used for creating indices for
+quick retrieval of any particular sequences from large  multi-FASTA files. The
+last version has the option to compress data records in order to save space.
+The index files are now architecture independent, the same index file can be
+created and used on many  different Unix platform (be it 32bit/64bit,
+big-endian or little-endian architectures) and even Windows.
+
+1.Release info 
+2.Compilation instructions
+3.Typical usage
+4.Retrieving sequence ranges or only the defline
+5.Data compression option
+6.Development notes
+
+
+
+1.Release info 
+==============
+-version 0.92 adds zlib compression for large records
+
+2.Compilation instructions
+==========================
+If you get the source package, please note that you should also download 
+the TGI C++ class library (the gcl subdirectory) as they are required 
+by cdbfasta and cdbyank for compilation. Also a recent version of zlib
+source package should be available, although only having libz.a and 
+the corresponding zlib header files would probably suffice.
+
+Edit the included Makefile and make sure variables TGICLASSDIR 
+and ZDIR are correctly set.
+
+* TGICLASSDIR should point to the directory containing the gcl subdirectory
+  from the TGI C++ class library package
+* ZDIR should point to the directory where the zlib library (libz.a and 
+  all the zlib header files like zlib.h)
+  can be found
+
+
+3.Typical usage
+===============
+
+Use cdbfasta to create the index file for a multi-FASTA file and cdbyank to
+pull records based on that index file. An usage message is displayed if the
+commands cdbyank or cdbyank are run without any  parameters.
+
+In order to create an index file, only the name of the fasta file must be
+provided:
+
+cdbfasta <fasta_file>
+
+The fasta file can be specified with the whole path (if it's not in the current
+directory), e.g.
+
+cdbfasta /usr/local/db/GUDB.human
+
+By default cdbfasta creates an index file with the same name as the database
+file but with the  .cidx suffix added to the original name. So in the example
+above, a file GUDB.human.cidx will be created in  /usr/local/db/. The default
+usage considers the key for a FASTA record to be the first space-delimited
+token following the ">" starting character from the definition line.  For
+example, if a FASTA record had a defline like this:
+
+>AA141526
+
+Then we can use the string 'AA141526' with cdbyank to retrieve the full FASTA
+record associated to that sequence name:
+
+cdbyank -a 'AA141526' /usr/local/db/GUDB.human.cidx
+
+Sometimes all the space delimited tokens in the defline need to be declared as
+keys in the index file, pointing to the same fasta record. This can be
+accomplished by cdbfasta by using the "-m" switch. 
+
+For long and complex fastA file accessions like this:
+EGAD|61|GP|186739|gb|AAA63210.1||M60828 there is an option to create the
+index file in such a way that there is no need to provide the full string to
+cdbyank in order to retrieve such a sequence, but only the first
+"<db>|<accession>" pair (i.e. a substring ending at the second '|' character)
+should be enough. (EGAD|61 in the example above). In  order to enable this
+feature, there are two alternative options for cdbfasta:
+
+
+ -c : the index file is built only by storing the "shortcut key" (the first
+     "db|accession" pair found in the defline of each fasta record). In this
+     case, cdbyank will only be able to accept these "shortcut"  accessions for
+     record retrieval.
+
+ -C : the index file is built by storing both the "shortcut key" and the full
+     keys (which are considered to end at the first space character in the
+     defline). In this case, two strings are stored as keys for each  fastA
+     record so any of them can be used as an accession for retrieval of the
+     same record with cdbyank.
+
+In order to retrieve records from the database file, cdbyank should be provided
+with the name of the index file created previously with cdbfasta, e.g.:
+
+cdbyank -a 'human|Z98492' /usr/local/db/GUDB.human.cidx
+
+A list of accessions is expected at stdin if -a option is not provided, e.g.:
+
+cat seq_list | cdbyank /usr/local/db/GUDB.human.cidx
+
+This way the output will be a series a fasta records at stdout. By redirecting
+this output to a file a multifasta file is obtained. cdbyank locates the
+database file by stripping the '.cidx' suffix off the index filename.  But this
+is not enforced, because by using the -d option, cdbyank can make use of a
+user-provided database to be used by the given index file. In the example
+above, if the index file  "GUDB.human.cidx" is moved into another directory, a
+cdbyank command (in that other directory) can be issued like that:
+
+cdbyank -a 'human|Z98492' -d /usr/local/db/GUDB.human GUDB.human.cidx
+
+The position of the index file in the list of arguments of cdbyank is not
+enforced. For the -a usage, the error status returned by cdbyank to the shell
+will be 1 if the given key was not found and 0 for success. 
+
+The total number of fasta records indexed and the list of the keys stored in a
+specific cdb index file can be retrieved with cdbyank's -n and -l switches,
+respectively. This information is obtained from the index  file directly (the
+database file is not needed for that). There is also a -s option that displays
+a summary of the indexing information stored in the index at index time. These
+are the initial name of the fastA file, its  size, how the index was created
+(e.g. was -m (multiple keys) option given ? was -c or -C (shortcut keys) option
+given?), the number of keys stored in the file as well as the number of fasta
+records indexed -  the latter being the same with what -n option returns.
+
+As an extra feature, cdbfasta and cdbyank can also be used for some special
+cases where databases may have different records but with the same key
+(non-unique keys). Although the performance will  degrade a little, cdbfasta is
+able to index this kind of files, but by default cdbyank only outputs the first
+record found. If you want all the possible records sharing the same key
+(accession) to be retrieved and  displayed, the -x option should be given to
+cdbyank.
+
+4.Retrieving sequence ranges or only the defline
+================================================
+
+There are two cdbyank options added for convenience: -F option returns the
+definition line of each requested FASTA record (the first line for each
+record).  The -R option of cdbyank is intended for FASTA files containing
+actual genetic sequences (nucleotide or protein) and expects each of the
+retrieval commands to have the following format (space delimited)
+
+<key> <right_coordinate> <left_coordinate>
+
+For example if we only want to retrieve the sequence range 24...178 (letter
+numbering starts at 1) from sequence with the name 'human|Z98492', then the
+cdbyank command would look like this:
+
+cdbyank -a 'human|Z98492 24 178' -R GUDB.human.cidx
+
+Multiple sequence ranges can be extracted this way by providing a file having
+each line following the format above (key followed by the two coordinates).
+Then, as before, such file can be piped into  cdbyank with -R option to pull
+specific sequence ranges for each of the sequences specified in the input file.
+
+
+cat seqlistranges | cdbyank -R GUDB.human.cidx
+
+Note that this range option works by actually parsing and looping through the
+retrieved record characters internally - so the performance is poor when some
+terminal range is pulled from a very large record.
+
+5.Data compression option
+=========================
+
+The indexing program cdbfasta has the  -z <compressed_db> option which creates
+a compressed file from the input file and at the same time creates an index
+file for this compressed file. The original input file  can then be discarded
+(if it is only needed for random access through cdbyank). The entire input file
+can be recovered from the resulting <compressed_db> by using the -z option of
+cdbyank. Because each record is compressed separately, compression is poor if
+the records are small. Compression is only advised when:
+
+ * data records are large enough for the compression algorithm to adapt (at
+   least 1KB, the more the better)
+
+ * only random access is needed to the data records (so the original file can
+   be discarded) 
+
+The compression can be quite slow for large files and there is also some
+performance penalty for cdbyank as it has to decompress the retrieved records
+on the fly.
+
+The input data for cdbfasta compression can be collected from stdin if '-' is
+used instead of a file name:
+
+cat my_data_files* | cdbfasta - -z mydata.cdbz
+
+This option is useful especially when the total size of input data files is
+extremely large (over the file-system limits or over the 4GB internal limit of
+cdbfasta) while the compressed output can be small enough to  fall under such
+limits.
+
+With compressed databases cdbyank can be used normally without extra options as
+it will auto-detect the compression (from the index file info) and activate
+on-the-fly decompression of the retrieved records.  
+
+The -F and -R options are not yet accepted when working with compressed
+records.
+
+6.Development notes
+===================
+
+These tools were developed in C++, based on the publicly available cdb
+("constant database") code written by D.J. Bernstein
+(http://cr.yp.to/djb.html). "Constant databases" are those that we don't need
+to  add to or remove records from. The original C source was (rather crudely)
+wrapped into C++ classes and adjusted to automatically index fasta records and
+to create an external index instead of compacting  the original data file like
+the original cdb library code does.  Also the "endianness" is now checked at
+runtime and the bytes are swapped accordingly such that the file offsets and
+record sizes are always  read/written in the same way in the index file. 
+
+The compression option uses zlib's "deflate" method. The program uses deflate()
+with Z_FULL_FLUSH after each record, such that random record decompression is
+possible after the first dummy record is  decompressed.
+
+The index file contains an info chunk (actually stored at the end of the file)
+which maintains a summary data and flags about the indexing process (the -s
+option of cdbyank retrieves this information). Since the  compression option
+was added, cdbyank is always trying to read this information first (before
+opening the data file) in order to determine if the data records are compressed
+or not.
+
+Please let me know if you notice problems running with these tools.
+
+--
+Geo Pertea 
+gpertea@tigr.org
+06/09/2003
+
+
+7. Copyright
+============
+
+Copyright (c) 2002-2003, The Institute for Genomic Research, 
+All Rights Reserved
+This software is OSI Certified Open Source Software.
+OSI Certified is a certification mark of the Open Source Initiative.
+

@@ -1,0 +1,68 @@
+Launching PASA via a Web Interface
+==================================
+
+PASA can be installed as an institutional service to faciliate access by many users, provide more secure control over database manipulation, and to consolidate computational resources.  This more advanced setup involves web-based job submissions, a MySQL database that retains a queue of submitted jobs, and a PASA daemon that runs on an execution server which picks up the submitted jobs and processes them serially.  
+
+Users would access the PASA system through a web page link:images/pasa_front_page.gif[(example)].
+
+From this front page, users would be able to do the following:
+
+- submit alignment and assembly jobs link:images/submit_page.gif[(link to image)].
+- perform annotation comparisons link:images/annot_compare_page.gif[(link to image)].
+- run an analysis of alternative splicing
+
+
+Fully utilizing this system involves a few additional steps to the main PASA installation instructions.
+
+Installing the PASA Job Submission Portal
+-----------------------------------------
+
+The PASA/pasa_admin_cgi directory contains the CGI scripts that provide the web-based submission pages.  Install these in your cgi-bin area similarly to the PASA/cgi-bin scripts installed previously.
+
+
+The PASA Administration MySQL Database
+--------------------------------------
+
+This database contains all data pertaining to jobs submitted to PASA through this system.  It is polled periodically by the PASA daemon to identify submitted jobs and it is used to track the status of each job.
+
+Create this database by sourcing the file: PASA/schema/PASA2_admin.schema
+
+ie. 
+
+    % mysql
+    % create database pasa_admin_db
+    % use pasa_admin_db
+    % source 'PASA/schema/PASA2_admin.schema'
+
+
+Updating the Configuration File
+-------------------------------
+
+Your pasa configuration file: PASA/pasa_conf/conf.txt should include the following settings:
+
+    PASA_ADMIN_EMAIL=your_email@where_you_are.org
+    PASA_ADMIN_DB=pasa_admin_db
+    BASE_PASA_URL=http://hostname/cgi-bin/
+
+What's most critical above is that the PASA_ADMIN_DB correspond to the pasa administration database you created above.  
+
+Starting the PASA Daemon
+------------------------
+
+The PASA daemon should be started on the server that is destined to run PASA, including the alignment steps involving GMAP, BLAT, and/or SIM4, the PASA alignment assembly, and any other tasks routinely performed by the PASA pipeline.
+
+To start the daemon, do the following:
+
+    % cd PASA/pasa_daemon
+    % ./pasa2pd
+
+The daemon will poll the admin database every 30 seconds, pick up new jobs, and process them serially.  The daemon emails the user and the administrator before and after processing each job, indicating the job status, and providing a URL to the final PASA database report.
+
+For added security, you can set restrictive permissions on the conf.txt file which contains password data such that only the administrator can start the daemon and read the conf.txt file.
+
+
+
+
+
+
+

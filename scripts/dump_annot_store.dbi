@@ -1,0 +1,110 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Mysql_connect;
+use strict;
+use DBI;
+use Ath1_cdnas;
+use Getopt::Long qw(:config no_ignore_case bundling);
+use Gene_obj;
+use Storable ("thaw");
+use Data::Dumper;
+use CdbTools;
+
+use vars qw ($opt_M $opt_p $opt_f $opt_d $opt_h $opt_v $opt_g $opt_m $opt_V);
+
+&GetOptions ('M=s' => \$opt_M,
+             'p=s' => \$opt_p,
+             'd' => \$opt_d,
+             'h' => \$opt_h,
+             'V' => \$opt_V,
+             'g=s' => \$opt_g,
+             'm=s' => \$opt_m,
+             'v=i' => \$opt_v,
+             );
+
+$|=1;
+our $SEE = 0;
+
+open (STDERR, "&>STDOUT");
+
+my $usage =  <<_EOH_;
+
+############################# Options ###############################
+#
+# -M Mysql database/server ie. ("ath1_cdnas:haasbox")
+# -p passwordinfo  (contains "username:password")
+# -d Debug
+# 
+# -h print this option menu and quit
+# -V verbose
+#
+#  optional, restrict to a gene, model ID, and/or annotation version.
+#
+# -g  gene_id
+# -m  model_id
+# -v  annotation version
+#
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+if ($opt_h) {die $usage;}
+my $MYSQLstring = $opt_M or die "Must indicate MySQL parameters.\n\n$usage";
+
+my ($MYSQLdb, $MYSQLserver) = split (/:/, $MYSQLstring); 
+my $passwordinfo = $opt_p or die "Must specify password info.\n\n\n$usage";
+my $DEBUG = $opt_d;
+
+my $gene_id = $opt_g;
+my $model_id = $opt_m;
+my $annotation_version = $opt_v;
+
+our $SEE = $opt_V;
+
+my ($user, $password) = split (/:/, $passwordinfo);
+
+my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+my $query = "select annot_id, gene_id, model_id, annotdb_asmbl_id, lend, rend, orient, gene_obj, annotation_version from annotation_store";
+
+if ($gene_id || $model_id || $gene_id) {
+    $query .= " where ";
+    if ($gene_id) {
+        $query .= " and gene_id = \"$gene_id\" ";
+    }
+    if ($model_id) {
+        $query .= " and model_id = \"$model_id\" ";
+    }
+    if ($annotation_version) {
+        $query .= " and annotation_version = $annotation_version ";
+    }
+    
+    $query =~ s/where\s+and /where /;
+}
+
+
+my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+
+foreach my $result (@results) {
+    my ($annot_id, $gene_id, $model_id, $annotdb_asmbl_id, $lend, $rend, $orient, $gene_blob) = @$result;
+    pop @$result;
+    #print "@$result\n";
+    
+    my $gene_obj = thaw ($gene_blob);
+    
+    unless (ref $gene_obj) {
+        die "Error, blob: $gene_blob\ncould not resurrect a gene object!";
+    }
+    
+    print "\n\n// Gene dump: \nannot_id: $annot_id\ngene_id $gene_id\nmodel_id: $model_id\nannotdb_asmbl_id: $annotdb_asmbl_id\ncoords: $lend - $rend\norient: $orient\n\n\n";
+    print $gene_obj->toString();
+    
+}
+
+
+exit(0);

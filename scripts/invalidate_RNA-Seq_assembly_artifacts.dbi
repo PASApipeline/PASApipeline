@@ -1,0 +1,383 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Mysql_connect;
+use strict;
+use DBI;
+use Carp;
+use Getopt::Std;
+use Getopt::Long qw(:config no_ignore_case bundling);
+use Overlap_piler;
+use Data::Dumper; # for debuggingp
+use List::Util qw (min max);
+require "overlapping_nucs.ph";
+
+$|=1;
+
+
+open (STDERR, ">&STDOUT");
+
+my $usage =  <<_EOH_;
+
+To use this script, the accession of the transcript must end in a semi-colon delimited integer expression value, like so:
+
+	>accession;coverage
+
+    where coverage is an integer value.
+
+If the accession does not meet this format requirement, this step will be bypassed.
+
+
+RNA-seq assemblies may be artifacts for a couple of reasons:
+-they represent lowly expressed aberrantly processed transcripts
+-the assembly is constructed based on reads containing errors rather the dominant assembly from higher quality bases.
+
+These are identified as transcripts that map to the same locus and have substantially lower sequencing coverage (RNA-Seq read content) then the dominant transcript at that locus.
+
+
+############################# Options ###############################
+#
+# -M Mysql database/server ie. ("ath1_cdnas:haasbox")
+# 
+# -p passwordinfo  (contains "username:password")
+#
+# --known_transcribed_orientations  transcribed orientations file
+# --alignment_validations          gmap_validations 
+#
+# -O  overlap criteria (min % of shortest span overlap for same locus grouping; default: 30)
+#
+# -C  min % coverage of dominant transcript assembly (default: 10)
+# 
+# --min_coverage   minimum coverage of any transcript (default: 0) 
+#
+# -d Debug
+# -h print this option menu and quit
+# -v verbose
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+
+
+
+my ($opt_h, $MYSQLstring, $passwordinfo, $opt_d);
+my ($known_transcribed_orientations, $alignment_validations);
+
+my $min_overlap = 30;
+my $MIN_PERCENT_COVERAGE_OF_DOMINANT_ISOFORM = 10;
+my $min_coverage_value = 0;
+
+my $help_flag;
+my $VERBOSE;
+
+my $COLLAPSE_INTRON_LENGTH = 1000;
+
+
+&GetOptions ( 'h' => \$help_flag,
+			  'M=s' => \$MYSQLstring,
+			  'p=s' => \$passwordinfo,
+			  'C=f' => \$MIN_PERCENT_COVERAGE_OF_DOMINANT_ISOFORM,
+			  'O=f' => \$min_overlap,
+			  'min_coverage=i' => \$min_coverage_value,
+			  
+			  'known_transcribed_orientations=s' => \$known_transcribed_orientations,
+			  'alignment_validations=s' => \$alignment_validations,
+			  
+			  'd' => \$opt_d,  # shoehorning old option style
+			  'V' => \$VERBOSE,
+	);
+
+if ($help_flag) { die $usage; }
+unless ($MYSQLstring && $passwordinfo) { die $usage; }
+unless ($known_transcribed_orientations && $alignment_validations) { die $usage; }
+
+my ($MYSQLdb, $MYSQLserver) = split (/:/, $MYSQLstring); 
+
+our $DEBUG = $opt_d;
+
+
+my ($user, $password) = split (/:/, $passwordinfo);
+
+my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+
+## Parse the transcribed orientations
+my %transcribed_orients;
+{
+	open (my $fh, $known_transcribed_orientations) or die "Error, cannot open file $known_transcribed_orientations";
+	while (<$fh>) {
+		chomp;
+		my ($acc, $orient) = split(/\t/);
+		$transcribed_orients{$acc} = $orient;
+	}
+	close $fh;
+}
+
+my %transcript_acc_to_segments;
+
+my %stranded_scaffold_to_transcripts;
+{
+	open (my $fh, $alignment_validations) or die "Error, cannot open file $alignment_validations";
+	my $header = <$fh>;
+	my $counter = 0;
+	while (<$fh>) {
+		unless (/\w/) { next; }
+		chomp;
+		$counter++;
+		my @x = split(/\t/);
+		my ($acc, $scaffold, $span, $valid, $alignment) = ($x[1], $x[2], $x[7], $x[6], $x[10]);
+		
+		my $strand = $transcribed_orients{$acc} or die "Error, no transcribed orient for $acc";
+			
+		$scaffold .= ";$strand";
+				
+		my ($lend, $rend) = split(/-/, $span);
+		
+		push (@{$stranded_scaffold_to_transcripts{$scaffold}}, [$acc, $lend, $rend]);
+		
+		print STDERR "\r($counter)  $acc $scaffold $span $valid    ";
+		
+		## parse alignment segments:
+		my @coords;
+		while ($alignment =~ /\D?(\d+)\(\d+\)-(\d+)\(/g) {
+			my ($lend, $rend) = ($1, $2);
+			push (@coords, [$lend, $rend]);
+		}
+		
+		@coords = &collapse_not_long_introns(@coords);
+
+		$transcript_acc_to_segments{$acc} = [@coords];
+		
+		
+
+	}
+
+	
+	close $fh;
+}
+	
+foreach my $scaffold (keys %stranded_scaffold_to_transcripts) {
+	my @transcripts = @{$stranded_scaffold_to_transcripts{$scaffold}};
+	
+	@transcripts = sort {$a->[1]<=>$b->[1]} @transcripts;
+
+	my $piler = new Overlap_piler();
+
+	my %acc_to_info;
+
+	foreach my $transcript (@transcripts) {
+		my ($acc, $lend, $rend) = @$transcript;
+		
+		my @acc_tokens = split(/;/, $acc);
+	    unless (scalar @acc_tokens > 1) { 
+
+		    print STDERR "Warning, unexpected accession format: $acc; no coverage info as last token. Skipping artifact pruning step"; 
+			exit(0);
+			
+		}
+		
+
+
+
+		my $cov = pop @acc_tokens;
+		
+		unless ($cov =~ /^[\d\.]+$/) {
+			print STDERR "Warning, coverage value parsed from last ;-delimited field of $acc needs to be a number. Skipping artifact pruning step.";
+			exit(0);
+		}
+		
+		if ($cov == 0) {
+			$cov = 1e-5; ## make it non zero but very small
+		}
+		
+		$acc_to_info{$acc} = { acc => $acc,
+							   lend => $lend,
+							   rend => $rend,
+							   cov => $cov,
+							   segments => $transcript_acc_to_segments{$acc},
+		};
+		
+		$piler->add_coordSet($acc, $lend, $rend);
+	}
+	
+	my @clusters = $piler->build_clusters();
+	
+	foreach my $cluster (@clusters) {
+		
+		my @eles = @$cluster;
+
+		@eles = reverse sort {$acc_to_info{$a}->{cov}<=>$acc_to_info{$b}->{cov}} @eles;
+		
+		my $best_ele  = shift @eles;
+		my @selected = ($acc_to_info{$best_ele});
+		
+		my @invalidated;
+
+		foreach my $ele_acc (@eles) {
+				
+			my $ele = $acc_to_info{$ele_acc};
+			
+			if (my $percent_overlap = &looks_like_artifact($ele, \@selected)) {
+				push (@invalidated, [$ele, $percent_overlap]);
+			}
+			else {
+				# it's a keeper.
+				push (@selected, $ele);
+			}
+		}
+		
+		foreach my $select (@selected) {
+			print "Keeping " . join("\t", $select->{acc}, $select->{lend}, $select->{rend}, $select->{cov}) . "\n";
+		
+			#my $query = "update cdna_link set validate = 1 where cdna_acc = ?"; ## normally, don't need to do this.  Rid this line.
+			#&RunMod($dbproc, $query, $select->{acc});
+
+		}
+		foreach my $inval_set (@invalidated) {
+			my ($inval, $percent_overlap) = @$inval_set;
+
+			print "\t\t** tossing " . join("\t", $inval->{acc}, $inval->{lend}, $inval->{rend}, $inval->{cov}, "$percent_overlap\% overlapped") . "\n";
+			
+			my $query = "update cdna_link set validate = 0 where cdna_acc = ?";
+			&RunMod($dbproc, $query, $inval->{acc});
+			
+		}
+		
+	}
+}    
+
+$dbproc->disconnect;
+
+exit(0);
+
+
+		
+
+####
+sub looks_like_artifact {
+	my ($ele, $selected_aref) = @_;
+
+	my $cov = $ele->{cov};
+
+	if ($min_coverage_value && $cov < $min_coverage_value) {
+		return(1); 
+	}
+	
+	my $length = &get_sum_segment_lengths($ele);
+	
+	foreach my $selected_ele (@$selected_aref) {
+		my ($selected_lend, $selected_rend) = ($selected_ele->{lend}, $selected_ele->{rend});
+		
+		my $selected_length = &get_sum_segment_lengths($selected_ele);
+		my $selected_cov = $selected_ele->{cov};
+		
+		my $min_length = min($length, $selected_length);
+		
+		my $overlap = &overlapping_base_count($ele, $selected_ele);
+		
+		my $percent_overlap_shortest = $overlap / $min_length * 100;
+
+		if ($percent_overlap_shortest > 100) {
+			confess "Error, $percent_overlap_shortest exceeds max of 100 ";
+		}
+				
+		if ($overlap && $percent_overlap_shortest >= $MIN_PERCENT_COVERAGE_OF_DOMINANT_ISOFORM) {
+
+			## substantial overlap.  Check to see if coverage is below range
+			if ($cov / $selected_cov * 100 <  $MIN_PERCENT_COVERAGE_OF_DOMINANT_ISOFORM) { 
+				return($percent_overlap_shortest); # looks like an artifact: substantial overlap and low relative coverage
+			}
+		}
+	}
+	
+	return(0); # looks fine as far as we can tell.
+}
+		
+
+
+
+####
+sub collapse_not_long_introns {
+	my @coords = @_;
+
+	if (scalar @coords == 1) {
+		## nothing to do, no introns.
+		return(@coords);
+	}
+	
+	@coords = sort {$a->[0]<=>$b->[0]} @coords; # sort by lend coord
+	
+	my @collapsed_coords = shift @coords;
+
+	while (@coords) {
+		my $next_coordset = shift @coords;
+
+		my $prev_coords = $collapsed_coords[$#collapsed_coords];
+		
+		my $prev_rend = $prev_coords->[1];
+		my $curr_lend = $next_coordset->[0];
+
+		my $intron_len = $curr_lend - $prev_rend -1;
+		
+		if ($intron_len < $COLLAPSE_INTRON_LENGTH) {
+			## update rend of current segment to span through the next one.
+			$prev_coords->[1] = $next_coordset->[1];
+		}
+		else {
+			push (@collapsed_coords, $next_coordset);
+		}
+	}
+	
+	return(@collapsed_coords);
+}
+
+
+####
+sub get_sum_segment_lengths {
+	my ($ele) = @_;
+
+	my @segments = @{$ele->{segments}};
+
+	my $sum = 0;
+
+	foreach my $seg (@segments) {
+		my ($lend, $rend) = @$seg;
+		
+		my $len = $rend - $lend + 1;
+		$sum += $len;
+	}
+
+	return($sum);
+}
+
+
+####
+sub overlapping_base_count {
+	my ($eleA, $eleB) = @_;
+
+
+	## do this simply for now, make it faster later.
+
+	my @segsA = @{$eleA->{segments}};
+	my @segsB = @{$eleB->{segments}};
+
+	my $sum_overlap = 0;
+	
+	foreach my $sA (@segsA) {
+		my ($sA_lend, $sA_rend) = @$sA;
+
+		foreach my $sB (@segsB) {
+			my ($sB_lend, $sB_rend) = @$sB;
+
+			$sum_overlap += &nucs_in_common($sA_lend, $sA_rend, $sB_lend, $sB_rend);
+
+		}
+	}
+
+	return($sum_overlap);
+}
+			

@@ -1,0 +1,209 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Pasa_conf;
+use Mysql_connect;
+use strict;
+use DBI;
+use Storable;
+use CDNA::CDNA_alignment;
+use Getopt::Std;
+
+our $SEE = 0;
+
+use vars qw ($opt_h $opt_D $opt_p $opt_d $DEBUG $opt_M);
+
+&getopts ('hD:dM:');
+
+my $usage =  <<_EOH_;
+
+Script loads a MySQL db with the assemblies in the /assembly directory.
+
+############################# Options ###############################
+#
+# -M Mysql database name
+# 
+# -d Debug
+# 
+# -h print this option menu and quit
+#
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+if ($opt_h) {die $usage;}
+
+
+my $MYSQLdb = $opt_M or die $usage;
+my $MYSQLserver = &Pasa_conf::getParam("MYSQLSERVER"); 
+my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+my $DEBUG = $opt_d;
+
+
+my $DELIMETER = "/"; 
+
+my ($dbproc) = &connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+my @assembly_files = glob("assemblies/*.assemblies");
+
+unless (@assembly_files) {
+    die "Error, no assembly files to load...";
+}
+
+## allow recovery from a previously failed partial loading:
+{
+
+    my $query = "select count(*) from cdna_info ci where is_assembly = 1";
+    my $count = &very_first_result_sql($dbproc, $query);
+    if ($count) {
+        print STDERR "WARNING: previous assemblies have been loaded...  Purging them first before attempting a re-load\n";
+
+        ## delete alignment entries
+        my $query = "delete from alignment where align_id in "
+            . " (select al.align_id from cdna_info ci, align_link al "
+            . " where ci.is_assembly = 1 and ci.id = al.cdna_info_id )";
+
+        print STDERR "-cleaning previous asmbls from alignment table\n";
+        &RunMod($dbproc, $query);
+
+        ## delete align_link entries
+        $query = "delete from align_link where cdna_info_id in (select ci.id from cdna_info ci where ci.is_assembly = 1)";
+        print STDERR "-cleaning previous asmbls from align_link table\n";
+        &RunMod($dbproc, $query);
+        
+        ## delete the cdna_info_id entries
+        $query = "delete from cdna_info where is_assembly = 1";
+        print STDERR "-cleaning previous asmbls from cdna_info table\n";
+        &RunMod($dbproc, $query);
+
+        ## delete asmbl_link
+        $query = "delete from asmbl_link";
+        print STDERR "-purging asmbl_link\n";
+        &RunMod($dbproc, $query);
+        
+
+        print STDERR "done cleaning.\n\nNow, on to re-loading.\n\n";
+
+    }
+    
+}
+
+
+my $progress = 0;
+my $total_progress = scalar(@assembly_files);
+
+$dbproc->{dbh}->{AutoCommit} = 0;
+
+
+my $total_assemblies = 0;
+
+foreach my $persobjfile (@assembly_files) {
+
+    my $all_asmbls_aref = retrieve ($persobjfile);
+    
+    my $query = "select max(align_id) from align_link where align_acc like \"asmbl%\"";
+    my $result_ref = &first_result_sql($dbproc, $query);
+    my $max_align_id = $result_ref->[0];
+    my $asmbl = 0;
+    if ($max_align_id) {
+        my $query = "select align_acc from align_link where align_id = ?";
+        my $result = &first_result_sql($dbproc, $query, $max_align_id);
+        my $cdna_acc = $result->[0];
+        
+        if ($cdna_acc =~ /asmbl_(\d+)/) {
+            $asmbl = $1;
+        }
+    }
+    
+    print "MAX ASMBL = $asmbl\n";
+    
+    unless (ref $all_asmbls_aref) {
+        die "Couldn't retrieve $persobjfile.";
+    }
+    
+    foreach my $assembly (sort {$a->{cluster_id}<=>$b->{cluster_id}} @$all_asmbls_aref) {
+        $asmbl++;
+        $total_assemblies++;
+        my $before_text = "before: " . $assembly->toToken() . "\n";
+        print $before_text;
+        $assembly->remap_cdna_segment_coords();
+        my $after_text = "after: " . $assembly->toToken() . "\n";
+        my $cdnaacc = $assembly->get_acc();
+        my $spliced_orient = $assembly->get_spliced_orientation();
+        my $aligned_orient = $assembly->get_orientation();
+        unless ($aligned_orient =~ /[\+\-]/) {
+            print STDERR "$before_text\n$after_text\n";
+            die "Error, $cdnaacc lacks aligned orientation!";
+        }
+        
+        my @cdnas = split (/$DELIMETER/, $cdnaacc);
+        my $cluster_id = $assembly->{cluster_id};
+        my $asmbl_identifier = "asmbl_$asmbl";
+        print "// assembly $asmbl_identifier in cluster: $cluster_id\n@cdnas\n" . $assembly->toToken() . "\n\n\n";
+        
+        ## insert asmbl_link
+        foreach my $cdna (@cdnas) {
+            my $query = "insert asmbl_link (asmbl_acc, cdna_acc) values (?,?)";
+            &RunMod($dbproc, $query, $asmbl_identifier, $cdna);
+        }
+        
+        
+        ## insert row in cluster_link table
+        my $query = "insert cdna_info (cdna_acc, is_assembly) values (?,?)";
+        &RunMod($dbproc, $query, $asmbl_identifier, 1);
+        
+        my $cdna_id = &get_last_insert_id($dbproc);
+        
+        my @segments = $assembly->get_alignment_segments();
+        my $num_segments = $#segments + 1;
+        
+        my ($lend, $rend) = $assembly->get_coords();
+        
+        ## insert row in cdna_link
+        my $query = "insert align_link (align_acc, cdna_info_id, cluster_id, prog, validate, aligned_orient, spliced_orient, num_segments, lend, rend) values (?,?,?,?,?,?,?,?,?,?)";
+        &RunMod($dbproc, $query, $asmbl_identifier, $cdna_id, $cluster_id, "assembler", 1, $aligned_orient, $spliced_orient, $num_segments, $lend, $rend);
+        
+        my $align_id = &get_last_insert_id($dbproc);
+        
+        foreach my $segment (@segments) {
+            my ($lend, $rend) = sort {$a<=>$b} $segment->get_coords();
+            my ($mlend, $mrend) = sort {$a<=>$b} $segment->get_mcoords();
+            my $query = "insert alignment (align_id, lend, rend, mlend, mrend, orient) values (?,?,?,?,?,?)";
+            &RunMod($dbproc, $query, $align_id, $lend, $rend, $mlend, $mrend, $aligned_orient);
+            
+        }
+
+        if ($total_assemblies % 1000 == 0){
+            $dbproc->{dbh}->commit;
+            print STDERR "\n\tCommitted $total_assemblies PASA assemblies\n";
+            
+        }
+        
+    } # end of processing list of transcript assemblies
+
+    
+    $progress++;
+    
+    print STDERR "\r[$progress/$total_progress] scaffolds processed.    ";
+    
+
+}
+
+$dbproc->{dbh}->commit; # get any last ones.
+
+print STDERR "\n\nDone.\n";
+
+system "rm -rf ./assemblies/"; # clean up.
+
+
+$dbproc->disconnect;
+
+exit(0);
+
+

@@ -1,0 +1,27 @@
+#!/usr/bin/env perl
+
+require "$ENV{'EGC_SCRIPTS'}/egc_library.dbi";
+
+#############################################################################
+# begin program
+
+my $delimeter = " ";
+if (@ARGV) {
+    $delimeter = $ARGV[0];
+}
+
+while (<STDIN>) {
+    chomp;
+    my @input = split (/\t/);
+    my $sequence = "";
+    if (scalar(@input) > 1) {
+        $sequence = pop @input;
+    }
+    my $header = join ($delimeter, @input);
+    if ($sequence =~ /\w/) {
+        $sequence = &make_FASTA_format ($sequence);
+        print ">$header\n$sequence";
+    } else {
+        print STDERR "** No sequence for $header\n";
+    }
+}

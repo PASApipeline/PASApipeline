@@ -1,0 +1,141 @@
+#!/usr/bin/env perl
+
+use strict;
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Pasa_conf;
+use Mysql_connect;
+use DBI;
+use Getopt::Std;
+use ConfigFileReader;
+use Storable ("nfreeze");
+use Fasta_reader;
+
+use vars qw ($opt_v $opt_S $opt_c $opt_C $opt_D $opt_d $opt_h $opt_x $opt_V $opt_g $opt_e $opt_P);
+
+&getopts ('c:CD:dhxVS:g:ve:P:');
+
+$ENV{PATH} = "$FindBin::Bin/../bin:$ENV{PATH}";
+
+
+my $usage =  <<_EOH_;
+
+############################# Options ###############################
+#
+# -c configFile
+# -g genome fasta file
+# -d debug
+#
+# ## Annotation database settings:
+# -P param string for data adapter: HOOK_GENE_STRUCTURE_UPDATER
+#                             At TIGR, this would be "SYBTIGR,Sybase,user,password,annotdb[,pred_type]"
+#                             Where pred_type is some prediction type (ie. genscan), or current annotations [default]
+#
+# -h print this option menu and quit
+# -v verbose
+#
+###################### Process Args and Options #####################
+
+_EOH_
+
+   ;
+
+
+our $SEE = $opt_v;
+my $configfile = $opt_c or die $usage;
+if ($opt_h) {die $usage;}
+our $DEBUG = ($opt_d) ? 1:0;
+my %config = &readConfig($configfile);
+
+my $genomeDB = $opt_g or die $usage;
+
+my $adapter_params = $opt_P or die $usage;
+
+unless (-s $genomeDB) { die "Can't locate fasta file $genomeDB\n\n";}
+
+my ($MYSQLdb) = ($config{MYSQLDB});
+my $mysql_server = &Pasa_conf::getParam("MYSQLSERVER");
+my $mysql_rw_user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $mysql_rw_password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+
+
+$ENV{UTILDIR} = $ENV{PASAHOME} . "/scripts/";
+
+my $dbproc = &Mysql_connect::connect_to_db($mysql_server,$MYSQLdb,$mysql_rw_user,$mysql_rw_password);
+
+
+my $annot_version;
+my $cmd = "$ENV{PASAHOME}/scripts/Annotation_store_preloader.dbi -c $configfile";
+print "CMD: $cmd\n";
+open (CMD, "$cmd |");
+while (<CMD>) {
+    print;
+    if (/annotation\sversion:\s(\d+)/) {
+        $annot_version = $1;
+    }
+}
+close CMD;
+unless ($annot_version) {
+    die "Sorry, couldn't retrieve an ID for the annotation version. :( \n\n";
+}
+
+
+my $latest_annot_retriever = &Pasa_conf::call_hook("HOOK_EXISTING_GENE_ANNOTATION_LOADER", $adapter_params);
+
+my $fasta_reader = new Fasta_reader($genomeDB);
+while (my $seqobj = $fasta_reader->next() ) {
+    my $genome_seq = $seqobj->get_sequence();
+    
+    my $genome_seq_length = length($genome_seq);
+    
+    my $asmbl_id = $seqobj->get_accession();
+    
+    print "// Retrieving genes for asmbl: $asmbl_id\n";
+    
+    
+    my @genes = $latest_annot_retriever->retrieve_gene_models_for_contig($asmbl_id);
+    
+    foreach my $gene_obj (@genes) {
+        
+        foreach my $isoform ($gene_obj, $gene_obj->get_additional_isoforms()) {
+
+
+            my $gene = $isoform; # calling the isoform simply gene below. (legacy code)
+            
+            
+            ## don't store a bundled gene if it has isoforms bundled within it.
+            $gene->delete_isoforms();
+            
+
+            ## Load each isoform in separately. Unbundle any bundled genes.
+            
+            my ($lend, $rend) = sort {$a<=>$b} $gene->get_coords();
+            my $orient = $gene->get_orientation();
+            my $gene_id = $gene->{TU_feat_name};
+            my $model_id = $gene->{Model_feat_name};
+            
+            ## Not loading any gene models that are not fully contained within the genome sequence.
+            if ($rend > $genome_seq_length) {
+                print STDERR "Gene is not contained within the sequence $asmbl_id length $genome_seq_length\n" . $gene->toString();
+                next; 
+            }
+            
+            print "Loading persistent obj: $gene_id, $model_id, $lend, $rend, $orient\n";
+            
+            my $blob = nfreeze($gene);
+            
+            my $query = "insert annotation_store (gene_id, model_id, annotdb_asmbl_id, lend, rend, orient, annotation_version, gene_obj) values (?,?,?,?,?,?,?,?)";
+            &Mysql_connect::RunMod($dbproc, $query, $gene_id, $model_id, $asmbl_id, $lend, $rend, $orient, $annot_version, $blob);
+        }
+    }
+}
+
+print "Finished.\n\n";
+$dbproc->disconnect;
+
+exit(0);
+
+
+

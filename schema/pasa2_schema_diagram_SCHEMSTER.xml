@@ -1,0 +1,1880 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<schemester_diagram version="1.1">
+  <property name="name"><![CDATA[New Model]]></property>
+  <property name="comment"><![CDATA[]]></property>
+  <diagram_style>
+    <property name="font_name">Tahoma</property>
+    <property name="font_size">8</property>
+    <property name="font_colour">clBlack</property>
+    <property name="header_font_name">Tahoma</property>
+    <property name="header_font_size">8</property>
+    <property name="header_font_colour">clWhite</property>
+    <property name="header_band_colour">clGray</property>
+    <property name="detail_band_colour">clWhite</property>
+    <property name="background_colour">clWhite</property>
+    <property name="cascade_del_Colour">clRed</property>
+    <property name="set_null_del_colour">clMaroon</property>
+    <property name="no_action_colour">clBlack</property>
+    <property name="show_link_description">Y</property>
+    <property name="show_link_name">N</property>
+    <property name="show_link_tablename">Y</property>
+    <property name="show_link_columns">Y</property>
+    <property name="show_owner_in_title">N</property>
+    <property name="link_font_name">Tahoma</property>
+    <property name="link_font_size">8</property>
+    <property name="link_font_colour">clGreen</property>
+    <property name="low_graphics_1">N</property>
+    <property name="two_tone_header">N</property>
+  </diagram_style>
+  <tables>
+    <table>
+      <property name="owner">PASA2-SCHEMA</property>
+      <property name="name">CLUSTERS</property>
+      <property name="comment"><![CDATA[]]></property>
+      <property name="is_virtual">Y</property>
+      <property name="left">19</property>
+      <property name="top">15</property>
+      <property name="width">201</property>
+      <property name="height">77</property>
+      <property name="show_only_key_cols">N</property>
+      <property name="reload_from_database">N</property>
+      <property name="hide_data_types">N</property>
+      <property name="hide_comments">N</property>
+      <property name="column_sort_method">creation</property>
+      <columns>
+        <column>
+          <property name="name">LEND</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">CLUSTER_ID</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">ANNOTDB_ASMBL_ID</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">VARCHAR</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">REND</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+      </columns>
+      <primary_keys>
+        <primary_key>
+          <property name="name">CLUSTERS_KEY</property>
+          <property name="is_virtual">Y</property>
+          <columns>
+            <property name="column">CLUSTER_ID</property>
+          </columns>
+        </primary_key>
+      </primary_keys>
+      <unique_keys>
+      </unique_keys>
+      <foreign_keys>
+      </foreign_keys>
+      <check_constraints>
+      </check_constraints>
+      <indexes>
+      </indexes>
+    </table>
+    <table>
+      <property name="owner">PASA2-SCHEMA</property>
+      <property name="name">CLUSTER_LINK</property>
+      <property name="comment"><![CDATA[]]></property>
+      <property name="is_virtual">Y</property>
+      <property name="left">67</property>
+      <property name="top">156</property>
+      <property name="width">199</property>
+      <property name="height">137</property>
+      <property name="show_only_key_cols">N</property>
+      <property name="reload_from_database">N</property>
+      <property name="hide_data_types">N</property>
+      <property name="hide_comments">N</property>
+      <property name="column_sort_method">creation</property>
+      <columns>
+        <column>
+          <property name="name">ID</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">IS_ASSEMBLY</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">BOOLEAN</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">CLUSTER_ID</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">CDNA_ACC</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">VARCHAR</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">HEADER</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">VARCHAR</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">IS_EST</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">BOOLEAN</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">IS_FLI</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">BOOLEAN</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">LENGTH</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+      </columns>
+      <primary_keys>
+        <primary_key>
+          <property name="name">CLUSTER_LINK_KEY</property>
+          <property name="is_virtual">Y</property>
+          <columns>
+            <property name="column">ID</property>
+          </columns>
+        </primary_key>
+      </primary_keys>
+      <unique_keys>
+      </unique_keys>
+      <foreign_keys>
+        <foreign_key>
+          <property name="name">CLUSTER_LINK_KEY</property>
+          <property name="is_virtual">Y</property>
+          <property name="ref_table_owner">PASA2-SCHEMA</property>
+          <property name="ref_table_name">CLUSTERS</property>
+          <property name="on_delete"></property>
+          <columns>
+            <property name="column">CLUSTER_ID</property>
+          </columns>
+          <ref_columns>
+            <property name="ref_column">CLUSTER_ID</property>
+          </ref_columns>
+        </foreign_key>
+      </foreign_keys>
+      <check_constraints>
+      </check_constraints>
+      <indexes>
+      </indexes>
+    </table>
+    <table>
+      <property name="owner">PASA2-SCHEMA</property>
+      <property name="name">CDNA_LINK</property>
+      <property name="comment"><![CDATA[]]></property>
+      <property name="is_virtual">Y</property>
+      <property name="left">351</property>
+      <property name="top">181</property>
+      <property name="width">246</property>
+      <property name="height">182</property>
+      <property name="show_only_key_cols">N</property>
+      <property name="reload_from_database">N</property>
+      <property name="hide_data_types">N</property>
+      <property name="hide_comments">N</property>
+      <property name="column_sort_method">creation</property>
+      <columns>
+        <column>
+          <property name="name">VALIDATE</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">BOOLEAN</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">SPLICED_ORIENT</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">CHAR</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">PROG</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">VARCHAR</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">ALIGN_ID</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">CDNA_ACC</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">VARCHAR</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">NUM_SEGMENTS</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">PERCENT_ALIGNED</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">NUMBER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">ALIGNED_ORIENT</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">CHAR</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">AVG_PER_ID</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">NUMBER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">COMMENT</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">VARCHAR</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">ALIGNMENT</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">VARCHAR</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+      </columns>
+      <primary_keys>
+        <primary_key>
+          <property name="name">CDNA_LINK_KEY</property>
+          <property name="is_virtual">Y</property>
+          <columns>
+            <property name="column">ALIGN_ID</property>
+          </columns>
+        </primary_key>
+      </primary_keys>
+      <unique_keys>
+      </unique_keys>
+      <foreign_keys>
+        <foreign_key>
+          <property name="name">CDNA_LINK_KEY</property>
+          <property name="is_virtual">Y</property>
+          <property name="ref_table_owner">PASA2-SCHEMA</property>
+          <property name="ref_table_name">CLUSTER_LINK</property>
+          <property name="on_delete"></property>
+          <columns>
+            <property name="column">CDNA_ACC</property>
+          </columns>
+          <ref_columns>
+            <property name="ref_column">CDNA_ACC</property>
+          </ref_columns>
+        </foreign_key>
+      </foreign_keys>
+      <check_constraints>
+      </check_constraints>
+      <indexes>
+      </indexes>
+    </table>
+    <table>
+      <property name="owner">PASA2-SCHEMA</property>
+      <property name="name">ALIGNMENT</property>
+      <property name="comment"><![CDATA[]]></property>
+      <property name="is_virtual">Y</property>
+      <property name="left">358</property>
+      <property name="top">0</property>
+      <property name="width">180</property>
+      <property name="height">137</property>
+      <property name="show_only_key_cols">N</property>
+      <property name="reload_from_database">N</property>
+      <property name="hide_data_types">N</property>
+      <property name="hide_comments">N</property>
+      <property name="column_sort_method">creation</property>
+      <columns>
+        <column>
+          <property name="name">LEND</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">REND</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">FEAT_ID</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">ALIGN_ID</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">ORIENT</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">CHAR</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">PER_ID</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">NUMBER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">MLEND</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">MREND</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+      </columns>
+      <primary_keys>
+      </primary_keys>
+      <unique_keys>
+      </unique_keys>
+      <foreign_keys>
+        <foreign_key>
+          <property name="name">ALIGNMENT_KEY</property>
+          <property name="is_virtual">Y</property>
+          <property name="ref_table_owner">PASA2-SCHEMA</property>
+          <property name="ref_table_name">CDNA_LINK</property>
+          <property name="on_delete"></property>
+          <columns>
+            <property name="column">ALIGN_ID</property>
+          </columns>
+          <ref_columns>
+            <property name="ref_column">ALIGN_ID</property>
+          </ref_columns>
+        </foreign_key>
+      </foreign_keys>
+      <check_constraints>
+      </check_constraints>
+      <indexes>
+      </indexes>
+    </table>
+    <table>
+      <property name="owner">PASA2-SCHEMA</property>
+      <property name="name">STATUS</property>
+      <property name="comment"><![CDATA[]]></property>
+      <property name="is_virtual">Y</property>
+      <property name="left">35</property>
+      <property name="top">416</property>
+      <property name="width">253</property>
+      <property name="height">92</property>
+      <property name="show_only_key_cols">N</property>
+      <property name="reload_from_database">N</property>
+      <property name="hide_data_types">N</property>
+      <property name="hide_comments">N</property>
+      <property name="column_sort_method">creation</property>
+      <columns>
+        <column>
+          <property name="name">STATUS_DESCR</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">VARCHAR</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">STATUS_ID</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">REQUIRES_UPDATE</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">BOOLEAN</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">RANK</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">NUMBER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">FAILS_INCORPORATION</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">BOOLEAN</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+      </columns>
+      <primary_keys>
+        <primary_key>
+          <property name="name">STATUS_KEY</property>
+          <property name="is_virtual">Y</property>
+          <columns>
+            <property name="column">STATUS_ID</property>
+          </columns>
+        </primary_key>
+      </primary_keys>
+      <unique_keys>
+      </unique_keys>
+      <foreign_keys>
+      </foreign_keys>
+      <check_constraints>
+      </check_constraints>
+      <indexes>
+      </indexes>
+    </table>
+    <table>
+      <property name="owner">PASA2-SCHEMA</property>
+      <property name="name">STATUS_LINK</property>
+      <property name="comment"><![CDATA[]]></property>
+      <property name="is_virtual">Y</property>
+      <property name="left">367</property>
+      <property name="top">413</property>
+      <property name="width">249</property>
+      <property name="height">107</property>
+      <property name="show_only_key_cols">N</property>
+      <property name="reload_from_database">N</property>
+      <property name="hide_data_types">N</property>
+      <property name="hide_comments">N</property>
+      <property name="column_sort_method">creation</property>
+      <columns>
+        <column>
+          <property name="name">STATUS_ID</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">CDNA_ACC</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">VARCHAR</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">STATUS_LINK_ID</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">ANNOT_UPDATE_ID</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">COMPARE_ID</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">COMMENT</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">VARCHAR</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+      </columns>
+      <primary_keys>
+        <primary_key>
+          <property name="name">STATUS_LINK_KEY</property>
+          <property name="is_virtual">Y</property>
+          <columns>
+            <property name="column">STATUS_LINK_ID</property>
+          </columns>
+        </primary_key>
+      </primary_keys>
+      <unique_keys>
+      </unique_keys>
+      <foreign_keys>
+        <foreign_key>
+          <property name="name">STATUS_LINK_KEY</property>
+          <property name="is_virtual">Y</property>
+          <property name="ref_table_owner">PASA2-SCHEMA</property>
+          <property name="ref_table_name">STATUS</property>
+          <property name="on_delete"></property>
+          <columns>
+            <property name="column">STATUS_ID</property>
+          </columns>
+          <ref_columns>
+            <property name="ref_column">STATUS_ID</property>
+          </ref_columns>
+        </foreign_key>
+        <foreign_key>
+          <property name="name">STATUS_LINK_KEY</property>
+          <property name="is_virtual">Y</property>
+          <property name="ref_table_owner">PASA2-SCHEMA</property>
+          <property name="ref_table_name">CDNA_LINK</property>
+          <property name="on_delete"></property>
+          <columns>
+            <property name="column">CDNA_ACC</property>
+          </columns>
+          <ref_columns>
+            <property name="ref_column">CDNA_ACC</property>
+          </ref_columns>
+        </foreign_key>
+        <foreign_key>
+          <property name="name">STATUS_LINK_KEY</property>
+          <property name="is_virtual">Y</property>
+          <property name="ref_table_owner">PASA2-SCHEMA</property>
+          <property name="ref_table_name">ANNOTATION_UPDATES</property>
+          <property name="on_delete"></property>
+          <columns>
+            <property name="column">ANNOT_UPDATE_ID</property>
+          </columns>
+          <ref_columns>
+            <property name="ref_column">UPDATE_ID</property>
+          </ref_columns>
+        </foreign_key>
+        <foreign_key>
+          <property name="name">STATUS_LINK_KEY</property>
+          <property name="is_virtual">Y</property>
+          <property name="ref_table_owner">PASA2-SCHEMA</property>
+          <property name="ref_table_name">ANNOTATION_COMPARE</property>
+          <property name="on_delete"></property>
+          <columns>
+            <property name="column">COMPARE_ID</property>
+          </columns>
+          <ref_columns>
+            <property name="ref_column">COMPARE_ID</property>
+          </ref_columns>
+        </foreign_key>
+      </foreign_keys>
+      <check_constraints>
+      </check_constraints>
+      <indexes>
+      </indexes>
+    </table>
+    <table>
+      <property name="owner">PASA2-SCHEMA</property>
+      <property name="name">ANNOTATION_LINK</property>
+      <property name="comment"><![CDATA[]]></property>
+      <property name="is_virtual">Y</property>
+      <property name="left">432</property>
+      <property name="top">607</property>
+      <property name="width">245</property>
+      <property name="height">92</property>
+      <property name="show_only_key_cols">N</property>
+      <property name="reload_from_database">N</property>
+      <property name="hide_data_types">N</property>
+      <property name="hide_comments">N</property>
+      <property name="column_sort_method">creation</property>
+      <columns>
+        <column>
+          <property name="name">CDNA_ACC</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">VARCHAR</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">ANNOTATION_LINK_ID</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">GENE_ID</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">VARCHAR</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">COMPARE_ID</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">MODEL_ID</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">VARCHAR</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+      </columns>
+      <primary_keys>
+        <primary_key>
+          <property name="name">ANNOTATION_LINK_KEY</property>
+          <property name="is_virtual">Y</property>
+          <columns>
+            <property name="column">ANNOTATION_LINK_ID</property>
+          </columns>
+        </primary_key>
+      </primary_keys>
+      <unique_keys>
+      </unique_keys>
+      <foreign_keys>
+        <foreign_key>
+          <property name="name">ANNOTATION_LINK_KEY</property>
+          <property name="is_virtual">Y</property>
+          <property name="ref_table_owner">PASA2-SCHEMA</property>
+          <property name="ref_table_name">STATUS_LINK</property>
+          <property name="on_delete"></property>
+          <columns>
+            <property name="column">CDNA_ACC</property>
+          </columns>
+          <ref_columns>
+            <property name="ref_column">CDNA_ACC</property>
+          </ref_columns>
+        </foreign_key>
+        <foreign_key>
+          <property name="name">ANNOTATION_LINK_KEY</property>
+          <property name="is_virtual">Y</property>
+          <property name="ref_table_owner">PASA2-SCHEMA</property>
+          <property name="ref_table_name">STATUS_LINK</property>
+          <property name="on_delete"></property>
+          <columns>
+            <property name="column">COMPARE_ID</property>
+          </columns>
+          <ref_columns>
+            <property name="ref_column">COMPARE_ID</property>
+          </ref_columns>
+        </foreign_key>
+        <foreign_key>
+          <property name="name">ANNOTATION_LINK_KEY</property>
+          <property name="is_virtual">Y</property>
+          <property name="ref_table_owner">PASA2-SCHEMA</property>
+          <property name="ref_table_name">ANNOTATION_STORE</property>
+          <property name="on_delete"></property>
+          <columns>
+            <property name="column">GENE_ID</property>
+          </columns>
+          <ref_columns>
+            <property name="ref_column">GENE_ID</property>
+          </ref_columns>
+        </foreign_key>
+        <foreign_key>
+          <property name="name">ANNOTATION_LINK_KEY</property>
+          <property name="is_virtual">Y</property>
+          <property name="ref_table_owner">PASA2-SCHEMA</property>
+          <property name="ref_table_name">ANNOTATION_STORE</property>
+          <property name="on_delete"></property>
+          <columns>
+            <property name="column">MODEL_ID</property>
+          </columns>
+          <ref_columns>
+            <property name="ref_column">MODEL_ID</property>
+          </ref_columns>
+        </foreign_key>
+      </foreign_keys>
+      <check_constraints>
+      </check_constraints>
+      <indexes>
+      </indexes>
+    </table>
+    <table>
+      <property name="owner">PASA2-SCHEMA</property>
+      <property name="name">ANNOTATION_UPDATES</property>
+      <property name="comment"><![CDATA[]]></property>
+      <property name="is_virtual">Y</property>
+      <property name="left">12</property>
+      <property name="top">605</property>
+      <property name="width">233</property>
+      <property name="height">182</property>
+      <property name="show_only_key_cols">N</property>
+      <property name="reload_from_database">N</property>
+      <property name="hide_data_types">N</property>
+      <property name="hide_comments">N</property>
+      <property name="column_sort_method">creation</property>
+      <columns>
+        <column>
+          <property name="name">ALT_SPLICE_FLAG</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">BOOLEAN</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">BEFORE_GENE_OBJ</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">BLOB</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">MODEL_ID</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">VARCHAR</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">UPDATE_ID</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">GENE_ID</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">VARCHAR</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">AFTER_GENE_OBJ</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">BLOB</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">HAVE_AFTER</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">BOOLEAN</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">IS_NOVEL_FLAG</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">BOOLEAN</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">HAVE_BEFORE</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">BOOLEAN</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">COMPARE_ID</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">IS_VALID</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">BOOLEAN</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+      </columns>
+      <primary_keys>
+        <primary_key>
+          <property name="name">ANNOTATION_UPDATES_KEY</property>
+          <property name="is_virtual">Y</property>
+          <columns>
+            <property name="column">UPDATE_ID</property>
+          </columns>
+        </primary_key>
+      </primary_keys>
+      <unique_keys>
+      </unique_keys>
+      <foreign_keys>
+      </foreign_keys>
+      <check_constraints>
+      </check_constraints>
+      <indexes>
+      </indexes>
+    </table>
+    <table>
+      <property name="owner">PASA2-SCHEMA</property>
+      <property name="name">ANNOTATION_STORE</property>
+      <property name="comment"><![CDATA[]]></property>
+      <property name="is_virtual">Y</property>
+      <property name="left">413</property>
+      <property name="top">783</property>
+      <property name="width">269</property>
+      <property name="height">152</property>
+      <property name="show_only_key_cols">N</property>
+      <property name="reload_from_database">N</property>
+      <property name="hide_data_types">N</property>
+      <property name="hide_comments">N</property>
+      <property name="column_sort_method">creation</property>
+      <columns>
+        <column>
+          <property name="name">MODEL_ID</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">VARCHAR</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">ANNOTDB_ASMBL_ID</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">VARCHAR</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">ANNOT_ID</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">GENE_ID</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">VARCHAR</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">LEND</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">GENE_OBJ</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">BLOB</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">ANNOTATION_VERSION</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">REND</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">ORIENT</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">CHAR</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+      </columns>
+      <primary_keys>
+        <primary_key>
+          <property name="name">ANNOTATION_STORE_KEY</property>
+          <property name="is_virtual">Y</property>
+          <columns>
+            <property name="column">ANNOT_ID</property>
+          </columns>
+        </primary_key>
+      </primary_keys>
+      <unique_keys>
+      </unique_keys>
+      <foreign_keys>
+        <foreign_key>
+          <property name="name">ANNOTATION_STORE_KEY</property>
+          <property name="is_virtual">Y</property>
+          <property name="ref_table_owner">PASA2-SCHEMA</property>
+          <property name="ref_table_name">ANNOTATION_VERSION</property>
+          <property name="on_delete"></property>
+          <columns>
+            <property name="column">ANNOTATION_VERSION</property>
+          </columns>
+          <ref_columns>
+            <property name="ref_column">VERSION_ID</property>
+          </ref_columns>
+        </foreign_key>
+      </foreign_keys>
+      <check_constraints>
+      </check_constraints>
+      <indexes>
+      </indexes>
+    </table>
+    <table>
+      <property name="owner">PASA2-SCHEMA</property>
+      <property name="name">ANNOTATION_VERSION</property>
+      <property name="comment"><![CDATA[]]></property>
+      <property name="is_virtual">Y</property>
+      <property name="left">454</property>
+      <property name="top">973</property>
+      <property name="width">209</property>
+      <property name="height">47</property>
+      <property name="show_only_key_cols">N</property>
+      <property name="reload_from_database">N</property>
+      <property name="hide_data_types">N</property>
+      <property name="hide_comments">N</property>
+      <property name="column_sort_method">creation</property>
+      <columns>
+        <column>
+          <property name="name">VERSION_ID</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">DATE</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">DATE</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+      </columns>
+      <primary_keys>
+        <primary_key>
+          <property name="name">ANNOTATION_VERSION_KEY</property>
+          <property name="is_virtual">Y</property>
+          <columns>
+            <property name="column">VERSION_ID</property>
+          </columns>
+        </primary_key>
+      </primary_keys>
+      <unique_keys>
+      </unique_keys>
+      <foreign_keys>
+      </foreign_keys>
+      <check_constraints>
+      </check_constraints>
+      <indexes>
+      </indexes>
+    </table>
+    <table>
+      <property name="owner">PASA2-SCHEMA</property>
+      <property name="name">ANNOTATION_COMPARE</property>
+      <property name="comment"><![CDATA[]]></property>
+      <property name="is_virtual">Y</property>
+      <property name="left">58</property>
+      <property name="top">868</property>
+      <property name="width">250</property>
+      <property name="height">62</property>
+      <property name="show_only_key_cols">N</property>
+      <property name="reload_from_database">N</property>
+      <property name="hide_data_types">N</property>
+      <property name="hide_comments">N</property>
+      <property name="column_sort_method">creation</property>
+      <columns>
+        <column>
+          <property name="name">COMPARE_ID</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">DATE</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">DATE</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">ANNOTATION_VERSION</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+      </columns>
+      <primary_keys>
+        <primary_key>
+          <property name="name">ANNOTATION_COMPARE_KEY</property>
+          <property name="is_virtual">Y</property>
+          <columns>
+            <property name="column">COMPARE_ID</property>
+          </columns>
+        </primary_key>
+      </primary_keys>
+      <unique_keys>
+      </unique_keys>
+      <foreign_keys>
+        <foreign_key>
+          <property name="name">ANNOTATION_COMPARE_KEY</property>
+          <property name="is_virtual">Y</property>
+          <property name="ref_table_owner">PASA2-SCHEMA</property>
+          <property name="ref_table_name">ANNOTATION_STORE</property>
+          <property name="on_delete"></property>
+          <columns>
+            <property name="column">ANNOTATION_VERSION</property>
+          </columns>
+          <ref_columns>
+            <property name="ref_column">ANNOTATION_VERSION</property>
+          </ref_columns>
+        </foreign_key>
+      </foreign_keys>
+      <check_constraints>
+      </check_constraints>
+      <indexes>
+      </indexes>
+    </table>
+    <table>
+      <property name="owner">PASA2-SCHEMA</property>
+      <property name="name">TRANSCRIPTPOLYA</property>
+      <property name="comment"><![CDATA[]]></property>
+      <property name="is_virtual">Y</property>
+      <property name="left">673</property>
+      <property name="top">197</property>
+      <property name="width">266</property>
+      <property name="height">92</property>
+      <property name="show_only_key_cols">N</property>
+      <property name="reload_from_database">N</property>
+      <property name="hide_data_types">N</property>
+      <property name="hide_comments">N</property>
+      <property name="column_sort_method">creation</property>
+      <columns>
+        <column>
+          <property name="name">GENOMICCOORD</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">VARCHAR2</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">Y</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">CDNA_ACC</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">VARCHAR2</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">TRANSCRIBEDORIENT</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">CHAR</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">ALIGNENDOFFSET</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">TRIMTYPE</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">VARCHAR</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+      </columns>
+      <primary_keys>
+        <primary_key>
+          <property name="name">TRANSCRIPTPOLYA_KEY</property>
+          <property name="is_virtual">Y</property>
+          <columns>
+            <property name="column">CDNA_ACC</property>
+          </columns>
+        </primary_key>
+      </primary_keys>
+      <unique_keys>
+      </unique_keys>
+      <foreign_keys>
+        <foreign_key>
+          <property name="name">TRANSCRIPTPOLYA_KEY</property>
+          <property name="is_virtual">Y</property>
+          <property name="ref_table_owner">PASA2-SCHEMA</property>
+          <property name="ref_table_name">CDNA_LINK</property>
+          <property name="on_delete"></property>
+          <columns>
+            <property name="column">CDNA_ACC</property>
+          </columns>
+          <ref_columns>
+            <property name="ref_column">CDNA_ACC</property>
+          </ref_columns>
+        </foreign_key>
+      </foreign_keys>
+      <check_constraints>
+      </check_constraints>
+      <indexes>
+      </indexes>
+    </table>
+    <table>
+      <property name="owner">PASA2-SCHEMA</property>
+      <property name="name">ASMBLPOLYA</property>
+      <property name="comment"><![CDATA[]]></property>
+      <property name="is_virtual">Y</property>
+      <property name="left">679</property>
+      <property name="top">344</property>
+      <property name="width">295</property>
+      <property name="height">77</property>
+      <property name="show_only_key_cols">N</property>
+      <property name="reload_from_database">N</property>
+      <property name="hide_data_types">N</property>
+      <property name="hide_comments">N</property>
+      <property name="column_sort_method">creation</property>
+      <columns>
+        <column>
+          <property name="name">GENOMICCOORD</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">ASMBL_ACC</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">VARCHAR2</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">NUMSUPPORTTRANSCRIPTS</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">ASMBLCOORD</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+      </columns>
+      <primary_keys>
+        <primary_key>
+          <property name="name">ASMBLPOLYA_KEY</property>
+          <property name="is_virtual">Y</property>
+          <columns>
+            <property name="column">ASMBL_ACC</property>
+          </columns>
+        </primary_key>
+      </primary_keys>
+      <unique_keys>
+      </unique_keys>
+      <foreign_keys>
+        <foreign_key>
+          <property name="name">ASMBLPOLYA_KEY</property>
+          <property name="is_virtual">Y</property>
+          <property name="ref_table_owner">PASA2-SCHEMA</property>
+          <property name="ref_table_name">CDNA_LINK</property>
+          <property name="on_delete"></property>
+          <columns>
+            <property name="column">ASMBL_ACC</property>
+          </columns>
+          <ref_columns>
+            <property name="ref_column">CDNA_ACC</property>
+          </ref_columns>
+        </foreign_key>
+      </foreign_keys>
+      <check_constraints>
+      </check_constraints>
+      <indexes>
+      </indexes>
+    </table>
+    <table>
+      <property name="owner">PASA2-SCHEMA</property>
+      <property name="name">ASMBL_LINK</property>
+      <property name="comment"><![CDATA[]]></property>
+      <property name="is_virtual">Y</property>
+      <property name="left">60</property>
+      <property name="top">338</property>
+      <property name="width">217</property>
+      <property name="height">47</property>
+      <property name="show_only_key_cols">N</property>
+      <property name="reload_from_database">N</property>
+      <property name="hide_data_types">N</property>
+      <property name="hide_comments">N</property>
+      <property name="column_sort_method">creation</property>
+      <columns>
+        <column>
+          <property name="name">ASMBL_ACC</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">VARCHAR2</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">CDNA_ACC</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">VARCHAR2</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+      </columns>
+      <primary_keys>
+        <primary_key>
+          <property name="name">ASMBL_LINK_KEY</property>
+          <property name="is_virtual">Y</property>
+          <columns>
+            <property name="column">ASMBL_ACC</property>
+            <property name="column">CDNA_ACC</property>
+          </columns>
+        </primary_key>
+      </primary_keys>
+      <unique_keys>
+      </unique_keys>
+      <foreign_keys>
+        <foreign_key>
+          <property name="name">ASMBL_LINK_KEY</property>
+          <property name="is_virtual">Y</property>
+          <property name="ref_table_owner">PASA2-SCHEMA</property>
+          <property name="ref_table_name">CLUSTER_LINK</property>
+          <property name="on_delete"></property>
+          <columns>
+            <property name="column">ASMBL_ACC</property>
+          </columns>
+          <ref_columns>
+            <property name="ref_column">CDNA_ACC</property>
+          </ref_columns>
+        </foreign_key>
+        <foreign_key>
+          <property name="name">ASMBL_LINK_KEY</property>
+          <property name="is_virtual">Y</property>
+          <property name="ref_table_owner">PASA2-SCHEMA</property>
+          <property name="ref_table_name">CLUSTER_LINK</property>
+          <property name="on_delete"></property>
+          <columns>
+            <property name="column">CDNA_ACC</property>
+          </columns>
+          <ref_columns>
+            <property name="ref_column">CDNA_ACC</property>
+          </ref_columns>
+        </foreign_key>
+      </foreign_keys>
+      <check_constraints>
+      </check_constraints>
+      <indexes>
+      </indexes>
+    </table>
+    <table>
+      <property name="owner">PASA2-SCHEMA</property>
+      <property name="name">SUBCLUSTERS</property>
+      <property name="comment"><![CDATA[]]></property>
+      <property name="is_virtual">Y</property>
+      <property name="left">671</property>
+      <property name="top">7</property>
+      <property name="width">213</property>
+      <property name="height">47</property>
+      <property name="show_only_key_cols">N</property>
+      <property name="reload_from_database">N</property>
+      <property name="hide_data_types">N</property>
+      <property name="hide_comments">N</property>
+      <property name="column_sort_method">creation</property>
+      <columns>
+        <column>
+          <property name="name">SUBCLUSTER_ID</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">CLUSTER_ID</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+      </columns>
+      <primary_keys>
+        <primary_key>
+          <property name="name">NEW_TABLE_KEY</property>
+          <property name="is_virtual">Y</property>
+          <columns>
+            <property name="column">SUBCLUSTER_ID</property>
+          </columns>
+        </primary_key>
+      </primary_keys>
+      <unique_keys>
+      </unique_keys>
+      <foreign_keys>
+        <foreign_key>
+          <property name="name">NEW_TABLE_KEY</property>
+          <property name="is_virtual">Y</property>
+          <property name="ref_table_owner">PASA2-SCHEMA</property>
+          <property name="ref_table_name">CLUSTERS</property>
+          <property name="on_delete"></property>
+          <columns>
+            <property name="column">CLUSTER_ID</property>
+          </columns>
+          <ref_columns>
+            <property name="ref_column">CLUSTER_ID</property>
+          </ref_columns>
+        </foreign_key>
+      </foreign_keys>
+      <check_constraints>
+      </check_constraints>
+      <indexes>
+      </indexes>
+    </table>
+    <table>
+      <property name="owner">PASA2-SCHEMA</property>
+      <property name="name">SUBCLUSTER_LINK</property>
+      <property name="comment"><![CDATA[]]></property>
+      <property name="is_virtual">Y</property>
+      <property name="left">659</property>
+      <property name="top">89</property>
+      <property name="width">232</property>
+      <property name="height">47</property>
+      <property name="show_only_key_cols">N</property>
+      <property name="reload_from_database">N</property>
+      <property name="hide_data_types">N</property>
+      <property name="hide_comments">N</property>
+      <property name="column_sort_method">creation</property>
+      <columns>
+        <column>
+          <property name="name">SUBCLUSTER_ID</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">INTEGER</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+        <column>
+          <property name="name">CDNA_ACC</property>
+          <property name="is_virtual">Y</property>
+          <property name="data_type">VARCHAR</property>
+          <property name="data_length">0</property>
+          <property name="data_precision">0</property>
+          <property name="data_scale">0</property>
+          <property name="is_nullable">N</property>
+          <property name="default_value"><![CDATA[]]></property>
+          <property name="comment"><![CDATA[]]></property>
+          <property name="sequence">0</property>
+        </column>
+      </columns>
+      <primary_keys>
+        <primary_key>
+          <property name="name">SUBCLUSTER_LINK_KEY</property>
+          <property name="is_virtual">Y</property>
+          <columns>
+            <property name="column">SUBCLUSTER_ID</property>
+            <property name="column">CDNA_ACC</property>
+          </columns>
+        </primary_key>
+      </primary_keys>
+      <unique_keys>
+      </unique_keys>
+      <foreign_keys>
+        <foreign_key>
+          <property name="name">SUBCLUSTER_LINK_KEY</property>
+          <property name="is_virtual">Y</property>
+          <property name="ref_table_owner">PASA2-SCHEMA</property>
+          <property name="ref_table_name">SUBCLUSTERS</property>
+          <property name="on_delete"></property>
+          <columns>
+            <property name="column">SUBCLUSTER_ID</property>
+          </columns>
+          <ref_columns>
+            <property name="ref_column">SUBCLUSTER_ID</property>
+          </ref_columns>
+        </foreign_key>
+        <foreign_key>
+          <property name="name">SUBCLUSTER_LINK_KEY</property>
+          <property name="is_virtual">Y</property>
+          <property name="ref_table_owner">PASA2-SCHEMA</property>
+          <property name="ref_table_name">CLUSTER_LINK</property>
+          <property name="on_delete"></property>
+          <columns>
+            <property name="column">CDNA_ACC</property>
+          </columns>
+          <ref_columns>
+            <property name="ref_column">CDNA_ACC</property>
+          </ref_columns>
+        </foreign_key>
+      </foreign_keys>
+      <check_constraints>
+      </check_constraints>
+      <indexes>
+      </indexes>
+    </table>
+  </tables>
+  <object_tables>
+  </object_tables>
+  <types>
+  </types>
+  <notes>
+  </notes>
+</schemester_diagram>

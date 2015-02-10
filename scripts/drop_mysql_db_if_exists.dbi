@@ -1,0 +1,69 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Pasa_conf;
+use Mysql_connect;
+use strict;
+use ConfigFileReader;
+use DBI;
+use Cwd;
+use Ath1_cdnas;
+use Getopt::Std;
+
+use vars qw ($opt_c);
+
+&getopts ('c:');
+
+$|=1;
+our $SEE = 0;
+
+open (STDERR, "&>STDOUT");
+
+my $usage =  <<_EOH_;
+
+############################# Options ###############################
+#
+# -c * <filename>  configuration file for align-assembly
+#
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+
+my $configfile = $opt_c or die $usage;
+
+## Read configuration file.
+my %config = &readConfig($configfile);
+
+
+my $mysql_db = $config{MYSQLDB} or die "Error, couldn't extract mysql_db name from config file " . cwd() . "/$configfile\n";
+my $mysql_server = &Pasa_conf::getParam("MYSQLSERVER");
+my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+## Create the database
+my $admin_db = ""; # just forcing a connection.
+my ($dbproc) = &connect_to_db($mysql_server,$admin_db,$user,$password);
+
+eval {
+	my $query = "use $mysql_db";
+	&RunMod($dbproc, $query);
+};
+
+if ($@) {
+	print STDERR "OK, $mysql_db does not yet exist.\n";
+}
+else {
+	print STDERR "database: $mysql_db exists. Dropping it now.\n";
+	# database exists. drop it.
+	my $query = "drop database $mysql_db";
+	&RunMod($dbproc, $query);
+}
+
+$dbproc->disconnect;
+
+exit(0);

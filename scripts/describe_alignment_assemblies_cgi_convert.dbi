@@ -1,0 +1,120 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Mysql_connect;
+use strict;
+use DBI;
+use Ath1_cdnas;
+use Getopt::Std;
+
+use vars qw ($opt_M $opt_f $opt_d $opt_h $opt_v);
+
+&getopts ('M:p:dhv');
+
+
+$|=1;
+our $SEE = 0;
+
+open (STDERR, "&>STDOUT");
+
+my $usage =  <<_EOH_;
+
+############################# Options ###############################
+#
+# -M Mysql database name
+# -d Debug
+# 
+# -h print this option menu and quit
+# -v verbose
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+if ($opt_h) {die $usage;}
+
+my $MYSQLdb = $opt_M or die $usage;
+my $MYSQLserver = &Pasa_conf::getParam("MYSQLSERVER");
+my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+our $DEBUG = $opt_d;
+our $SEE = $opt_v;
+
+
+
+my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+print join("\t", "#scaffold", "subcluster_id", "asmbl_acc", "cdna_accs", "alignment_description") . "\n";
+
+
+my $query = "select cdna_acc from cdna_info where is_assembly = 1";
+my @asmbls = &Mysql_connect::do_sql_2D($dbproc, $query);
+
+foreach my $asmbl_ref (@asmbls) {
+    
+    my ($asmbl) = @$asmbl_ref;
+    
+    ## need list of cdna_accs assembled here.
+    my @cdna_accs = &get_cdnas_incorporated_into_assembly($dbproc, $asmbl);
+    
+    my $subcluster_id = &get_subcluster_id($dbproc, $asmbl);
+    
+    my $genomic_asmbl_id = &get_genome_asmbl_id($dbproc, $asmbl);
+    
+    my $query = "select alignment from align_link where align_acc = ?";
+    my $alignment = &Mysql_connect::very_first_result_sql($dbproc, $query, $asmbl);
+    #my $assembly_alignment = "alignment_assembly: " . &Mysql_connect::very_first_result_sql($dbproc, $query);
+    #print "alignment_assembly:$asmbl\tcdna_accs:$cdna_accs\tgenomic_acc:${asmbl_id}\t${assembly_alignment}\n";
+    
+    
+
+    print join("\t", $genomic_asmbl_id, $subcluster_id, $asmbl, join(",", @cdna_accs), $alignment) . "\n";
+    
+}
+
+
+$dbproc->disconnect;
+
+exit(0);
+
+
+####
+sub get_cdnas_incorporated_into_assembly {
+    my ($dbproc, $asmbl_acc) = @_;
+
+    my $query = "select ci.cdna_acc from asmbl_link a, align_link al, cdna_info ci where a.asmbl_acc = ? and a.cdna_acc = al.align_acc and al.cdna_info_id = ci.id";
+    my @results = &do_sql_2D($dbproc, $query, $asmbl_acc);
+    my @cdnas;
+    foreach my $result (@results) {
+        push (@cdnas, @$result);
+    }
+
+    return(@cdnas);
+}
+
+
+####
+sub get_subcluster_id {
+    my ($dbproc, $asmbl_acc) = @_;
+
+    my $query = "select subcluster_id from subcluster_link where cdna_acc = ?";
+    my $subcluster_id = &Mysql_connect::very_first_result_sql($dbproc, $query, $asmbl_acc);
+
+    return($subcluster_id);
+}
+
+
+####
+sub get_genome_asmbl_id {
+    my ($dbproc, $asmbl_acc) = @_;
+
+    my $query = "select c.annotdb_asmbl_id from clusters c, align_link al where al.cluster_id = c.cluster_id and al.align_acc = ?";
+    my $genomic_asmbl_id = &Mysql_connect::very_first_result_sql($dbproc, $query, $asmbl_acc);
+
+    return($genomic_asmbl_id);
+}
+

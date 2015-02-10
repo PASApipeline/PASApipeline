@@ -1,0 +1,605 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use strict;
+use DBI;
+use CDNA::CDNA_alignment;
+use Mysql_connect;
+use Getopt::Long qw (:config no_ignore_case bundling);
+use Ath1_cdnas;
+use Nuc_translator;
+use CdbTools;
+use Fasta_reader;
+use Fasta_retriever;
+use threads;
+use threads::shared;
+use Thread_helper;
+
+use Cwd;
+
+use vars qw ($DEBUG $opt_M $opt_P $opt_g $opt_h $opt_t $opt_v
+             $MAX_INTRON_LENGTH 
+             $MIN_PERCENT_ALIGNED 
+             $MIN_AVG_PER_ID
+             $NUM_BP_PERFECT_SPLICE_BOUNDARY
+             $MIN_INTRON_LENGTH
+             );
+
+my $CPU = 1;
+
+
+&GetOptions(
+            'M=s' => \$opt_M,
+            'P=s' => \$opt_P,
+            'g=s' => \$opt_g,
+            't=s' => \$opt_t,
+            'd' => \$DEBUG,
+            'h' => \$opt_h,
+            'v' => \$opt_v,
+            
+            'CPU=i' => \$CPU,
+            
+            'MAX_INTRON_LENGTH=i' => \$MAX_INTRON_LENGTH,
+            'MIN_INTRON_LENGTH=i' => \$MIN_INTRON_LENGTH,
+            'MIN_PERCENT_ALIGNED=f' => \$MIN_PERCENT_ALIGNED,
+            'MIN_AVG_PER_ID=f' => \$MIN_AVG_PER_ID,
+            'NUM_BP_PERFECT_SPLICE_BOUNDARY=i' => \$NUM_BP_PERFECT_SPLICE_BOUNDARY,
+            );
+
+
+our $SEE = $opt_v;
+our $DB_SEE = $opt_v;
+unless ( $MAX_INTRON_LENGTH ) {
+    $MAX_INTRON_LENGTH = 2000;
+}
+unless ( $MIN_PERCENT_ALIGNED ) {
+    $MIN_PERCENT_ALIGNED = 90;
+}
+unless ( $MIN_AVG_PER_ID ) {
+    $MIN_AVG_PER_ID = 95;
+}
+
+unless (defined ($NUM_BP_PERFECT_SPLICE_BOUNDARY)) {
+    $NUM_BP_PERFECT_SPLICE_BOUNDARY = 3;
+}
+
+unless (defined $MIN_INTRON_LENGTH) {
+    $MIN_INTRON_LENGTH = 20; # smallest valid intron length I know of
+}
+
+my $usage =  <<_EOH_;
+
+Script assembles the predefined clusters of cDNAs/ESTs, one annotationdb asmbl_id (genomic sequence) at a time.
+The 'assemblies' directory is created and the assemblies are stored in that directory for future loading using
+assembly_db_loader.dbi
+
+Alignment validations include examining for consensus splice sites and examining intron lengths.
+
+############################# Options ###############################
+#
+# -M Mysql database name
+# -P cDNA alignment program (ie. blat sim4)
+# -g genomic_seq_db
+# -t transcript_db
+# -h print this option menu and quit
+# -v verbose 
+#
+# --CPU <int>        number of threads (default: 1)
+#
+# Parameter specifications:
+#
+#  --MAX_INTRON_LENGTH   (default: 2000)
+#  --MIN_INTRON_LENGTH   (default: 20 bp)
+#  --MIN_PERCENT_ALIGNED  (defaut: 90)
+#  --MIN_AVG_PER_ID   (default: 95)
+#  --NUM_BP_PERFECT_SPLICE_BOUNDARY (default: 3)
+#
+###################### Process Args and Options #####################
+
+
+The order of tests is as follows:
+-splice sites and incontiguous alignment
+-intron length
+-percent aligned
+-avg percent identity
+
+
+
+_EOH_
+
+    ;
+
+if ($opt_h) {die $usage;}
+
+my $MYSQLdb = $opt_M or die $usage;
+my $MYSQLserver = &Pasa_conf::getParam("MYSQLSERVER");
+my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+my $genomic_seq_db = $opt_g or die $usage;
+unless (-s $genomic_seq_db) {
+    die "Error, cannot find $genomic_seq_db";
+}
+unless (-s "$genomic_seq_db.cidx") {
+    system "cdbfasta -C $genomic_seq_db";
+}
+
+my $transcript_db = $opt_t;
+unless (-s $transcript_db) {
+    die "Error, cannot find transcript_db: $transcript_db";
+}
+unless (-s "$transcript_db.cidx") {
+    system "cdbfasta -C $transcript_db";
+}
+
+
+
+my $prog_type = $opt_P;
+
+
+$|++;
+
+my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+#open (STDERR, ">&STDOUT");
+
+my $tmp_dir = cwd() . "/__tmp_alignment_validations";
+
+if (-d $tmp_dir) {
+    print STDERR "\n\n************************\n"
+        . "   -Warning, $tmp_dir already exists. Resuming where it previously left off.\n"
+        . "******************************\n";
+    sleep(10);
+
+}
+else {
+    mkdir ($tmp_dir) or die $!;
+}
+
+my $header = join("\t", "#prog", "acc", 
+                  "cluster_link_id", "align_id",
+                  "scaffold", 
+                  "num_segs", "aligned_orient", "spliced_orient",
+                  "alignment_valid", "coord_span", 
+                  "avg_per_ID", "per_len_aligned", "score",
+                  "alignment",
+                  "validation_comment") . "\n";
+
+#############################################################################
+# begin program
+
+
+print STDERR "-retrieving transcript sequences ... ";
+#my $fasta_reader = new Fasta_reader($transcript_db);
+#my %transcripts :shared;
+#%transcripts = $fasta_reader->retrieve_all_seqs_hash();
+
+my $trans_fasta_retriever = new Fasta_retriever($transcript_db);
+
+my $genome_fasta_retriever = new Fasta_retriever($genomic_seq_db);
+
+print STDERR "done.\n\nNow validating alignments on scaffolds.\n";
+
+my $query = "select distinct annotdb_asmbl_id from clusters";
+my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+
+
+#$Thread_helper::THREAD_MONITORING = 1;
+
+my $thread_helper = new Thread_helper($CPU);
+
+
+
+my @files;
+
+my $total_number_of_results = scalar(@results);
+my $results_processed = int(0);
+
+foreach my $result (@results) {
+    
+    my $asmbl_id = $result->[0];
+    my $asmbl_id_for_filename = $asmbl_id;
+    $asmbl_id_for_filename =~ s/\W/_/g;
+
+    my $validations_file = "$tmp_dir/$asmbl_id_for_filename.alignment_validations.txt";
+    push (@files, $validations_file);
+    
+    $thread_helper->wait_for_open_thread();
+    
+    my $thread = threads->create('validate_alignments_on_asmbl_id', $asmbl_id, $validations_file);
+    $thread_helper->add_thread($thread);
+
+    $results_processed += 1;
+    print STDERR "\rProcessing ".$results_processed.'/'.$total_number_of_results."      ";
+    
+}
+
+$thread_helper->wait_for_all_threads_to_complete();
+
+if (my @failed_threads = $thread_helper->get_failed_threads()) {
+    die "Error, " . scalar(@failed_threads) . " scaffolds failed to be processed. ";
+}
+else {
+    print STDERR "\nDone with alignment validations.\n";
+}
+
+
+## Get all results files, print to stdout
+print STDERR "-capturing validation results from:\n";
+foreach my $file (@files) {
+    print STDERR "\r $file                                    ";
+    open (my $fh, $file) or die "Error, cannot open file $file";
+    while (<$fh>) {
+        print $_;
+    }
+    close $fh;
+}
+
+`rm -rf $tmp_dir`; # cleanup
+print "\nCompleted.\n";
+exit(0);
+
+
+
+####
+sub validate_alignments_on_asmbl_id {
+    my ($asmbl_id, $validations_outfile) = @_;
+    
+    
+    my $validations_checkpoint_file = "$validations_outfile.ok";
+    if (-e $validations_outfile && -e $validations_checkpoint_file) {
+        print STDERR "WARNING, already processed $asmbl_id, skipping and reusing its earlier output.\n";
+        return;
+    }
+
+
+    $trans_fasta_retriever->refresh_fh(); # each thread gets a new filehandle since can't be shared.
+    $genome_fasta_retriever->refresh_fh();
+
+    
+    print STDERR "\t($asmbl_id)                      ";
+    
+    open (my $ofh, ">$validations_outfile") or die "Error, cannot write to file: $validations_outfile";
+    print $ofh $header;
+    
+
+    # my $sequence = &Ath1_cdnas::get_seq_from_fasta($asmbl_id, $genomic_seq_db);
+
+    my $sequence = uc $genome_fasta_retriever->get_seq($asmbl_id);
+    
+    my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+    
+    ## Get the align ids linked to this asmbl_id:
+    #my $query = "select cdl.align_id, cl.length from cdna_link cdl, cluster_link cl, clusters c where c.annotdb_asmbl_id = ? and c.cluster_id = cl.cluster_id and cl.cdna_acc = cdl.cdna_acc and cdl.prog = ? and cdl.validate is null";
+	# force query to use indexes since sometimes it doesn't want to for some weird unknown reason.   (Thanks Bing-Bing Wang!)
+	my $query = "select al.align_id, al.prog, ci.length "
+	  . "from align_link al force index(align_acc_idx), "
+	  . "cdna_info ci, "
+	  . "clusters c force index (asmbl_id_idx) "
+	  . "where c.annotdb_asmbl_id = ? and c.cluster_id = al.cluster_id and al.cdna_info_id = ci.id "
+      . " and al.validate is null";
+	  
+    if ($prog_type) {
+        $query .= " and al.prog = \"$prog_type\" ";
+    }
+	
+    my @results = &Mysql_connect::do_sql_2D($dbproc, $query, $asmbl_id);
+
+    $dbproc->{dbh}->{AutoCommit} = 0;
+
+	
+    foreach my $result (@results) {
+        my ($align_id, $prog, $cdna_length) = @$result;
+        print "align_id: $align_id\n" if $SEE;
+        my $alignment = &Ath1_cdnas::create_alignment_obj($dbproc, $align_id, \$sequence);
+        
+        &process_alignment($alignment, $prog, $cdna_length, $asmbl_id, \$sequence, $ofh);
+    }
+
+    close $ofh;
+
+    $dbproc->{dbh}->commit();
+    $dbproc->{dbh}->{AutoCommit} = 1;
+
+    system("touch \'$validations_checkpoint_file\'");
+    
+    return;
+
+}
+
+
+####
+sub process_alignment() {
+    my ($cdna_alignment, $prog_type, $cdna_length, $asmbl_id, $sequence_ref, $ofh) = @_;
+    my $error_comment = "";
+    print STDERR $cdna_alignment->toString() if $SEE;
+    my $acc = $cdna_alignment->get_acc();
+    my $error_flag = ($cdna_alignment->get_error_flag()) ? "ERROR" : "OK"; #indicates nonconensus splice sites or incontiguous alignment
+    my $num_segments = $cdna_alignment->get_num_segments();
+    my $aligned_orient = $cdna_alignment->get_orientation();
+    my $spliced_orient = $cdna_alignment->get_spliced_orientation();
+    my $alignment = $cdna_alignment->toToken();
+    my @coords = $cdna_alignment->get_coords();
+    my $coord_span = "$coords[0]-$coords[1]";
+    my $avg_per_id = $cdna_alignment->{avg_per_id};
+    my $percent_aligned = $cdna_alignment->{percent_cdna_aligned};
+    my $align_id = $cdna_alignment->get_align_id();
+    my $cdna_id = $cdna_alignment->get_cdna_id();
+       
+    
+    my $score = 0;
+    
+
+    if ($error_flag eq "ERROR") {
+        $error_comment = $cdna_alignment->get_error_flag();
+    } elsif ($error_flag eq "OK") {
+        
+        $score = &score_alignment($cdna_alignment); # only valid alignments get scored.
+        
+        if ($num_segments > 1) {
+            
+            my @segments = $cdna_alignment->get_alignment_segments();
+            
+            if ($NUM_BP_PERFECT_SPLICE_BOUNDARY > 0) {
+                my $error_text = &validate_sequence_segments_at_splice_boundaries($cdna_alignment, $sequence_ref, $acc);
+                if ($error_text) {
+                    $error_comment .= $error_text;
+                    $error_flag = "ERROR";
+                }
+            }
+            
+            ## Check intron lengths:
+            
+            for (my $i = 1; $i <= $#segments; $i++) {
+                my $prev_end3 = $segments[$i-1]->{rend};
+                my $curr_end5 = $segments[$i]->{lend};
+                my $intron_length = $curr_end5 - $prev_end3 - 1;
+                if ($intron_length > $MAX_INTRON_LENGTH) {
+                    $error_flag = "ERROR";
+                    $error_comment =  "Intron length exceeds maximum: ($intron_length > $MAX_INTRON_LENGTH, determined between $prev_end3 and $curr_end5)";
+                    
+                }
+                if ($intron_length < $MIN_INTRON_LENGTH) {
+                    $error_flag = "ERROR";
+                    $error_comment = "Intron length is less than the minimum intron length allowed ($intron_length < $MIN_INTRON_LENGTH, determined between $prev_end3 and $curr_end5\n";
+
+                }
+            }
+        }
+        if ($error_flag eq "OK") {
+            ## test percent aligned:
+            
+            if ($percent_aligned < $MIN_PERCENT_ALIGNED) {
+                $error_flag = "ERROR";
+                $error_comment = "Only $percent_aligned % is aligned, less than the $MIN_PERCENT_ALIGNED required.";
+            }
+        }
+        if ($error_flag eq "OK") {
+            # check avg percent identity
+            
+            if ($avg_per_id < $MIN_AVG_PER_ID) {
+                $error_flag = "ERROR";
+                $error_comment = "Only $avg_per_id % identity on average, less than the $MIN_AVG_PER_ID required.";
+            }
+        }
+    }
+    
+    print $ofh join("\t", $prog_type, $acc, 
+                    $cdna_id, $align_id,
+                    $asmbl_id, 
+                    $num_segments, $aligned_orient, $spliced_orient, 
+                    $error_flag, $coord_span, 
+                    $avg_per_id, $percent_aligned, $score,
+                    $alignment, 
+                    $error_comment) . "\n";
+ 
+
+    return;
+}
+
+
+
+####
+sub validate_sequence_segments_at_splice_boundaries {
+    my ($alignment, $sequence_ref, $transcript_acc) = @_;
+    
+    if ($SEE) {
+        print "VALIDATING ALIGNMENT for $transcript_acc:\n" . $alignment->toString();
+    }
+    
+
+    my $aligned_orient = $alignment->get_orientation();
+    
+
+    ## Check bp's flanking the splice site:
+    #my $transcript_seq = uc $transcripts{$transcript_acc} or die "Error, no transcript seque for $transcript_acc"; #Ath1_cdnas::get_seq_from_fasta($transcript_acc, $transcript_db);
+    #my ($trans_acc, $trans_header, $transcript_seq) = linearize($transcript_fasta);
+    
+    my $transcript_seq = uc $trans_fasta_retriever->get_seq($transcript_acc);
+    
+    my @segments = $alignment->get_alignment_segments();
+    
+    my $error_text = "";
+    
+    my $found_mismatch_flag = 0;
+    for (my $i = 0; $i <= $#segments; $i++) {
+        
+        my ($genome_lend, $genome_rend) = sort {$a<=>$b} $segments[$i]->get_coords();
+        my ($m_end5, $m_end3) = sort {$a<=>$b} $segments[$i]->get_mcoords();
+        
+        
+        my $segment_length = $genome_rend - $genome_lend + 1;
+                
+        if ($SEE) {
+        
+            print "Segment($i) for $transcript_acc:\n"
+            . "$genome_lend-$genome_rend, $m_end5-$m_end3\n\n";
+            
+
+            ## spit out the comparison string:
+            &output_seqs($genome_lend, $genome_rend, $sequence_ref,
+                         $m_end5, $m_end3, \$transcript_seq, $aligned_orient);
+        }
+
+        
+        if ($i != 0) { 
+            ## walk the left boundary
+            if ($aligned_orient eq '+') {
+                
+                #        5           3
+                #  g   XX------------>
+                #  t   XX------------>
+                #        5           3
+                
+                for (my $j = 0; $j < $NUM_BP_PERFECT_SPLICE_BOUNDARY && $j < $segment_length; $j++) {
+                    
+                    my $transcript_char = substr ($transcript_seq, $m_end5 + $j -1, 1);
+                    my $genome_char = substr ($$sequence_ref, $genome_lend + $j -1, 1);
+                    if ($transcript_char ne $genome_char) {
+                        $found_mismatch_flag = 1;
+                        my $error = "Left($j) (seg: $i [+]) found mismatch at splice boundary position (" 
+                            . ($genome_lend + $j) . "$genome_char), (" .  ($m_end5 + $j) . " $transcript_char)";
+                        
+                        $error_text .= $error;
+                        print "ERROR: $error\n" if $SEE;
+                        
+                        last;
+                    }
+                }
+                
+            }
+            else {
+                ## minus strand walk the left boundary
+                
+                #       5              3
+                #  g  XX--------------->
+                #  t  XX<--------------
+                #       3             5
+                
+                my $found_mismatch = 0;
+                for (my $j = 0; $j < $NUM_BP_PERFECT_SPLICE_BOUNDARY && $j < $segment_length; $j++) {
+                    my $transcript_char = substr ($transcript_seq, $m_end3 - $j -1, 1);
+                    my $genome_char = substr ($$sequence_ref, $genome_lend + $j -1, 1);
+                    $transcript_char = &reverse_complement($transcript_char);
+                    if ($transcript_char ne $genome_char) {
+                        $found_mismatch_flag = 1;
+                        my $error = "Left($j) (seg: $i [-]) found mismatch at splice boundary position (" 
+                            . ($genome_lend + $j) . " $genome_char ), (" .  ($m_end3 - $j) . " $transcript_char)";
+                        $error_text .= $error;
+                        print "ERROR: (G:$genome_lend-$genome_rend, T:$m_end5-$m_end3) $error\n" if $SEE;
+                        
+                        last;
+                    }
+                }
+            }
+        }
+        
+        
+        if ($i != $#segments) {
+            ## walk the right boundary
+
+            #        5           3
+            #  g     ------------>XX
+            #  t     ------------>XX
+            #        5           3
+            
+            if ($aligned_orient eq '+') {
+                for (my $j = 0; $j < $NUM_BP_PERFECT_SPLICE_BOUNDARY && $j < $segment_length; $j++) {
+                    my $transcript_char = substr ($transcript_seq, $m_end3 - $j -1, 1);
+                    my $genome_char = substr ($$sequence_ref, $genome_rend - $j -1, 1);
+                    if ($transcript_char ne $genome_char) {
+                        $found_mismatch_flag = 1;
+                        my $error = "Right($j) (seg: $i [+]) found mismatch at splice boundary position (" 
+                            . ($genome_rend - $j) . " $genome_char), (" .  ($m_end3 - $j) . " $transcript_char)";
+                        
+                        $error_text .= $error;
+                        print "ERROR: $error\n" if $SEE;
+
+                        last;
+                    }
+                }
+                
+            }
+            else {
+                ## minus strand walk the left boundary
+                
+                #       5              3
+                #  g    --------------->XX
+                #  t    <-------------- XX
+                #       3             5
+                
+                my $found_mismatch = 0;
+                for (my $j = 0; $j < $NUM_BP_PERFECT_SPLICE_BOUNDARY && $j < $segment_length; $j++) {
+                    my $transcript_char = substr ($transcript_seq, $m_end5 + $j -1, 1);
+                    my $genome_char = substr ($$sequence_ref, $genome_rend - $j -1, 1);
+                    print "transcript before: $transcript_char\n" if $SEE;
+                    $transcript_char = &reverse_complement($transcript_char);
+                    if ($transcript_char ne $genome_char) {
+                        $found_mismatch_flag = 1;
+                        my $error = "Right($j) (seg: $i [-]) found mismatch at splice boundary position (" 
+                            . ($genome_rend - $j) . " $genome_char), (" .  ($m_end5 + $j) . " $transcript_char)";
+                        
+                        $error_text .= $error;
+                        print "ERROR: $error\n" if $SEE;
+                        
+
+                        last;
+                    }
+                }
+            }
+        }
+        
+    }
+
+    print "=======\n" . $alignment->toString() . "\n\n$error_text\n=========\n\n\n" if $SEE && $error_text;
+    
+    return ($error_text);
+}
+
+
+####
+sub output_seqs {
+    my ($genome_lend, $genome_rend, $sequence_ref, 
+        $m_end5, $m_end3, $transcript_seq_ref, $orient) = @_;
+
+    my $genome_substring = substr($$sequence_ref, $genome_lend - 1, $genome_rend - $genome_lend + 1);
+    
+    my ($trans_lend, $trans_rend) = sort {$a<=>$b} ($m_end5, $m_end3);
+    
+
+    my $trans_subseq = substr($$transcript_seq_ref, $trans_lend -1 , $trans_rend - $trans_lend + 1);
+    
+    print "transcript($m_end5-$m_end3 [$orient]):\n$trans_subseq\n\n";
+    if ($orient eq '-') {
+        $trans_subseq = &reverse_complement($trans_subseq);
+    }
+    
+
+    print "genome($genome_lend-$genome_rend):\n$genome_substring\n";
+    print "transcript($m_end5-$m_end3 [$orient]):\n$trans_subseq\n\n";
+}
+
+
+####
+sub score_alignment {
+    my ($cdna_alignment) = @_;
+
+    my $score = 0;
+
+    my @segments = $cdna_alignment->get_alignment_segments();
+    
+    foreach my $segment (@segments) {
+        my ($m_lend, $m_rend) = $segment->get_mcoords();
+        my $len = abs($m_rend - $m_lend) + 1;
+        my $per_id = $segment->get_per_id();
+        
+        $score += $len * $per_id;
+    }
+
+    return($score);
+}
+
+

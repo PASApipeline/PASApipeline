@@ -1,0 +1,134 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Pasa_conf;
+use Mysql_connect;
+use strict;
+use DBI;
+use Ath1_cdnas;
+use Getopt::Std;
+
+use vars qw ($opt_M $opt_f $opt_d $opt_h $opt_v $opt_P);
+
+&getopts ('M:dhvP:');
+
+
+$|=1;
+our $SEE = 0;
+
+open (STDERR, "&>STDOUT");
+
+my $usage =  <<_EOH_;
+
+############################# Options ###############################
+#
+# -M Mysql database name
+#
+# -P prefix to output files (default "\${mysql_db}")
+# -d Debug
+# 
+# -h print this option menu and quit
+# -v verbose
+###################### Process Args and Options #####################
+
+Script creates the following output files:
+
+
+
+
+
+_EOH_
+
+    ;
+
+if ($opt_h) {die $usage;}
+
+
+
+
+
+
+my $DEBUG = $opt_d;
+our $SEE = $opt_v;
+
+my $MYSQLdb = $opt_M or die $usage;
+my $MYSQLserver = &Pasa_conf::getParam("MYSQLSERVER");
+my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+my $prefix = $opt_P || $MYSQLdb;
+
+
+my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+###################################################################
+## Begin program here
+
+
+
+
+{ ## report the labels for splicing variations found in assemblies  
+    
+    print "Writing splicing variations output file\n";
+    
+    my $query = qq { select c.annotdb_asmbl_id, sv.cdna_acc, sl.subcluster_id, sv.type, 
+                     sv.lend, sv.rend, sv.orient, svs.transcripts_A 
+                         from clusters c, align_link al, splice_variation sv, 
+                         splice_variation_support svs, subcluster_link sl 
+                         where c.cluster_id = al.cluster_id and al.align_acc = sv.cdna_acc 
+                         and sv.sv_id = svs.sv_id and sl.cdna_acc = al.align_acc
+                         order by sl.subcluster_id
+                     };
+    open (my $fh, ">$prefix.indiv_splice_labels_and_coords.dat") or die $!;
+    &write_output_file($query, $fh);
+    close $fh;
+}
+ 
+
+{ ## report the combination of labels assigned to each alignment assembly
+    
+    print "Writing splicing label combination output file\n";
+    
+    my $query = qq { select c.annotdb_asmbl_id, asta.cdna_acc, sl.subcluster_id, ast.alt_splice_token
+                         from alt_splice_token_assignment asta, alt_splice_tokens ast, 
+                         clusters c, align_link al, subcluster_link sl 
+                         where asta.token_id = ast.token_id
+                         and asta.cdna_acc = al.align_acc and al.cluster_id = c.cluster_id
+                         and asta.cdna_acc = sl.cdna_acc
+                         order by sl.subcluster_id
+                     };
+
+    open (my $fh, ">$prefix.alt_splice_label_combinations.dat") or die $!;
+    &write_output_file($query, $fh);
+    close $fh;
+}
+
+
+$dbproc->disconnect;
+
+exit(0);
+
+
+
+####
+sub write_output_file {
+    my ($query, $fh) = @_;
+    
+    my $dbh = $dbproc->get_dbh();
+
+    my $sth = $dbh->prepare($query);
+    $sth->execute();
+    
+    while (my @row = $sth->fetchrow()) {
+        print $fh join ("\t", @row) . "\n";
+    }
+    $sth->finish;
+    
+    return;
+}
+    
+    
+
+

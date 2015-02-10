@@ -1,0 +1,505 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Pasa_conf;
+use Mysql_connect;
+use strict;
+use DBI;
+use Data::Dumper;
+use Ath1_cdnas;
+use Storable qw(thaw);
+use Gene_obj;
+use CDNA::CDNA_alignment;
+use CDNA::Alignment_segment;
+use Getopt::Std;
+use CdbTools;
+use Carp;
+
+use vars qw ($opt_M $opt_g $opt_v $opt_c $opt_P $opt_d $opt_h $opt_t);
+
+&getopts ('M:c:P:d:hg:t:v');
+
+$|=1;
+
+#################################################################
+## The first A of the polyA tail is derived from the original transcript and not from polyadenylation.
+## references for this include:
+#  1.  Analysis of RNA cleavage at the adenovirus-2 L3 polyadenylation site.  Moore, Skolnik-David and Sharp, EMBO 1986
+#  2.  Point mutations in AAUAAA and the poly (A) addition site: effects on teh accuracy and efficiency of cleavage and polyadenylation in vitro.  Sheets, Ogg, and Wickens. NAR 1990
+#  3.  Cleavage site determinants in teh mammalian polyadenylation signal.  Chen, DacDonald and Wilusz.  NAR 1995
+#
+#  Thanks Quinn Li for guidance and the above references!!
+#################################################################
+
+
+my $usage =  <<_EOH_;
+
+############################# Options ###############################
+#
+# -M Mysql database name
+# 
+# -c seqclean .cln filename
+# -g genomic_db filename
+# -t untrimmed, uncleaned transcript database
+# -d Debug
+# 
+# -h print this option menu and quit
+# -v verbose
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+if ($opt_h) {die $usage;}
+
+my $MYSQLdb = $opt_M or die $usage;
+my $MYSQLserver = &Pasa_conf::getParam("MYSQLSERVER");
+my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+
+my $DEBUG = $opt_d;
+
+our $SEE = $opt_v;
+our $DB_SEE = $SEE;
+
+my $cln_file = $opt_c or die $usage;
+my $genomic_db = $opt_g or die $usage;
+my $uncleaned_transcript_db = $opt_t or die $usage;
+
+my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+&clear_polyA_db_tables();
+
+## Get polyA info from the seqclean trimpoly output.
+
+open (XALLCLN, $cln_file) or die $!;
+
+my %POLYA_INFO; #store more structured info for polyA seq extraction and display.
+
+while (<XALLCLN>) {
+    chomp;
+    my $line = $_;
+    my @x = split (/\t/, $line);
+    my $acc = $x[0];
+    $acc =~ s/\s//g;
+    
+    my $seqlength = $x[4];
+    
+    while ($line =~ /trimpoly\[\+(\d+),\s\-(\d+)\]/g) {
+        my $lend_trim = $1;
+        my $rend_trim = $2;
+        
+        
+        ## Type def for POLYA_INFO{key} 
+        # type => 'lend' (polyT), or 'rend' (polyA)
+        # trim => number of nucleotides trimmed from corresponding end (see type)
+        # orient => +|-  orientation of alignment of cDNA along genomic sequence.
+        # transcribed => +|- transcribed orientation of cDNA along genomic sequence inferred from orient and type
+        # coords => lend-rend (coordinate span for alignment).
+        # untrimmed_length => length of sequence before trimming.
+        
+        if ($lend_trim && !$rend_trim) {
+            
+            if (my $eleRef = $POLYA_INFO{$acc}) {
+                $eleRef->{trim} += $lend_trim;
+                ## For now, ingore these entries: bug in seqclean?
+                delete $POLYA_INFO{$acc}; ############################################# Eventually, restore this part.
+                
+            } else {
+                
+                $POLYA_INFO{$acc} = { acc => $acc,
+                                      type=>'lend',
+                                      trim=>$lend_trim,
+                                      untrimmed_length => $seqlength};
+            }
+            
+        } elsif ((!$lend_trim) && $rend_trim) {
+	    	
+            if (my $eleRef = $POLYA_INFO{$acc}) {
+                $eleRef->{trim} += $rend_trim;
+                ## For now, ignore these entries: bug in seqclean.
+                delete $POLYA_INFO{$acc};  ###################################### Eventually, restore this part.
+                
+            } else {
+                
+                $POLYA_INFO{$acc} = {acc=> $acc,
+                                     type=>'rend',
+                                     trim=>$rend_trim,
+                                     untrimmed_length => $seqlength};
+                
+            }
+        }
+    }
+}
+close XALLCLN;
+
+my $num_accessions = keys %POLYA_INFO;
+
+print "There are $num_accessions accessions captured from .cln file.\n";
+
+
+my $genomic_seq = "";
+my $curr_annot_asmbl_id = 0;
+
+## map cdna_accessions to annot_asmbl_ids:
+my $query = "select ci.cdna_acc, al.align_id, c.annotdb_asmbl_id from clusters c, align_link al, cdna_info ci " 
+    . " where c.cluster_id = al.cluster_id and al.cdna_info_id = ci.id and al.validate = 1";
+my @results = &do_sql_2D($dbproc, $query);
+my %cdna_to_asmbl_id;
+my %align_id_to_cdna_acc;
+foreach my $result (@results) {
+    my ($cdna_acc, $align_id, $asmbl_id) = @$result;
+    if (exists $POLYA_INFO{$cdna_acc}) {
+        $cdna_to_asmbl_id{$align_id} = $asmbl_id;
+        $align_id_to_cdna_acc{$align_id} = $cdna_acc;
+    }
+}
+
+
+## Analyze each poly-A containing assembly and highlight the poly-A site.
+foreach my $align_id (sort {$cdna_to_asmbl_id{$a} cmp $cdna_to_asmbl_id{$b}} keys %cdna_to_asmbl_id) {
+        
+    my $annot_asmbl_id = $cdna_to_asmbl_id{$align_id};
+    my $cdna_acc = $align_id_to_cdna_acc{$align_id};
+    
+
+
+    if ($SEE) {
+        print STDERR "examining $cdna_acc\n";
+    }
+
+
+    unless ($annot_asmbl_id) {
+        confess "Sorry, : $cdna_acc wasn't mapped to an annotdb_asmbl_id\n";
+    }
+    
+    
+    if ($annot_asmbl_id ne $curr_annot_asmbl_id) {
+        $curr_annot_asmbl_id = $annot_asmbl_id;
+        print STDERR "getting sequence: $annot_asmbl_id from $genomic_db\n" if $SEE;
+        $genomic_seq = cdbyank_linear($annot_asmbl_id, $genomic_db);
+        print STDERR "Loaded sequence.\n" if $SEE;
+    }
+    
+    my $cdna_struct = $POLYA_INFO{$cdna_acc};  ### WARNING: this code was originally written to consider only one alignment per cdna. Minimally updating the code now to work with multiple valid hits, but this remains a bit dangerous by reusing the same variable and just resetting values...
+
+    
+    $cdna_struct->{align_id} = $align_id;
+    $cdna_struct->{annotdb_asmbl_id} = $annot_asmbl_id;
+    
+    my ($polyA_end, $trim_size, $untrimmed_length) = ($cdna_struct->{type}, $cdna_struct->{trim}, $cdna_struct->{untrimmed_length});
+    
+    my $rend_trim_length = $untrimmed_length - $trim_size; # only relevant if polyA_end == 'rend'.
+            
+    my $cdna_obj = &Ath1_cdnas::create_alignment_obj ($dbproc, $align_id, \$genomic_seq);
+    my $orientation = $cdna_obj->get_orientation();
+    my ($lend, $rend) = $cdna_obj->get_coords();
+    my ($mlend, $mrend) = $cdna_obj->get_mcoords();
+    
+    my ($polyAlend, $polyArend) = ($lend, $rend); #site of polyA coordinate along genomic sequence.  Default = alignment end.
+    
+    
+    ## must make sure that the poly-A adjacent coordinate is present in aligned region.
+    
+    my $flex_size = 2; #bp allowed for unaligned nucleotides adjacent to polyAsite.
+    
+    ## position polyA site along the genomic sequence based on:
+    #    1.  the poly-A (rend) or poly-T (lend) inferred directionality
+    #    2.  the alignment orientation.
+    
+        
+    $cdna_struct->{orient} = $orientation;  #genome-aligned orientation, not necessarily transcribed orientation.
+    $cdna_struct->{coords} = "$lend-$rend";
+    
+    if ($orientation eq '+' && $polyA_end eq 'lend') {
+        
+        #           *TTTTTTT---------------->
+        #  =============================================
+        #          
+        #          revcomped:
+        #           AAAAAA<----------------   *correct
+        
+        
+        my $diff = $mlend - 1;
+        $polyAlend -= $diff;
+        
+        $cdna_struct->{polyA_site} = $polyAlend;
+        $cdna_struct->{transcribed} = '-';
+        $cdna_struct->{polyA_offset} = $diff;
+        
+    } elsif ($orientation eq '+' && $polyA_end eq 'rend') {
+        
+        #           *-------------------->AAAAAAAA
+        #  ============================================
+        # 
+        
+        
+        my $diff = $rend_trim_length - $mrend;
+        $polyArend += $diff;
+        
+        $cdna_struct->{polyA_site} = $polyArend;
+        $cdna_struct->{transcribed} = "+";
+        $cdna_struct->{polyA_offset} = $diff;
+        
+    } elsif ($orientation eq '-' && $polyA_end eq 'lend') {
+        
+        
+        #     revcomped:  -------------------------->AAAAAAAAA
+        #     
+        #                                        
+        #        ==============================================
+        #                 <--------------------------TTTTTTTT*
+        
+        my $diff = $mrend - 1;
+        $polyArend += $diff;
+        
+        $cdna_struct->{polyA_site} = $polyArend;
+        $cdna_struct->{transcribed} = '+';
+        $cdna_struct->{polyA_offset} = $diff;
+        
+    } elsif ($orientation eq '-' && $polyA_end eq 'rend') {
+        
+        
+        #
+        #    
+        #
+        #      ===============================================
+        #
+        #           AAAAAAAAAA<----------------------------*
+        
+        
+        my $diff = $rend_trim_length - $mlend;
+        $polyAlend -= $diff;
+        
+        $cdna_struct->{polyA_site} = $polyAlend;
+        $cdna_struct->{transcribed} = '-';
+        $cdna_struct->{polyA_offset} = $diff;
+        
+    } else {
+        die "Can't figure out what to do: orient($orientation), polyA_end: $polyA_end\n";
+    }
+    
+    
+    if ($cdna_struct->{polyA_offset} > $flex_size) { next;} 
+    
+    print &generate_seq_illustration(\$genomic_seq, $cdna_struct);
+    
+}
+
+
+exit(0);
+
+
+
+
+####
+sub generate_seq_illustration {
+    my ($genomic_seq_ref, $cdna_struct) = @_;
+    
+    
+    my $text = "";
+    
+    my $frontEnd = 10;
+    my $backEnd = 10;
+	
+    my ($cdna_acc, 
+        $align_id, 
+        $type, 
+        $trim, 
+        $cdna_orientation, 
+        $coords, 
+        $polyA_site, 
+        $offset,
+        $annotdb_asmbl_id) =  ($cdna_struct->{acc},
+                               $cdna_struct->{align_id},
+                               $cdna_struct->{type}, 
+                               $cdna_struct->{trim}, 
+                               $cdna_struct->{transcribed}, 
+                               $cdna_struct->{coords}, 
+                               $cdna_struct->{polyA_site}, 
+                               $cdna_struct->{polyA_offset},
+                               $cdna_struct->{annotdb_asmbl_id}
+                               );
+    
+    print "// transcript: $cdna_acc\n";
+    
+    ## get the genomic sequence:
+    my $genomic_pos = $polyA_site;
+    if ($cdna_orientation eq "-") {
+        $genomic_pos -= 1;
+    }
+    my $genomic_seq_region = substr($$genomic_seq_ref, $genomic_pos - $frontEnd, $frontEnd + $backEnd);
+    if ($cdna_orientation eq "-") {
+        $genomic_seq_region = &reverse_complement($genomic_seq_region);
+    }
+    my @gseq = split (//, $genomic_seq_region);
+    for (my $i=$frontEnd; $i<= $#gseq; $i++) {
+        $gseq[$i] = lc $gseq[$i];
+    }
+    $genomic_seq_region = join ("", @gseq);
+    
+    my $polyA_offset = ($offset) ? "<offset: $offset>" : "";
+   
+    
+    my $cdna_seq = &Ath1_cdnas::get_seq_from_fasta($cdna_acc, $uncleaned_transcript_db);
+    unless ($cdna_seq) { die "Couldn't extract $cdna_acc from $uncleaned_transcript_db";}
+    my $cdna_seq_length = length($cdna_seq);
+ 
+    my $polyAseq;
+    if ($type eq 'lend') {
+        $polyAseq = substr($cdna_seq, 0, $trim + $frontEnd);
+        $polyAseq = &reverse_complement($polyAseq);
+    } else {
+        $polyAseq = substr($cdna_seq, $cdna_seq_length - $trim - $frontEnd , $trim + $frontEnd);
+    }
+    
+    my $trimmedSeq = $polyAseq;
+    $trimmedSeq =~ s/^\w{$frontEnd}//;
+        
+    my $genomicSeqPart = $genomic_seq_region;
+    $genomicSeqPart =~ s/^\w{$frontEnd}//;
+    
+    
+    unless ($trimmedSeq && $genomicSeqPart) {
+        return ("IGNORE(3): Missing end of sequence [trimmedTranscriptEnd($trimmedSeq)], [genomePortion($genomicSeqPart)]\n");
+    }
+    
+
+    my $percentA_trimmedSeq = &calc_percent_A($trimmedSeq);
+    my $percentA_genomicSeqPart = &calc_percent_A($genomicSeqPart);
+    
+    my $errorText = "";
+    
+    my $adjusted_polyA_site_text = "";
+    print "PercentA_genomic: $percentA_genomicSeqPart\n"
+        . "PercentA_trimmedSeq: $percentA_trimmedSeq\n";
+    
+
+    if ($percentA_genomicSeqPart >= 80) {
+        
+        $percentA_genomicSeqPart = sprintf ("%.1f", $percentA_genomicSeqPart);
+        $errorText = "IGNORE(1): potential internal genomic sequence priming, $percentA_genomicSeqPart% Adenine beyond putative polyAcoord.\n";
+    } 
+
+    elsif ($percentA_trimmedSeq < 80) {
+        $percentA_trimmedSeq = sprintf ("%.1f", $percentA_trimmedSeq);
+        $errorText = "IGNORE(2): trimmed region of cDNA is only $percentA_trimmedSeq % Adenine.\n";
+    } 
+    
+    else {
+        ## No ERROR, Good Candidate identified.
+
+
+        ## adjust polyA coord by one to include the first A if it's in the genome.
+        my @genomic_seq_part_chars = split (//, uc $genomicSeqPart);
+        my @trimmed_transcript_part = split (//, uc $trimmedSeq);
+        if ($genomic_seq_part_chars[0] eq 'A' && $trimmed_transcript_part[0] eq 'A') {
+            if ($cdna_struct->{transcribed} eq '+') {
+                $cdna_struct->{polyA_site}++;
+            }
+            else {
+                # reverse strand
+                $cdna_struct->{polyA_site}--;
+            }
+            $gseq[$frontEnd] = uc $gseq[$frontEnd];
+            $adjusted_polyA_site_text = "\*polyA site adjusted to include first A.  PolyA coord now " . $cdna_struct->{polyA_site} . "\n";
+        }
+        
+        $errorText = "OK polyA site candidate.\n";
+        
+        $errorText .= "gneomic_seq_part: $genomicSeqPart, trimmed_part: $trimmedSeq, adj_poly_text: $adjusted_polyA_site_text\n";
+        
+        &load_PolyA_info_in_DB($cdna_struct);
+        
+    }
+    
+    $genomic_seq_region = join ("", @gseq); # redo to take into account possibly adjusted polyA site
+   
+    $text .= "cdna:$cdna_acc, annotdb_asmbl_id:$annotdb_asmbl_id, polyAcoord:$polyA_site, transcribedOrient:$cdna_orientation, $type, offset: $offset\n$genomic_seq_region\n";
+ 
+    my $p = "$polyAseq       $cdna_acc  "
+	    . "TransOrient ($cdna_orientation) $polyA_offset\n" . 
+	    "trimmedSeq:\n" . (" " x $frontEnd) .  "$trimmedSeq\n" 
+	    . $errorText . "\n";
+    
+    
+    $text .= $p;
+    
+    $text .= "$adjusted_polyA_site_text";
+    
+    $text .= "\n\n\n";
+
+    return ($text);
+}
+
+
+####
+sub reverse_complement { #alternative to revComp, this one makes more sense in the context of the added subroutines
+    my($s) = @_;
+    my ($rc);
+    $rc = reverse ($s);
+    $rc =~ tr/acgtrymkswhbvdnxACGTRYMKSWHBVDNX/tgcayrkmswdvbhnxTGCAYRKMSWDVBHNX/;
+    
+    return($rc);
+}
+
+
+
+####
+sub calc_percent_A {
+    my $seq = shift;
+
+    my $seqLen = length($seq);
+    my $a_count = 0;
+    while ($seq =~ /a/ig) {
+        $a_count++;
+    }
+
+    
+    my $percentA = $a_count/$seqLen * 100;
+
+    if ($SEE) {
+        print "percentA: ($seq) = ($a_count/$seqLen * 100) = $percentA\n";
+    }
+    
+    return ($percentA);
+}
+
+
+####
+sub load_PolyA_info_in_DB {
+    my ($cdna_struct) = @_;
+    
+    my ($cdna_acc,
+        $align_id,
+        $genomicCoord,
+        $trimType,
+        $transcribedOrient,
+        $offset) = ($cdna_struct->{acc},
+                    $cdna_struct->{align_id},
+                    $cdna_struct->{polyA_site},
+                    $cdna_struct->{type},
+                    $cdna_struct->{transcribed},
+                    $cdna_struct->{polyA_offset});
+    
+    $trimType = ($trimType eq "lend") ? "lend_PolyT" : "rend_PolyA";
+    
+    my $query = "insert transcriptPolyA (align_id, genomicCoord, transcribedOrient, trimType, alignEndOffset) values (?,?,?,?,?)";
+    &RunMod($dbproc, $query, $align_id, $genomicCoord, $transcribedOrient, $trimType, $offset);
+    
+    ## update spliced orient for single exon alignments to transcribed orient
+    my $query = "update align_link set spliced_orient = ? where align_id = ? and validate = 1 and num_segments = 1 and spliced_orient = '?'";
+    &RunMod($dbproc, $query, $transcribedOrient, $align_id);
+    
+}
+
+sub clear_polyA_db_tables {
+    my $query = "delete from transcriptPolyA ";
+    &RunMod($dbproc, $query);
+
+    return;
+}

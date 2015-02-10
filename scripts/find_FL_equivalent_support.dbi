@@ -1,0 +1,136 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Pasa_conf;
+use Mysql_connect;
+use strict;
+use DBI;
+use CDNA::CDNA_alignment;
+use CDNA::PASA_alignment_assembler;
+use Gene_obj;
+use Ath1_cdnas;
+use Gene_validator;
+require "overlapping_nucs.ph";
+require "fasta.ph";
+use Gene_obj_comparator;
+use CDNA::Gene_obj_alignment_assembler;
+use CDNA::CDNA_stitcher;
+use Getopt::Long qw(:config no_ignore_case bundling);
+use Storable qw (nfreeze thaw);
+use Nuc_translator;
+use Data::Dumper;
+use Carp;
+use Fasta_reader;
+
+
+my $usage = <<_EOUSAGE_;
+
+# -M Mysql database/server ie. ("ath1_cdnas:haasbox")
+# -p passwordinfo  (contains "username:password")
+# -C annot comparison ID (default: uses most recent comparison results)
+# -d Debug
+# -h print this option menu and quit
+# --after_incorp   consider only after incorporating the assemblies
+
+
+_EOUSAGE_
+
+	;
+
+
+our ($opt_M, $opt_G, $opt_p, $DEBUG, $opt_h, $after_incorp, $opt_C);
+
+&GetOptions ('M=s' => \$opt_M,
+             'G=s' => \$opt_G,
+             'p=s' => \$opt_p,
+             'd' => \$DEBUG,
+             'h' => \$opt_h,
+			 'C=i' => \$opt_C,
+			 'after_incorp' => \$after_incorp);
+
+if ($opt_h) {die $usage;}
+my $MYSQLstring = $opt_M or die $usage;
+my ($MYSQLdb, $MYSQLserver) = split (/:/, $MYSQLstring); 
+my $passwordinfo = $opt_p or die $usage;
+
+my $BEFORE = ($after_incorp) ? 0 : 1;
+
+my ($user, $password) = split (/:/, $passwordinfo);
+
+my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+
+
+#### get list of genes and compatible PASA assemblies
+my $compare_id = $opt_C;
+unless ($opt_C) {
+	my $query = "select max(compare_id) from annotation_compare";
+	$compare_id = &Mysql_connect::very_first_result_sql($dbproc, $query);
+}
+
+
+## get latest annotation version:
+my $query = "select annotation_version from annotation_compare where compare_id = $compare_id";
+my $annot_version = &Mysql_connect::very_first_result_sql($dbproc, $query);
+unless ($annot_version) {
+    die "Sorry, no version of the annotation to compare to yet.\n";
+}
+
+
+
+
+if ($BEFORE) {
+
+	$query = "select al.model_id, al.cdna_acc from annotation_link al, status_link sl "
+		. " where al.compare_id = sl.compare_id and al.compare_id = $compare_id "
+		. " and sl.cdna_acc = al.cdna_acc "
+		. " and sl.status_id in (3, 4, 12, 13) ";
+}
+else {
+	
+	$query = "select al.model_id, al.cdna_acc from annotation_link al, status_link sl, status s "
+		. " where al.compare_id = sl.compare_id and al.compare_id = $compare_id "
+		. " and sl.cdna_acc = al.cdna_acc "
+		. " and sl.status_id = s.status_id and s.fails_incorporation = 0 ";
+	
+}
+
+my %model_to_cdna_accs;
+my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+foreach my $result (@results) {
+	my ($model_id, $cdna_acc) = @$result;
+	push (@{$model_to_cdna_accs{$model_id}}, $cdna_acc);
+}
+
+foreach my $model_id (keys %model_to_cdna_accs) {
+	
+
+	
+	# get gene object:
+	my $gene_obj = &Ath1_cdnas::get_gene_obj_via_model_id($dbproc, $model_id, $annot_version);
+	
+	my $gene_id = $gene_obj->{TU_feat_name};
+
+	my ($cds_lend, $cds_rend) = sort {$a<=>$b} $gene_obj->get_model_span();
+	#print "Processing $gene_id\t$model_id\t$cds_lend-$cds_rend\n";
+	
+	my @cdnas = @{$model_to_cdna_accs{$model_id}};
+	
+	foreach my $cdna (@cdnas) {
+				
+		my ($lend, $rend) = &Ath1_cdnas::get_alignment_span($dbproc, $cdna);
+
+		#print "\t$cdna\t$lend-$rend\n";
+		
+		if ($cds_lend >= $lend && $cds_rend <= $rend) {
+			print "$gene_id\t$model_id CDS covered completely by compatible $cdna\n";
+		}
+	}
+	
+}
+
+exit(0);

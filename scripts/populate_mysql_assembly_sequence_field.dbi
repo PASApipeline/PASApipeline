@@ -1,0 +1,89 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Pasa_conf;
+use Mysql_connect;
+use strict;
+use DBI;
+use Data::Dumper;
+use Getopt::Std;
+use Ath1_cdnas;
+use CDNA::CDNA_alignment;
+
+
+use vars qw ($opt_G $opt_h $opt_M $opt_b $opt_d $opt_S $opt_X);
+open (STDERR, "&>STDOUT");
+&getopts ('hD:dM:S:b:G:X');
+my $usage =  <<_EOH_;
+
+############################# Options ###############################
+# -M Mysql database name
+# -G genomic_seq.db
+# -X don't load database, just write fasta file
+# -d Debug
+# 
+# -h print this option menu and quit
+#
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+our $SEE = 0;
+
+if ($opt_h) {die $usage;}
+
+my $MYSQLdb = $opt_M or die $usage;
+my $MYSQLserver = &Pasa_conf::getParam("MYSQLSERVER");
+my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+my $DEBUG = $opt_d;
+
+
+my ($dbproc) = &connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+my $genomic_seq_db = $opt_G or die $usage;
+
+open (FASTA, ">$MYSQLdb.assemblies.fasta") or die "Cannot open fasta file for assembly output.\n";
+
+
+## clean out in case of resume mode
+my $query = "delete from cdna_sequence";
+&RunMod($dbproc, $query);
+
+$query = "select c.annotdb_asmbl_id, al.align_acc, al.align_id "
+    . " from clusters c, align_link al, cdna_info ci "
+    . " where c.cluster_id = al.cluster_id and al.cdna_info_id = ci.id and ci.is_assembly = 1 order by c.annotdb_asmbl_id";
+
+my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+my $curr_asmbl_id = 0;
+my $sequence = "";
+foreach my $result (@results) {
+    my ($asmbl_id, $cdna_acc, $align_id) = @$result;
+    if ($asmbl_id ne $curr_asmbl_id) {
+        $curr_asmbl_id = $asmbl_id;
+        $sequence = &Ath1_cdnas::get_seq_from_fasta($asmbl_id, $genomic_seq_db);
+    }
+    
+    my $cdna_alignment = &Ath1_cdnas::create_alignment_obj($dbproc, $align_id, \$sequence);
+    #my $alignment = $cdna_alignment->toToken();
+    #print "$cdna_acc\t$alignment\n\n";
+    my $assembly_seq = uc $cdna_alignment->extractSplicedSequence();
+    
+    unless ($opt_X) {
+        my $query = "insert cdna_sequence (accession, sequence) values (?,?)";
+        &RunMod($dbproc, $query, $cdna_acc, $assembly_seq);
+    }
+    
+	
+    $assembly_seq =~ s/(\w{60})/$1\n/g; #make FASTA format.
+    print FASTA ">$cdna_acc\n$assembly_seq\n";
+}
+
+$dbproc->disconnect;
+
+
+	

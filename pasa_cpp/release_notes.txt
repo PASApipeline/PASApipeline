@@ -1,0 +1,2 @@
+11/12/2004: improved C++ design, bugfixes, a single exon transcript contained within another transcript of opposite transcribed orientation is now not allowed to be assembled with this other transcript that contains it; all assembled transcripts must have the same transcribed orientation regardless of containments.
+

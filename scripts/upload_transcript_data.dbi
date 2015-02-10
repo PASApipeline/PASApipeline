@@ -1,0 +1,121 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Pasa_conf;
+use Mysql_connect;
+use strict;
+use DBI;
+use Ath1_cdnas;
+use Getopt::Std;
+use Fasta_reader;
+
+use vars qw ($opt_M $opt_t $opt_f $opt_d $opt_h $opt_v $opt_T);
+
+&getopts ('M:f:dhvt:T:');
+
+
+our $SEE = 0;
+
+my $usage =  <<_EOH_;
+
+############################# Options ###############################
+#
+# -M Mysql database 
+# -t cdna_sequence_db
+# -f fl_accs list file
+# -T Trinity Denovo accs list file
+# -d Debug
+# 
+# -h print this option menu and quit
+# -v verbose
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+if ($opt_h) {die $usage;}
+my $MYSQLdb = $opt_M or die "Must indicate MySQL database name.\n\n$usage";
+
+my $DEBUG = $opt_d;
+
+my $fasta_db = $opt_t or die "Must specify cdna fasta db filename.\n";
+our $SEE = $opt_v;
+
+my $fl_acc_list_file = $opt_f;
+my $TDN_list_file = $opt_T;
+
+my $MYSQLserver = &Pasa_conf::getParam("MYSQLSERVER");
+my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+my %FL;
+if ($fl_acc_list_file && $fl_acc_list_file ne "NULL") {
+    open (my $fh, $fl_acc_list_file) or die "Error, cannot open $fl_acc_list_file";
+    while (<$fh>) {
+        my @x = split (/\s+/);
+        my $acc = shift @x;
+        # remove carat
+        $acc =~ s/^>//;
+
+        $FL{$acc} = 1;
+    }
+}
+my %TDN;
+if ($TDN_list_file) {
+    open (my $fh, $TDN_list_file) or die "Error, cannot open $TDN_list_file";
+    while (<$fh>) {
+        my @x = split (/\s+/);
+        my $acc = shift @x;
+        # remove carat
+        $acc =~ s/^>//;
+
+        $TDN{$acc} = 1;
+    }
+}
+
+
+my $seen_FL_acc_flag = 0; # make sure that if FL are specified, that we encounter one in the fasta db.
+my $seen_TDN_flag = 0;
+my $fasta_reader = new Fasta_reader($fasta_db);
+$dbproc->{dbh}->{AutoCommit} = 0;
+
+while (my $seqObj = $fasta_reader->next()) {
+    my $acc = $seqObj->get_accession();
+    my $header = $seqObj->get_header();
+    my $sequence = $seqObj->get_sequence();
+    my $seq_length = length($sequence);
+
+    my $fl_flag = $FL{$acc} || 0;
+    my $TDN_flag = $TDN{$acc} || 0;
+
+    my $query = qq { insert cdna_info (cdna_acc, is_assembly, is_fli, is_TDN, length, header) values (?,?,?,?,?,?) };
+    &RunMod($dbproc, $query, $acc, 0, $fl_flag, $TDN_flag, $seq_length, $header);
+    
+    if ($fl_flag) {
+        $seen_FL_acc_flag = 1;
+    }
+    if ($TDN_flag) {
+        $seen_TDN_flag = 1;
+    }
+}
+
+print STDERR "Committing...\n";
+$dbproc->{dbh}->commit();
+
+
+if (%FL && !$seen_FL_acc_flag) {
+    die "Error, no accession in the fl_acc_file ($fl_acc_list_file) was encountered in database ($fasta_db)";
+}
+
+if (%TDN && ! $seen_TDN_flag) {
+    die "Error, no acc in the $TDN_list_file was encoutnered in the database ($fasta_db)";
+}
+
+$dbproc->disconnect;
+exit(0);
+

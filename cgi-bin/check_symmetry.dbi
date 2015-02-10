@@ -1,0 +1,82 @@
+#!/usr/local/bin/perl
+
+use Pasa_init;
+use Pasa_conf;
+use DBI;
+use CGI;
+use CGI::Carp qw(fatalsToBrowser);
+use Data::Dumper;
+use Mysql_connect;
+use Ath1_cdnas;
+use strict;
+use GD::Graph::bars;
+use POSIX qw(ceil);
+
+my $db = "osa1_transUnMasked_08162005";
+
+my $mysql_server = &Pasa_conf::getParam("MYSQLSERVER");
+my $mysql_ro_user = &Pasa_conf::getParam("MYSQL_RO_USER");
+my $mysql_ro_password = &Pasa_conf::getParam("MYSQL_RO_PASSWORD");
+
+my ($dbproc) = &connect_to_db($mysql_server,$db,$mysql_ro_user,$mysql_ro_password);
+
+my $query = qq { select sv_id, cdna_acc from splice_variation where type = "alt_acceptor" };
+
+my @results = &do_sql_2D($dbproc, $query);
+foreach my $result (@results) {
+    
+    my ($sv_id, $cdna_acc) = @$result;
+
+    ## check splice link
+    my $query = "select count(*) from alt_splice_link where sv_id_A = $sv_id";
+    my $count = &very_first_result_sql($dbproc, $query);
+    
+    
+    ## make sure each is stored as support
+    $query =  "select count(*) from splice_variation_support where sv_id = $sv_id";
+    my $count2 = &very_first_result_sql($dbproc, $query);
+
+    
+    print "$sv_id, $cdna_acc, count= $count, count2 = $count2\n";
+    if ($count != $count2) {
+        print "**** ERROR w/ above.\n";
+    }
+
+    ## make sure it's reciprocal
+    $query = "select sv_id_B from alt_splice_link where sv_id_A = $sv_id";
+    my @results = &do_sql_2D($dbproc, $query);
+    foreach my $result (@results) {
+        my $sv_id_B = $result->[0];
+        
+        my $query = "select count(*) from alt_splice_link where sv_id_A = ? and sv_id_B = ?";
+        my $recip_count = &very_first_result_sql($dbproc, $query, $sv_id_B, $sv_id);
+        
+        if ($recip_count != 1) {
+            print "** ERROR, relationship not reciprocal ($sv_id, $sv_id_B), count = $recip_count\n";
+        } else {
+            #print "recip count passed. ($sv_id, $sv_id_B)\n";
+        }
+        $query = "select cdna_acc from splice_variation where sv_id = $sv_id_B";
+        my $other_cdna_acc = &very_first_result_sql($dbproc, $query);
+
+        
+        ## compare num_transcripts_A and num_transcripts_B for forward and reciprocal comparisons:
+        
+        $query = "select num_transcripts_A, num_transcripts_B from splice_variation_support where sv_id = $sv_id and cdna_acc = \"$other_cdna_acc\"";
+        my $result1 = &first_result_sql($dbproc, $query);
+        my ($countA, $countB) = @$result1;
+
+        $query = "select num_transcripts_A, num_transcripts_B from splice_variation_support where sv_id = $sv_id_B and cdna_acc = \"$cdna_acc\"";
+        my $result2 = &first_result_sql($dbproc, $query);
+        my ($countA2, $countB2) = @$result2;
+        
+        if ($countA != $countB2 || $countB != $countA2) {
+            print "Error: (sv_id: $sv_id, $other_cdna_acc) -> (A:$countA, B:$countB);  (sv_id: $sv_id_B, $cdna_acc) -> (A:$countA2, B:$countB2)\n";
+        }
+    }
+
+        
+
+        
+    
+}

@@ -1,0 +1,3448 @@
+#!/usr/bin/env perl
+
+use threads;
+use threads::shared;
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Pasa_conf;
+use Mysql_connect;
+use strict;
+use DBI;
+use CDNA::CDNA_alignment;
+use CDNA::PASA_alignment_assembler;
+use Gene_obj;
+use Ath1_cdnas;
+use Gene_validator;
+require "overlapping_nucs.ph";
+require "fasta.ph";
+use Gene_obj_comparator;
+use CDNA::Gene_obj_alignment_assembler;
+use CDNA::CDNA_stitcher;
+use Getopt::Long qw(:config no_ignore_case bundling);
+use Storable qw (nfreeze thaw);
+use Nuc_translator;
+use Data::Dumper;
+use Carp;
+use Thread_helper;
+
+#use warnings;
+
+use vars qw ($opt_h $opt_p $DEBUG $opt_M $opt_G $MIN_PERCENT_OVERLAP $MIN_PERCENT_PROT_CODING 
+             $MIN_PERCENT_LENGTH_NONFL_COMPARE $MIN_PERID_PROT_COMPARE $GENETIC_CODE $opt_v $opt_f 
+             $MIN_FL_ORF_SIZE $MIN_PERCENT_OVERLAP_GENE_REPLACE $MAX_UTR_EXONS 
+             $STOMP_HIGH_PERCENTAGE_OVERLAPPING_GENE $MIN_PERCENT_ALIGN_LENGTH 
+             $MIN_PERCENT_LENGTH_FL_COMPARE $TRUST_FL_STATUS $CLUSTER_ID_ONLY);
+
+my $CPU = 2;
+
+&GetOptions ('M=s' => \$opt_M,
+             'G=s' => \$opt_G,
+             'd' => \$DEBUG,
+             'h' => \$opt_h,
+             'v' => \$opt_v,
+             'f=s' => \$opt_f,
+             'CPU=i' => \$CPU,
+
+
+             'MIN_PERCENT_OVERLAP=s' => \$MIN_PERCENT_OVERLAP,
+             'MIN_PERCENT_PROT_CODING=s' => \$MIN_PERCENT_PROT_CODING,
+             'MIN_PERCENT_LENGTH_NONFL_COMPARE=s' => \$MIN_PERCENT_LENGTH_NONFL_COMPARE,
+             'MIN_PERCENT_LENGTH_FL_COMPARE=s' => \$MIN_PERCENT_LENGTH_FL_COMPARE,
+             'MIN_PERID_PROT_COMPARE=s' => \$MIN_PERID_PROT_COMPARE,
+             'MIN_PERCENT_ALIGN_LENGTH=s' => \$MIN_PERCENT_ALIGN_LENGTH,
+             'GENETIC_CODE=s' => \$GENETIC_CODE,
+             'MIN_FL_ORF_SIZE=s' => \$MIN_FL_ORF_SIZE,
+             'MIN_PERCENT_OVERLAP_GENE_REPLACE=s' => \$MIN_PERCENT_OVERLAP_GENE_REPLACE,
+             'MAX_UTR_EXONS=s' => \$MAX_UTR_EXONS,
+             'STOMP_HIGH_PERCENTAGE_OVERLAPPING_GENE'=>\$STOMP_HIGH_PERCENTAGE_OVERLAPPING_GENE,
+             'TRUST_FL_STATUS' => \$TRUST_FL_STATUS,
+
+
+             ## hidden opts for debugging purposes
+             'CLUSTER_ID_ONLY=i' => \$CLUSTER_ID_ONLY,  # the only cluster ID to process.
+
+);
+
+
+$|=1;
+our $SEE = $opt_v;
+
+our $DB_SEE = 0;
+
+open (STDERR, "&>STDOUT");
+
+my $usage =  <<_EOH_;
+
+Script assembles the predefined clusters of cDNAs/ESTs, one annotationdb asmbl_id (genomic sequence) at a time.
+    The 'assemblies' directory is created and the assemblies are stored in that directory for future loading using
+    assembly_db_loader.dbi
+    
+############################# Options ###############################
+#
+# -M <string>      Mysql database name
+# -G <string>      Genomic sequence fasta db.
+# -d               Debug
+# -h               print this option menu and quit
+# --CPU <int>      number of threads (default: $CPU)
+#
+#   Advanced options:
+#      --MIN_PERCENT_OVERLAP (default:  50 )
+#               *minimum percent overlap between a fl-cdna and a gene for purpose of cDNA/gene mapping.
+#
+#      --MIN_PERCENT_PROT_CODING (default: 40 )
+#               *minimum percent of fl-cdna length expected to encode an ORF.  See MIN_PERID_PROT_COMPARE
+#
+#      --MIN_PERCENT_LENGTH_NONFL_COMPARE (default: 70)
+#               *minimum percent of the maximum protein isoform length to be considered a potentially legitimate isoform.; used to rid shortys from accidental incorporation into the annotation.  
+#
+#      --MIN_PERID_PROT_COMPARE (default: 70)
+#               *minimum percent identity required between all protein sequence comparisons (ie. current annotated protein compared to tentative protein update, or comparisons between tentative alternative splicing isoforms.)
+#
+#      --MIN_PERCENT_ALIGN_LENGTH (default: 70)
+#               minimum percent of the original protein length which must align to the new protein (note: MIN_PERCENT_ALIGN_LENGTH && MIN_PERID_PROT_COMPARE correspond to the best Fasta alignment between the 'new' protein and the 'old' protein under consideration).
+#
+#      --MIN_PERCENT_LENGTH_FL_COMPARE (default: 70)
+#               A FL-cDNA which infers an alternative splicing isoform must be this percent length of the current FL-cDNA supported gene structure
+#
+#
+#      --MIN_FL_ORF_SIZE number of amino acids for the minimum protein length of a FL-cDNA inferred orf.  If this is set,
+#                        it will override the MIN_PERCENT_PROT_CODING check for those failing that test.
+#      
+#
+#                      
+#      --MAX_UTR_EXONS (default: 2)   5' or 3' UTR exon limit.
+#
+#      --GENETIC_CODE (default: universal, options: Euplotes, Tetrahymena, Candida, Acetabularia)
+#
+#
+#      --MIN_PERCENT_OVERLAP_GENE_REPLACE (default: 80)  :used in the following places:
+#                                                        -if multiple genes are matched by FL-assembly and each gene is covered by this % overlap, 
+#                                                         they will all be replaced by the single FL-assembly inferred gene.
+#                                                        -if the STOMP... flag below is set, updated gene models which fail the alignment validation 
+#                                                         test will continue to be updated based on alignment assemblies if each of the corresponding
+#                                                         gene(s) are matched by this %overlap.
+#
+#
+#      --STOMP_HIGH_PERCENTAGE_OVERLAPPING_GENE  :flag, set to have multi-exon alignment assemblies update gene structures which fail the alignment 
+#                                                         (%id, %overlap) test.  (usage is not recommended, this is very aggressive)
+#
+#
+#     --TRUST_FL_STATUS    :flag, set to ensure that all designated FL-cDNAs are treated as full-length.  
+#                                 Because a large number of FL-cDNAs aren't really that, for best performance, do not set this flag.
+#                                 By default, FL-cdnas that really look FL are treated as such.  Those that appear to possibly 
+#                                 not be FL, are treated like the ESTs.
+#
+###################### Process Args and Options #####################
+    
+
+_EOH_
+    
+    ;
+
+if ($opt_h) {die $usage;}
+
+
+my $genomic_seq_db = $opt_G or die $usage;
+my $MYSQLdb = $opt_M or die $usage;
+my $MYSQLserver = &Pasa_conf::getParam("MYSQLSERVER");
+my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+$TRUST_FL_STATUS = ($TRUST_FL_STATUS) ? 1:0;
+$STOMP_HIGH_PERCENTAGE_OVERLAPPING_GENE = ($STOMP_HIGH_PERCENTAGE_OVERLAPPING_GENE) ? 1:0;
+
+## cDNA and annotation-comparison variables.
+unless (defined $MIN_PERCENT_OVERLAP) {
+    $MIN_PERCENT_OVERLAP = 50; #minimum percent overlap for two cDNA sequences to be considered corresponding to the same feature (ie. gene).
+}
+
+unless (defined $MIN_PERCENT_PROT_CODING) {
+    $MIN_PERCENT_PROT_CODING = 40; #minimum amount of cDNA sequence which must translate into protein.
+}
+
+unless (defined $MIN_PERCENT_LENGTH_NONFL_COMPARE) {
+    ## alternative splicing isoform variables.
+    $MIN_PERCENT_LENGTH_NONFL_COMPARE = 70; #minimum percent of the maximum protein isoform length to be considered a potentially legitimate isoform.; used to rid shortys from accidental incorporation into the annotation.  Alternative splicing isoforms must align across this percentage of their length as well.
+}
+
+unless (defined $MIN_PERID_PROT_COMPARE) {
+    $MIN_PERID_PROT_COMPARE = 70; #percent identity required for any protein pairwise alignment.
+}
+
+unless (defined $MIN_PERCENT_ALIGN_LENGTH) {
+    $MIN_PERCENT_ALIGN_LENGTH = 70;
+}
+
+unless (defined $MIN_PERCENT_LENGTH_FL_COMPARE) {
+    $MIN_PERCENT_LENGTH_FL_COMPARE = 70;
+}
+
+
+unless (defined $MIN_PERCENT_OVERLAP_GENE_REPLACE) {
+    $MIN_PERCENT_OVERLAP_GENE_REPLACE = 80;
+}
+
+## Other important globals ##
+my $bin_size = 100000; #bin all ests/cdnas/assemblies into 100 kb bins based on alignment coordinates.
+
+my %model_to_incorporated_alignments; #remember which ESTs are compatible (before/after) with gene structures.
+my %visited_model; #multiple clusters can align to same gene if unbridged.
+my %models_unavail; #remember which models are updated based on fl-cdnas.
+my %novel_FL_assemblies; #caching FL assembly accessions that yield novel genes; use for stitching by non-FL assemblies.
+my %MERGED_MODELS; #cache the model names for those that are merged based on FL-cdnas or ESTs
+my %validating_FL_cdnas; #cache the accession for those FL-cDNAs that validate properly.
+
+
+my $NOVEL_GENE_COUNTER = 0; ## provides unique gene IDs for novel genes.
+share($NOVEL_GENE_COUNTER);
+
+my %NOVEL_GENE_ID_via_ACC; ## remember the id's given to novel genes when used in subsequent stitching rounds by nonFL assemblies.
+
+my $NOVEL_MODEL_COUNTER = 0;
+share($NOVEL_MODEL_COUNTER);
+
+my %NOVEL_SPLICE_converted_antisense; #for those 'novel' FL assemblies deemed antisense, must convert alt-splices of these to antisense as well.
+my %ANTISENSE_ACCS; #track those classified as antisense.
+
+my %Gene_to_model_list; ## if a model is not directly assigned to a failed update, assign one based on a gene entry.
+
+
+unless (defined $MAX_UTR_EXONS) {
+    $MAX_UTR_EXONS = 2;
+}
+
+if ($GENETIC_CODE) {
+    &Nuc_translator::use_specified_genetic_code($GENETIC_CODE);
+}
+
+## get latest annotation version:
+my $query = "select max(version_id) from annotation_admin";
+my $annot_version = &Mysql_connect::very_first_result_sql($dbproc, $query);
+unless ($annot_version) {
+    print STDERR "Sorry, no version of the annotation to compare to yet. Creating genes based on full-length transcripts.\n";
+    $annot_version = 0;
+}
+
+## get new compare_id
+$query = "insert annotation_compare (date, annotation_version) values (now(), $annot_version)";
+&Mysql_connect::RunMod($dbproc, $query);
+
+$query = "select LAST_INSERT_ID()";
+my $result = &Mysql_connect::first_result_sql($dbproc, $query);
+my $compare_id = $result->[0];
+
+print "Settings for annot compare:\n"
+    . "min_percent_overlap: $MIN_PERCENT_OVERLAP\n"
+    . "min_percent_prot_coding: $MIN_PERCENT_PROT_CODING\n"
+    . "min_percent_length_nonfl_compare: $MIN_PERCENT_LENGTH_NONFL_COMPARE\n"
+    . "min_perid_prot_compare: $MIN_PERID_PROT_COMPARE\n"
+    . "min_percent_align_length: $MIN_PERCENT_ALIGN_LENGTH\n"
+    . "min_percent_length_fl_compare: $MIN_PERCENT_LENGTH_FL_COMPARE\n"
+    . "min_FL_orf_size: $MIN_FL_ORF_SIZE\n"
+    . "annotation_version: $annot_version\n"
+    . "max_utr_exons: $MAX_UTR_EXONS\n"
+    . "compare_ID: $compare_id\n"
+    . "trust_fl_status: ($TRUST_FL_STATUS)\n" 
+    . "stomp ($STOMP_HIGH_PERCENTAGE_OVERLAPPING_GENE), min % overlap: $MIN_PERCENT_OVERLAP_GENE_REPLACE\n"
+    . "\n";
+
+
+## populate full-length cDNA listing. 
+my %FLCDNA;
+$query = "select cdna_acc from cdna_info where is_fli = 1 and is_assembly = 1";
+my @results = &Mysql_connect::do_sql_2D ($dbproc, $query);
+foreach my $result_aref (@results) {
+    my $acc = $result_aref->[0];
+    $FLCDNA{$acc} = 1;
+}
+
+## Get the status info from ath1_cdnas mysql db:
+my %status_descr;
+$query = "select status_id, status_descr from status";
+@results = &Mysql_connect::do_sql_2D($dbproc, $query);
+foreach my $result_aref (@results) {
+    my ($status_id, $descr) = @$result_aref;
+    $status_descr{$status_id} = $descr;
+}
+
+my $NOVEL_GENE_TOKEN = sprintf("%x", time());
+
+
+main: {
+    ## Get list of contigs to process:
+    my $query = "select distinct annotdb_asmbl_id from clusters ";
+    if ($CLUSTER_ID_ONLY) {
+        $query .= " where cluster_id = $CLUSTER_ID_ONLY ";
+    }
+    $query .= " order by annotdb_asmbl_id";
+    
+    
+    my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+    my $num_contigs = $#results + 1;
+    
+    my $thread_helper = new Thread_helper($CPU);
+
+    ## Threads need to use their own database connection
+    $dbproc = undef;  # now will error, if try to use this global one
+    
+    print "### There are $num_contigs genomic contigs which will be examined.\n";
+    foreach my $result (@results) {
+        my $asmbl_id = $result->[0];
+        
+        $thread_helper->wait_for_open_thread();
+        my $thread = threads->create('process_contig', $asmbl_id);
+
+        $thread_helper->add_thread($thread);
+        
+        $num_contigs--;
+        print "## There are $num_contigs genomic contigs left to examine.\n";
+                
+    }
+    
+    $thread_helper->wait_for_all_threads_to_complete();
+
+    my @failures = $thread_helper->get_failed_threads();
+    if (@failures) {
+        ## examine them...   these are the same threads created above, use use the threads api to access info about them
+        ## such as error messages
+        die "Error, there were " . scalar(@failures) . " threads (contig jobs) that failed...  See error messages above in order to troubleshoot further";
+    }
+    else {
+        ## all good!
+    }
+    
+
+    ## Last step, disable those classified as alt splices of novel genes for which the novel genes were
+    ## changed to antisense and the alt-splices of these were not.
+    
+    my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);    
+    
+    &convert_novel_alt_splice_of_antisense($dbproc);
+    
+    $dbproc->disconnect;
+    
+    exit(0);
+    
+    
+}
+
+####
+sub process_contig {
+    my ($asmbl_id) = @_;
+
+    my ($dbproc_t) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+    
+    my $contig_id = $asmbl_id; #should probably use contig_id rather than asmbl_id (our database field)
+    print "## Processing contig: $asmbl_id\n";
+    
+    #unless ($contig_id eq "chromosome_16") { next; } ###### DEBUGGINGxs
+    
+    my @FL_matching_multiple_genes; ## after processing everything else, examine the matching-multiple gene category
+    my @non_FL_matching_multiple_genes; 
+    
+    my $sequence = &Ath1_cdnas::get_seq_from_fasta($asmbl_id, $genomic_seq_db);
+    my $seq_ref = \$sequence;
+    ## Identify All sets of overlapping assemblies and annotations:
+    
+    # Get gene annotation info for contig, keep indexed in bins.
+    my @models = &get_annotated_gene_models_on_contig($dbproc_t, $asmbl_id);
+    
+    ## get the clusters on this contig.
+    my @all_clusters = &get_contig_cluster_listing($dbproc_t, $asmbl_id); #simple unindexed list of clusters.
+    
+    ## Go thru cDNA clusters, break into gene-centric subclusters, examine fl-cdna containing sets of incompatible overlapping assemblies:
+    my %using_as_nonFL_assembly; # those that don't appear FL are treated as NON-FL in a subsequent round.
+    
+    foreach my $mode ("FL-mode", "nonFL-mode") {
+        print "\n**** MODE: $mode ****\n";
+        foreach my $cluster (@all_clusters) {
+            my $cluster_id = $cluster->{cluster_id};
+            
+            #unless ($subcluster_id > 7715) { next; }  #### DEBUGGINGxs
+            
+            if ($CLUSTER_ID_ONLY && $cluster_id != $CLUSTER_ID_ONLY) { next; } 
+            
+            print "\n\n\n\n\n*****************************************************************************\n"
+                . "// Processing cluster: $cluster_id\n";
+            ## get the subclusters from the mysql db:
+            my @subclusters = &get_subclusters_from_clusters($dbproc_t, $cluster_id);
+            foreach my $subcluster_id (@subclusters) {
+                print "# Processing subcluster_id: $subcluster_id\n";
+                
+                my ($flcdna_assembly_wrappers_aref, $non_fl_assembly_wrappers_aref) = &get_alignment_assemblies_via_subcluster_id($dbproc_t, $subcluster_id, $seq_ref, \%using_as_nonFL_assembly);
+                
+                
+                ################################################################
+                ## Analyze FL-assemblies
+                ################################################################
+                
+                
+                if (@$flcdna_assembly_wrappers_aref && ($mode eq "FL-mode")) {
+                    print "# analyzing fl-cDNA containing assemblies.\n";
+                    my ($treat_as_nonFL_aref, $remaining_FL_aref) = &analyze_fl_assemblies($dbproc_t, $flcdna_assembly_wrappers_aref, \@models, $seq_ref);
+                    # pull out the multiple gene matching ones:
+                    my @to_summarize;
+                    foreach my $wrapper (@$remaining_FL_aref) {
+                        if ($wrapper->{status} == 5) { #matching multiple genes:
+                            push (@FL_matching_multiple_genes, $wrapper);
+                        } else {
+                            push (@to_summarize, $wrapper);
+                        }
+                    }
+                    &summarize_asmbl_status($dbproc_t, \@to_summarize, $seq_ref);
+                    if (@$treat_as_nonFL_aref) {
+                        foreach my $nonFLwrap (@$treat_as_nonFL_aref) {
+                            my $alignment = $nonFLwrap->{alignmentObj};
+                            my $cdna_acc = $alignment->get_acc();
+                            $nonFLwrap->{comment} .= " treating FL cdna as an EST. ";
+                            print "-now targeting $cdna_acc as a non-FL assembly.\n";
+                            $using_as_nonFL_assembly{$cdna_acc} = 1;
+                        }
+                    } 
+                }
+                
+                ###############################################################
+                ## Analyze non-FL assemblies
+                ###############################################################
+                
+                if (@$non_fl_assembly_wrappers_aref && ($mode eq "nonFL-mode")) {
+                    
+                    ## In case there are novel FL assemblies in this subcluster, use them for stitching:
+                    my @fl_cdnas_for_stitching; #novels
+                    if (@$flcdna_assembly_wrappers_aref) {
+                        foreach my $assembly_wrapper (@$flcdna_assembly_wrappers_aref) {
+                            my $alignmentObj = $assembly_wrapper->{alignmentObj};
+                            my $cdna_acc = $alignmentObj->get_acc();
+                            if ($novel_FL_assemblies{$cdna_acc}) {
+                                push (@fl_cdnas_for_stitching, $assembly_wrapper);
+                            }
+                        }
+                    }
+                    
+                    print "# Non fl-cdna(s) in this subcluster.\n";
+                    if (@fl_cdnas_for_stitching) {
+                        &stitch_nonFL_alignments_into_FL_alignments($non_fl_assembly_wrappers_aref, \@fl_cdnas_for_stitching, $seq_ref);
+                    } else {
+                        &analyze_non_fl_assemblies($dbproc_t, $non_fl_assembly_wrappers_aref, \@models, $seq_ref);
+                    }
+                    ## separate out the ones matching multiple genes:
+                    my @non_fl_to_summarize;
+                    foreach my $non_fl_wrapper (@$non_fl_assembly_wrappers_aref) {
+                        if ($non_fl_wrapper->{status} == 11) {
+                            push (@non_FL_matching_multiple_genes, $non_fl_wrapper);
+                        } else {
+                            push (@non_fl_to_summarize, $non_fl_wrapper);
+                        }
+                    }
+                    &summarize_asmbl_status($dbproc_t, \@non_fl_to_summarize, $seq_ref);
+                }
+                
+            } #endof foreach subcluster
+        } # endof foreach cluster
+    } #endof foreach FL-mode, nonFL-mode
+    
+    ## process the multiple matching gene category.
+    if (@FL_matching_multiple_genes) {
+        &analyze_multiple_gene_matching_assemblies ($dbproc_t, 1, \@FL_matching_multiple_genes, $seq_ref);
+        &summarize_asmbl_status ($dbproc_t, \@FL_matching_multiple_genes, $seq_ref);
+    }
+    
+    if (@non_FL_matching_multiple_genes) {
+        &analyze_multiple_gene_matching_assemblies($dbproc_t, 0, \@non_FL_matching_multiple_genes, $seq_ref);
+        &summarize_asmbl_status($dbproc_t, \@non_FL_matching_multiple_genes, $seq_ref);
+    }
+    
+    
+    ## Analyze for AntiSense
+    &classify_antisense_transcripts($dbproc_t, $contig_id, \@models, $seq_ref);
+    
+    ## Gene Splitting:
+    &analyze_potential_gene_splitting($dbproc_t, $contig_id, \%using_as_nonFL_assembly, $seq_ref);
+    
+    
+    return;
+    
+} # endof foreach contig
+
+
+
+####
+sub analyze_fl_assemblies {
+    print "method: analyze_fl_assemblies()\n";
+    my ($dbproc, $flcdna_assembly_wrappers_aref, $models_aref, $seq_ref) = @_;
+    
+    my @validating_wrappers;
+    
+    ## some adjustments made to allow some subset of the 'FL' cDNAs to be treated as non-FL
+    my @use_as_non_FL_assemblies; #for those lacking stop codons.
+    my %using_as_non_FL_assembly; #track those above
+    my @FL_assembly_wrappers; #the rest which continue to be treated as FL
+    
+    ## convert alignments to gene objects.
+    ## Then, validate each entry according to the requirements of a FL-assembly
+    
+    
+    
+    
+    
+    &validate_FLcdna_inferred_geneObjs($dbproc, $flcdna_assembly_wrappers_aref, \@validating_wrappers, \@use_as_non_FL_assemblies, 
+                                       \%using_as_non_FL_assembly, \@FL_assembly_wrappers, $seq_ref);
+    
+    # from here on, @FL_assembly_wrappers contains those which should be treated as FL.  Rest absorbed into @use_as_non_FL_assemblies.
+    
+    
+    
+    my $overlapping_gene_text = "";
+    ## overlapping_gene_text indicates that the subcluster has been mapped to one or more genes, and
+    ## identifies the gene(s) of interest.
+    # beware, though, because it also stores the temporary identifiers for novel genes.
+    
+    my $is_novel_flag = 0; #check if any assembly was classified as novel.  If so, we need to check to make sure it doesn't overlap annotated genes by any amount.
+    
+    if (@validating_wrappers) {
+        
+        @validating_wrappers = reverse sort {
+            
+            $a->{converted_gene_obj}->{num_exons} <=> $b->{converted_gene_obj}->{num_exons}
+            ||
+                $a->{converted_gene_obj}->{protein_seq_length} <=> $b->{converted_gene_obj}->{protein_seq_length}
+            
+        } @validating_wrappers; #place in order of more exons and longer proteins first.
+        
+        
+        my @additional_treat_as_nonFL = &improve_annotations_using_flcdnas($dbproc, \@validating_wrappers, $models_aref, $seq_ref); #compare validating geneobjs to existing annotations, make improvements wherever necessary.
+        
+        
+        # flag those to be treated additionally as nonFL
+        foreach my $wrapper (@additional_treat_as_nonFL) {
+            my $cdna_acc = $wrapper->{alignmentObj}->get_acc();
+            $using_as_non_FL_assembly{$cdna_acc} = 1;
+            push (@use_as_non_FL_assemblies, $wrapper);
+        }
+        
+        ## check for novel classification:
+        foreach my $wrapper (@validating_wrappers) {
+            if ($wrapper->{is_novel}) {
+                $is_novel_flag = 1;
+            }
+        }
+        
+		
+        ## genes identified here by overlapping_gene_text must have passed requirements for the fl-cdna to gene annotation mapping.
+        $overlapping_gene_text = $validating_wrappers[0]->{annotated_gene_identifiers}; #whitespace delimeted list of TUs
+    }
+    
+    ## associate fl-assembly with gene annotations if non-validating.
+    if ($overlapping_gene_text && !$is_novel_flag) {
+        foreach my $assembly_wrapper (@$flcdna_assembly_wrappers_aref) {
+            my $alignment = $assembly_wrapper->{alignmentObj};
+            my $cdna_acc = $alignment->get_acc();
+            
+            unless ($assembly_wrapper->{annotated_gene_identifiers} || $using_as_non_FL_assembly{$cdna_acc}) {
+                $assembly_wrapper->{annotated_gene_identifiers} = $overlapping_gene_text;
+            }
+        }
+        
+    } else { 
+        ## No annotated genes mapped to FL-assemblies, given mapping requirements (ie. %overlap)
+        ## or, have a novel gene and want to make sure it doesn't overlap any existing annotations.
+        ## see if can associate non-validating genes with any overlapping annotations
+        my @coords;
+        my %orientations;
+
+        my @segment_coords;
+        foreach my $assembly_wrapper (@FL_assembly_wrappers) {
+            my $gene_obj = $assembly_wrapper->{converted_gene_obj};
+            my $alignment_object = $assembly_wrapper->{alignmentObj};
+            my ($lend, $rend) = sort {$a<=>$b} $gene_obj->get_gene_span();
+            push (@coords, $lend, $rend);
+            
+            my @segments = $alignment_object->get_alignment_segments();
+            foreach my $segment (@segments) {
+                my ($seg_lend, $seg_rend) = sort {$a<=>$b} $segment->get_coords();
+                push (@segment_coords, [$seg_lend, $seg_rend]);
+            }
+            
+            my $spliced_orient = $alignment_object->get_spliced_orientation();
+            unless ($spliced_orient eq '?') {
+                $orientations{$spliced_orient}++;
+            }
+        }
+        my @spliced_orients = keys %orientations;
+        my $mapping_orient = '?';
+        if (scalar @spliced_orients == 1) {
+            $mapping_orient = shift @spliced_orients;
+        }
+
+        @coords = sort {$a<=>$b} @coords;
+                
+
+        my ($lend, $rend) = (shift @coords, pop @coords);
+        
+        ## check for any overlap with any genes of any orientation.
+        my @TUs = &get_potential_overlapping_annotations($dbproc, \@segment_coords, $models_aref,$lend, $rend, $mapping_orient, "nonfli");
+        if (@TUs) { # found some overlapping annotated genes
+            $overlapping_gene_text = join (" ", @TUs);
+            foreach my $assembly_wrapper (@$flcdna_assembly_wrappers_aref) {
+                my $alignment = $assembly_wrapper->{alignmentObj};
+                my $cdna_acc = $alignment->get_acc();
+                
+                unless ($assembly_wrapper->{annotated_gene_identifiers} || $using_as_non_FL_assembly{$cdna_acc}) {
+                    $assembly_wrapper->{annotated_gene_identifiers} = $overlapping_gene_text;
+                }
+                
+                ## Convert status of the supposedly Novel genes by FL-assemblies.
+                if ($assembly_wrapper->{status} == 10 || $assembly_wrapper->{status} == 44) { #novel gene or novel isoform classification
+                   
+                    if ($assembly_wrapper->{status} == 10) {
+                        $assembly_wrapper->{status} = 22; #fl-cdna assembly provides novel gene which overlaps existing annotations 
+                        $assembly_wrapper->{comment} .= "; novel gene appears to overlap existing annotation, requires manual inspection before committing.";
+                    }
+                    elsif ($assembly_wrapper->{status} == 44) {
+                        $assembly_wrapper->{status} = 45; #  fl-cdna assembly provides isoform for novel gene which overlaps existing annotations
+                        $assembly_wrapper->{comment} .= "; this novel isoform belongs to a novel gene that appears to overlap existing annotation, requires manual inspection before committing.";
+                    }
+                    
+                    $assembly_wrapper->{is_valid} = 0;
+                    delete $novel_FL_assemblies{$cdna_acc};  #no using for stitching of non-FL's
+                }
+            }
+        }
+    }
+    
+    
+    my @use_as_FL_assemblies;
+    foreach my $wrapper (@FL_assembly_wrappers) {
+        my $cdna_acc = $wrapper->{alignmentObj}->get_acc();
+        unless ($using_as_non_FL_assembly{$cdna_acc}) {
+            push (@use_as_FL_assemblies, $wrapper);
+        }
+    }
+    
+    
+    return (\@use_as_non_FL_assemblies, \@use_as_FL_assemblies);
+}
+
+
+
+sub improve_annotations_using_flcdnas {
+    print "Method: Improve_annotations_using_flcdnas()\n";
+    my ($dbproc, $validating_fl_wrappers_aref, $models_aref, $seq_ref) = @_;
+    
+    
+    my @additional_treat_as_nonFL; ## those compatible but not encapsulating FL-cdnas.
+    
+    my ($lend, $rend, $accessions_list_aref, $spliced_orient) = &get_span_and_orientation_from_wrappers($dbproc, $validating_fl_wrappers_aref);
+    ## get the corresponding genes from the annotation and perform comparisons:
+    
+    my @segment_coords = &get_alignment_segments_from_assembly_wrappers($validating_fl_wrappers_aref);
+    
+    my @overlapping_TU_feats = &get_potential_overlapping_annotations($dbproc, \@segment_coords, $models_aref, $lend, $rend, $spliced_orient, "fli");
+    my $num_overlapping_genes = scalar (@overlapping_TU_feats);
+    
+    my %compatible_alignment;
+    
+    if ($num_overlapping_genes >= 1) {
+        ## Mapped correctly to genes given gene mapping criteria.
+        my $overlapping_gene_text = join (" ", @overlapping_TU_feats);
+        foreach my $assembly_wrapper (@$validating_fl_wrappers_aref) {
+            $assembly_wrapper->{annotated_gene_identifiers} = $overlapping_gene_text; #extract later for status table.
+        }
+        print "Found overlapping annotations: @overlapping_TU_feats.\n";
+        
+        if ($num_overlapping_genes > 1) {
+            ## Alignment Assembly Matches Multiple Annotated Genes (unacceptable)
+            
+            print "Uh oh, could need to merge two genes here....  Should Examine!!\n";
+            foreach my $assembly_wrapper (@$validating_fl_wrappers_aref) {
+                $assembly_wrapper->{status} = 5; #status 5 = multiple genes matched, merging potentially required (Deprecated for display, but used as an indicator here.  See status ID's 29,30.)
+                $assembly_wrapper->{comment} = "matches multiple genes, suggests merging required.";
+                $assembly_wrapper->{is_novel} = 0;
+                $assembly_wrapper->{is_valid} = 0;
+                $assembly_wrapper->{alt_splice_flag} = 0;
+            }
+            
+        } else {
+            ## Desired Scenario:
+            ## Alignment Assembly Matches a Single Annotated Gene
+            
+            print "Only 1 overlapping gene annotation.  Comparing cDNA-based models to annotations:\n";
+            my $tu_feat_name = $overlapping_TU_feats[0]; 
+            my @annotated_gene_models = &Ath1_cdnas::get_gene_objs_via_gene_id($dbproc, $tu_feat_name, $annot_version);
+            
+            # associate gene models with validated cDNA-based models:
+            
+            ##################
+            ## Check for compatibility between gene models and fl-cdnas.
+            ## It is important to associate compatible genes and assemblies prior to 
+            ## doing so with incompatible alignments.  
+            ## This way, we prevent stomping any existing gene structures which are already
+            ## compatible with other fl-cdnas.
+            ##################
+            
+            my %annotated_model_to_alignment_assembly; #track associations made:
+            my %alignment_assembly_to_annotated_model; #track reciprocal
+            my %model_feat_name_to_annotated_gene_obj; #convenience structure
+            
+            
+            my @FL_wrappers_try_incorporate;
+            &associate_annotated_gene_models_to_FL_alignments ($dbproc, $validating_fl_wrappers_aref, 
+                                                               \@annotated_gene_models, 
+                                                               \%annotated_model_to_alignment_assembly,
+                                                               \%alignment_assembly_to_annotated_model, 
+                                                               \%model_feat_name_to_annotated_gene_obj,
+                                                               $seq_ref,
+                                                               \@additional_treat_as_nonFL,
+                                                               \@FL_wrappers_try_incorporate);
+            
+            
+            ###################################
+            ## See what type of update occurs using compatible cDNAs
+            ###################################
+            
+            my %updated_annotated_gene_models; #remember compatible updates.
+            
+            &update_genes_using_compatible_FL_alignments ($dbproc, \@FL_wrappers_try_incorporate, 
+                                                          \%updated_annotated_gene_models,
+                                                          \%alignment_assembly_to_annotated_model, 
+                                                          \%model_feat_name_to_annotated_gene_obj,
+                                                          $seq_ref);
+            
+            
+            ######################################
+            ## Update incompatible gene models with remaining validating fl-cdnas
+            ######################################
+            
+            # If no compatible cDNA available, may need to update based on other cDNAs
+            
+            ## Get list of all the models not already updated based on FLcdnas
+            my @available_gene_model_feats;
+            foreach my $gene_obj (@annotated_gene_models) {
+                my $model_feat = $gene_obj->{Model_feat_name};
+                unless ($updated_annotated_gene_models{$model_feat}) {
+                    push (@available_gene_model_feats, $model_feat);
+                }
+            }
+            
+            if (@available_gene_model_feats) {
+                
+                
+                ## The compatible FL-cDNAs which yielded altered proteins and failed validation are 
+                ## not subjected to further attempts of incorporation, including stomping.
+                
+                &update_incompatible_genes_using_FL_alignments ($dbproc, \@FL_wrappers_try_incorporate,
+                                                                \@available_gene_model_feats,
+                                                                \%updated_annotated_gene_models,
+                                                                \%model_feat_name_to_annotated_gene_obj,
+                                                                $seq_ref);
+                
+            } # endif of avail gene models
+            
+            ###############################
+            ## Incorporate alt-splice isoforms using remaining fl-cdnas; no left-over existing gene models to update
+            ###############################
+            
+            ## Again, get list of gene models remaining w/o updates based on FL-assemblies
+            @available_gene_model_feats = (); #init
+            foreach my $gene_obj (@annotated_gene_models) {
+                my $model_feat = $gene_obj->{Model_feat_name};
+                unless ($updated_annotated_gene_models{$model_feat}) {
+                    push (@available_gene_model_feats, $model_feat);
+                }
+            }
+            
+            unless (@available_gene_model_feats) {
+                
+                &assign_alt_splicing_isoforms_via_FL_alignments ($dbproc, \@FL_wrappers_try_incorporate, 
+                                                                 \@annotated_gene_models,
+                                                                 $seq_ref);
+                
+            }
+            
+            
+            ############################################################################
+            ## Remaining Unclassifed Assemblies must be Incompatible and Fail Validation
+            ############################################################################
+            
+            foreach my $assembly_wrapper (@FL_wrappers_try_incorporate) {
+                my $status = $assembly_wrapper->{status};
+                if ($status) {
+                    #already examined for incorporation and already classified.
+                    next;
+                } 
+                
+                ## default status until until a suitable gene to update is found.
+                
+                $assembly_wrapper->{status} = 23; #status 23 = incompatible fl-cdna fails validation.
+                $assembly_wrapper->{comment} .= " Nothing else worked, couldn't incorporate it.";
+                $assembly_wrapper->{is_novel} = 0;
+                $assembly_wrapper->{is_valid} = 0;
+                $assembly_wrapper->{alt_splice_flag} = 0;
+            } 
+            
+            
+            ## Store list of models synched to FL-assemblies so these won't be used by non-FL assemblies to update.
+            foreach my $model_feat (keys %updated_annotated_gene_models) {
+                $models_unavail{$model_feat} = 1;
+            }
+            
+        } # only 1 overlapping gene.
+        
+    } else { ## No overlapping genes.
+        
+        #########################################
+        ## Novel Genes ??
+        #########################################
+        
+        if (@$validating_fl_wrappers_aref) {
+            {
+                lock($NOVEL_GENE_COUNTER);
+                $NOVEL_GENE_COUNTER++;
+            }
+            my $temp_novel_gene_ID = "novel_gene_${NOVEL_GENE_COUNTER}_${NOVEL_GENE_TOKEN}";
+            my $rest_alt_splice_flag = 0;
+            foreach my $assembly_wrapper (@$validating_fl_wrappers_aref) {
+                
+                my $comment = "-No relevant overlapping gene found.  NOVEL.";
+                my $align_gene_obj = $assembly_wrapper->{converted_gene_obj};
+                my $cdna_acc = $assembly_wrapper->{alignmentObj}->get_acc();
+                $novel_FL_assemblies{$cdna_acc} = 1;
+                $NOVEL_GENE_ID_via_ACC{$cdna_acc} = $temp_novel_gene_ID;
+                $assembly_wrapper->{annotated_gene_identifiers} = $temp_novel_gene_ID;
+                $assembly_wrapper->{comment} = $comment;
+                $assembly_wrapper->{is_novel} = 1;
+                $assembly_wrapper->{is_valid} = 1;
+                
+                {
+                    lock($NOVEL_MODEL_COUNTER);
+                    $NOVEL_MODEL_COUNTER++;
+                }
+                
+                my $temp_novel_model_id = "novel_model_${NOVEL_MODEL_COUNTER}_${NOVEL_GENE_TOKEN}" ;
+                $assembly_wrapper->{annotated_model_identifier} = $temp_novel_model_id;
+                
+                if (! $rest_alt_splice_flag) {
+                    $assembly_wrapper->{status} = 10; #status 10 = fl-cdna assembly novel gene required
+                    $assembly_wrapper->{alt_splice_flag} = 0;
+                    $rest_alt_splice_flag = 1; #remaining entries are alt splice isoforms of this gene.
+                } else {
+                    $assembly_wrapper->{status} = 44; # status 44 : FL-cDNA provides alt splicing isoform of a novel gene  
+                    $assembly_wrapper->{alt_splice_flag} = 1;
+                }
+                print "$comment\n";
+            }
+        }
+    }
+    
+    if ($TRUST_FL_STATUS && @additional_treat_as_nonFL) {
+        die "ERROR, trusting fl-status, yet somehow classified some FL as nonFL\n";
+    }
+    
+    return (@additional_treat_as_nonFL);
+    
+    
+}
+
+
+####
+sub analyze_non_fl_assemblies {
+    print "Method: analyze_non_fl_assemblies()\n";
+    my ($dbproc, $non_fl_assembly_wrappers_aref, $models_aref, $seq_ref) = @_;
+    
+    ## get the corresponding genes from the annotation and perform comparisons:
+    
+    my ($lend, $rend, $cdna_accs_aref, $spliced_orient) = &get_span_and_orientation_from_wrappers($dbproc, $non_fl_assembly_wrappers_aref);
+        
+    my @cdna_accs = @$cdna_accs_aref;
+    
+    my @segment_coords = &get_alignment_segments_from_assembly_wrappers($non_fl_assembly_wrappers_aref);
+
+    ## Map to an annotated gene(s)
+    my @overlapping_TU_feats = &get_potential_overlapping_annotations($dbproc, \@segment_coords, $models_aref, $lend, $rend, $spliced_orient, "nonfli");
+    my $num_overlapping_genes = scalar (@overlapping_TU_feats);    
+    
+    if ($num_overlapping_genes >= 1) {
+        print "Found overlapping annotations: @overlapping_TU_feats.\n";
+        my $overlapping_gene_text = join (" ", @overlapping_TU_feats);
+        foreach my $alignment_wrapper (@$non_fl_assembly_wrappers_aref) {
+            $alignment_wrapper->{annotated_gene_identifiers} = $overlapping_gene_text; #extract later for status table.
+        }
+		
+        
+        
+        if ($num_overlapping_genes > 1) {
+            ## Multiple Genes Overlap Non-fl assemblies
+            print "Uh oh, could need to merge two genes here....  Should Examine!!\n";
+            foreach my $assembly_wrapper (@$non_fl_assembly_wrappers_aref) {
+                $assembly_wrapper->{status} = 11; # status 11 = multiple genes matched by EST assembly, merging potentially required
+            }
+            
+        }
+        
+        ####################################################################
+        ## Check Gene Model Annotations for Non-FL assembly Incorporation ##
+        ####################################################################
+        
+        elsif ($num_overlapping_genes == 1) {
+            print "Only 1 overlapping gene annotation.  Comparing cDNA-based models to annotations:\n";
+            
+            my $tu_feat_name = $overlapping_TU_feats[0]; 
+            my @annotated_gene_models =  &get_latest_gene_models($dbproc, $tu_feat_name, $seq_ref);
+            
+            my %merged_cdna; #track non-FL accs merged into gene models as updates.
+            
+            my @available_gene_models; # gene models not merged with any fl-cDNAs.
+            my %fl_updated_genemodels; # tracks gene models unavailable because of FL-cDNA based updates. This is probably the same as %models_unavail (global) and should probably be removed.
+            
+            my %model_feat_to_original_gene_obj;  # holds original version of the gene, prior to any update with alignment assemblies
+            my %model_feat_to_updated_gene_obj; # holds any updated version of the gene, after updating with alignment assemblies.
+            
+            my %model_feat_name_to_latest_model_alignment; #holds alignment generated from gene_obj for use with PASA assembler.
+            # also updated concurrently with %model_feat_to_updated_gene_obj
+            
+            
+            ##################################################################
+            ## Check for compatibility between gene models and ESTs: #########
+            ##################################################################
+            
+            &incorporate_compatible_nonFL_alignments_into_gene_annotations ($dbproc, $non_fl_assembly_wrappers_aref,
+                                                                            \@annotated_gene_models,
+                                                                            \%merged_cdna,
+                                                                            \@available_gene_models,
+                                                                            \%fl_updated_genemodels,
+                                                                            \%model_feat_to_original_gene_obj,
+                                                                            \%model_feat_to_updated_gene_obj,
+                                                                            \%model_feat_name_to_latest_model_alignment,
+                                                                            $seq_ref);
+            
+            
+            #####################################################################################################
+            ## Try to stitch incompatible EST assemblies into existing gene models not supported by fl-cdnas. ###
+            #####################################################################################################
+            
+            &incorporate_incompatible_nonFL_alignments_via_stitching ($dbproc, $non_fl_assembly_wrappers_aref,
+                                                                      \%merged_cdna,
+                                                                      \@available_gene_models,
+                                                                      \%fl_updated_genemodels,
+                                                                      \%model_feat_to_original_gene_obj,
+                                                                      \%model_feat_name_to_latest_model_alignment,
+                                                                      \%model_feat_to_updated_gene_obj,
+                                                                      $seq_ref);
+            
+            
+            
+            ####################################################################################################################
+            ## Mapping Annotated Gene Updates to the Final version of the Updated model.
+            ## Make sure each validating assembly-gene incorporation points to the latest version of the upated gene annotation:
+            
+            
+            if ($STOMP_HIGH_PERCENTAGE_OVERLAPPING_GENE) {
+                &incorporate_incompatible_nonFL_alignments_via_STOMPING ($dbproc, $non_fl_assembly_wrappers_aref,
+                                                                         \%merged_cdna,
+                                                                         \@available_gene_models,
+                                                                         \%fl_updated_genemodels,
+                                                                         \%model_feat_to_original_gene_obj,
+                                                                         \%model_feat_name_to_latest_model_alignment,
+                                                                         \%model_feat_to_updated_gene_obj,
+                                                                         $seq_ref);
+                
+            }
+            
+            
+            foreach my $alignment_wrapper (@$non_fl_assembly_wrappers_aref) {
+                if ($alignment_wrapper->{is_valid} && (! $alignment_wrapper->{alt_splice_flag})) {
+                    my $annotated_model_feat_name = $alignment_wrapper->{annotated_model_identifier} or die "Error, no model ID for valid non-fl wrapper\n";
+                    $alignment_wrapper->{updated_annotated_gene_structure} = $model_feat_to_updated_gene_obj{$annotated_model_feat_name};
+                }
+            }
+            
+        } #end of validating single overlapping annotation flag.
+    } else { 
+        # no overlapping genes.
+        print "-No gene overlaps cdna accs: @cdna_accs\n";
+        foreach my $alignment_wrapper (@$non_fl_assembly_wrappers_aref) {
+            $alignment_wrapper->{status} = 19; # status 19: aligns to intergenic region.
+            $alignment_wrapper->{comment} = "no reasonable overlap with genes. Not yet incorporated cDNA/EST.";
+        }
+    }
+}
+
+
+sub get_potential_overlapping_annotations {
+    my ($dbproc, $segment_coords_aref, $models_aref, $lend, $rend, $strand, $asmbl_type) = @_; #asmbl_type = [fli|nonfli]
+    
+    unless ($strand =~ /\+|\-|\?/) {
+        confess "Error, strand($strand) is not acceptable. only +|-|? are allowed.\n";
+    }
+    
+
+    print "Method: get_potential_overlapping_annotations() $lend-$rend, strand: $strand, type: $asmbl_type\n";
+    my @models = @$models_aref;
+    # the fli require more stringent matching criteria for annotations than do the nonfli.
+    print "asmbl_type: $asmbl_type.\n";
+    my $coord = int (($lend + $rend) /2);
+    
+    ## find clusters within bin region (+- 1 bin)
+    my @subclusters;
+    my $index = int ($coord/$bin_size);
+    my $cluster_list = $models[$index];
+    if (ref $cluster_list) {
+        push (@subclusters, @$cluster_list);
+    }
+    $index--;
+    if ($index >= 0 && ($cluster_list = $models[$index])) {
+        push (@subclusters, @$cluster_list);
+    }
+    $index+=2;
+    if ($cluster_list = $models[$index]) {
+        push (@subclusters, @$cluster_list);
+    }
+    my @overlapping_TU_feats;
+    foreach my $model_ref (@subclusters) {
+        my $end5 = $model_ref->{end5}; #sorted in increased order already.
+        my $end3 = $model_ref->{end3};
+        my $orient = $model_ref->{orient};
+        if ($end5 < $rend && $end3 > $lend ) { #coordinate overlap
+            print "Overlap Detected. model($end5, $end3); lend,rend: ($lend, $rend)\n";
+            
+            unless (&model_overlaps_exon_segment($dbproc, $model_ref, $segment_coords_aref)) { next; } ## must have some overlapping exon coordinate.
+            
+            my $num_nucs_in_common = &nucs_in_common($lend, $rend, $end5, $end3);
+            my $annot_length = $end3 - $end5 + 1;
+            my $alignment_gene_length = $rend - $lend + 1;
+            
+            if ($asmbl_type eq "nonfli" || 
+                $num_nucs_in_common/$annot_length*100>=$MIN_PERCENT_OVERLAP 
+                || $num_nucs_in_common/$alignment_gene_length*100>=$MIN_PERCENT_OVERLAP) {
+                
+                #relevant overlap.
+                print "Relevant overlap detected.\n";
+                if ($strand eq '?' || $strand eq $orient) { # If single exon alignment, not sure what strand it is.
+                    print "Orientation same.\n";
+                    push (@overlapping_TU_feats, $model_ref->{feat_name});
+                } else {
+                    print "Orientation different.  Should Examine!!\n";
+                } 
+            }else {
+                print "Overlap not within min percent overlap range.  Should Examine!!\n";
+            }
+        }
+    }
+    return (@overlapping_TU_feats);
+}
+
+
+####
+sub summarize_asmbl_status {
+    print "Method: summarize_asmbl_status()\n";
+    my ($dbproc, $assembly_wrappers_aref, $seq_ref) = @_;
+    my (@assembly_wrappers) = @$assembly_wrappers_aref;
+    my %existing_model_feat_to_update_id; #remember the ones which won't change in this run:
+    foreach my $assembly_wrapper (@assembly_wrappers) {
+        my $alignment = $assembly_wrapper->{alignmentObj};
+        my $acc = $alignment->get_acc();
+        my $status = $assembly_wrapper->{status};
+        
+        unless (defined($status)) { die "ERROR: No status set for asmbl: $acc\n";}
+        
+        my $comment = $assembly_wrapper->{comment};
+        my $overlapping_gene_text = $assembly_wrapper->{annotated_gene_identifiers};
+        my $matching_gene_model_feat_name = $assembly_wrapper->{annotated_model_identifier};
+        
+        my $is_novel_flag = $assembly_wrapper->{is_novel};
+        my $is_valid_flag = $assembly_wrapper->{is_valid};
+        my $alt_splice_flag = $assembly_wrapper->{alt_splice_flag};
+        my $updated_structure = $assembly_wrapper->{updated_annotated_gene_structure};
+        
+        if ( (ref $updated_structure) && ($updated_structure->get_CDS_length() != 0) ) {
+            ## set the protein sequence for storing w/ gene obj in db.
+            my $protein = $updated_structure->create_protein_sequence($seq_ref);
+            $updated_structure->clear_sequence_info();
+            $updated_structure->{protein_seq} = $protein;
+        }
+        
+        my $update_id;
+        if ($is_valid_flag && (! $alt_splice_flag) && (! $is_novel_flag)) {
+            $update_id = $existing_model_feat_to_update_id{$matching_gene_model_feat_name};
+        }
+        unless ($update_id) {
+            $update_id = &get_update_id ($dbproc, $overlapping_gene_text, $matching_gene_model_feat_name, $is_novel_flag, $is_valid_flag, $alt_splice_flag, $updated_structure);
+            if ($is_valid_flag && (! $alt_splice_flag) && (! $is_novel_flag)) {
+                $existing_model_feat_to_update_id{$matching_gene_model_feat_name} = $update_id;
+            }
+        }
+        
+        print "STATUS:\t$acc\t$status\t$comment\t$status_descr{$status}\t$overlapping_gene_text\t$matching_gene_model_feat_name\n";
+        print "Update_id: $update_id\n";
+        
+        ## Load into the mysql database
+        
+        ## insert status_link
+        my $fields = "cdna_acc, status_id, is_chromo, compare_id, annot_update_id";
+        my $values = "?,?,?,?,?";
+        my @params = ($acc, $status, 1, $compare_id, $update_id);
+        if ($comment) {
+            $fields .= ",comment";
+            $values .= ",?";
+            push (@params, $comment);
+        }
+        my $query = "insert status_link ($fields) values ($values)";
+        &Mysql_connect::RunMod($dbproc, $query, @params);
+        
+        
+        ## Annotated gene model IDs 
+        ##   -the original point of pasa was to focus on what worked, not so much what didn't.  Now, the more important focus is
+        ##    exactly what didn't pass.  Efforts are taken below to figure out what the model identifier is that corresponds to the 
+        ##    assembly.   All passing updates should already have a corresponding model ID assigned. It's the ones that are failures that we
+        ##    now have to take some additional effort.  Eventually, must rework the code so it's done more consistently.
+        
+        
+        ## insert annotation_link
+        my @TUs = split (/\s+/, $overlapping_gene_text); #when multiple genes are listed, no models are examined.
+        if ($#TUs > 0) { #multiple genes matched:
+            foreach my $tu (@TUs) {
+                my $model = $Gene_to_model_list{$tu}->[0];
+                my $query = "insert annotation_link (cdna_acc, gene_id, model_id, compare_id) values (?,?,?,?)";
+                &Mysql_connect::RunMod($dbproc, $query, $acc, $tu, $model, $compare_id);
+            }
+        } else { #only one gene, load gene and model:
+            
+            unless ($matching_gene_model_feat_name) {
+                ## none assigned.  Give one for some reference.
+                $matching_gene_model_feat_name = $Gene_to_model_list{$overlapping_gene_text}->[0];
+            }
+            
+            my $query = "insert annotation_link (cdna_acc, gene_id, model_id, compare_id) values (?,?,?,?)";
+            &Mysql_connect::RunMod($dbproc, $query, $acc, $overlapping_gene_text, $matching_gene_model_feat_name, $compare_id);
+        }
+        
+    }
+}
+
+
+####
+sub compare_updated_proteins {
+    print "Method: compare_updated_proteins()\n";
+    my ($old_gene, $new_gene, $seq_ref, $FL_alt_splice_flag) = @_;
+    $old_gene->create_all_sequence_types($seq_ref);
+    $new_gene->create_all_sequence_types($seq_ref);
+    
+    print "old_gene: " . $old_gene->toString(noSeqs=>1) . "new_gene: " . $new_gene->toString(noSeqs=>1) . "\n";
+    
+    my $old_protein_seq = $old_gene->{protein_seq};
+    my $old_protein_length = $old_gene->{protein_seq_length};
+    my $new_protein_seq = $new_gene->{protein_seq};
+    my $new_protein_length = $new_gene->{protein_seq_length};
+    
+    
+    
+    print "Protein lengths: old($old_protein_length), new($new_protein_length)\n";
+    
+    
+    unless ($old_protein_seq && $new_protein_seq) {
+        print "Yikes!  Warning, No protein sequence for comparison.\n";
+        return (0, "no protein sequence available for comparison.");
+    }
+    
+    my $percent_length = $new_protein_length/$old_protein_length*100;
+    my $valid = 1;
+    my $comment = "";
+    
+    ## First, validate the new gene ...just to be safe.
+    my $errors = &Gene_validator::validate_gene($new_gene, $seq_ref);
+    if ($errors) {
+        $errors =~ s/\s/ /g;
+        $comment = $errors;
+        $valid = 0;
+    } elsif ( ( (!$FL_alt_splice_flag && $percent_length < $MIN_PERCENT_LENGTH_NONFL_COMPARE)) || ($FL_alt_splice_flag && $percent_length < $MIN_PERCENT_LENGTH_FL_COMPARE) ) {
+        $comment = "-shorter protein is only $percent_length % of the original protein length. Insufficient. (FL_alt_splice_flag; $FL_alt_splice_flag) ";
+        $valid = 0;
+        
+    } elsif ($valid) {
+        ## align the two together.
+        my ($per_id, $overlap) = &perform_fasta_align($old_protein_seq, $new_protein_seq);
+        ## use original length, not shorter one.  Use diff variable for this length
+        print "FastaAlign: $per_id percent ID across $overlap aa.\n";
+        my $shorter_protein_length = ($new_protein_length < $old_protein_length) ? $new_protein_length : $old_protein_length;
+        my $percent_overlap = $overlap/$shorter_protein_length*100;
+        if ($per_id < $MIN_PERID_PROT_COMPARE || $percent_overlap < $MIN_PERCENT_ALIGN_LENGTH) {
+            $comment = "-new protein aligns to original one with $per_id % ID across $percent_overlap % of the shorter protein length.  Insufficient.";  
+            $valid = 0;
+        } else {
+            $overlap = 100 if ($overlap > 100); #artifact of alignment length including gaps.
+            $comment = "Passed validation test.  Aligns with $per_id % ID across $percent_overlap % of the shorter  protein length.\n";
+        }
+    }
+    print "Comparison results: Valid: $valid\tComment: $comment\n";
+    return ($valid, $comment);
+}
+
+
+sub get_stitched_alignment {
+    my ($gene_obj_alignment, $est_assembly_alignment) = @_;
+    my $cDNA_stitcher = new CDNA::CDNA_stitcher();
+    
+    ## Force spliced validation (indicators of splice junctions required by CDNA_stitcher)
+    ## Algorithmically, not so important here, because all alignments under current analysis must have consensus splice sites:
+    my $gene_obj_alignment_spliced_orient = $gene_obj_alignment->get_spliced_orientation();
+    my $est_assembly_alignment_orient = $est_assembly_alignment->get_spliced_orientation();
+    
+    
+    if ($gene_obj_alignment_spliced_orient ne '?') {
+        $gene_obj_alignment->force_spliced_validation($gene_obj_alignment_spliced_orient);
+    }
+
+    if ($est_assembly_alignment_orient ne '?') {
+        $est_assembly_alignment->force_spliced_validation($est_assembly_alignment_orient);
+    }
+    
+
+    my $stitched_alignment = $cDNA_stitcher->stitch_alignments($gene_obj_alignment, $est_assembly_alignment);
+    return ($stitched_alignment);
+}
+
+
+sub get_update_id {
+    print "method: get_update_id (@_)\n";
+    my ($dbproc, $TU_feat_name, $matching_gene_model_feat_name, $is_novel_flag, $is_valid_flag, $alt_splice_flag, $updated_structure) = @_;
+    
+    my ($gene_id, $model_id, $after_gene_obj);
+    
+    my $update_id = undef(); #initialize.
+    $gene_id = $TU_feat_name;
+    $model_id = $matching_gene_model_feat_name;
+    
+    
+    if ($updated_structure) {
+        print "Got updated structure.  Cloning it.\n";
+        my $protein_seq = $updated_structure->get_protein_sequence();
+        print "$gene_id, $model_id, updated protein: $protein_seq\n";
+        print $updated_structure->toString(noSeqs=>1);
+        my $cloned_gene_obj = $updated_structure->clone_gene(); #scalar attributes with long values (>200 chars) are lost.
+        # retain the protein sequence.
+        $cloned_gene_obj->{protein_seq} = $protein_seq;
+        $after_gene_obj = nfreeze($cloned_gene_obj);
+    }
+    
+    ## Several accessions may be built into the same maximally updated structure.  Only store one entry for this update.
+    if (($is_valid_flag) && (!$alt_splice_flag) && (!$is_novel_flag)) {
+        my $query = "select update_id from annotation_updates where gene_id = ? and model_id = ? and is_valid = ? and alt_splice_flag = ? and is_novel_flag = ? and compare_id = ?";
+        $update_id = &Mysql_connect::very_first_result_sql ($dbproc, $query, $gene_id, $matching_gene_model_feat_name, 1, 0, 0, $compare_id);
+        if ($update_id) {
+            
+            ## Update the latest updated gene structure:
+            print "Got update_id: $update_id (already exists), now updating the after-gene-obj structure to this one.\n";
+            my $query = "update annotation_updates set after_gene_obj = ? where update_id = ?";
+            &Mysql_connect::RunMod($dbproc, $query, $after_gene_obj, $update_id);
+	        
+            return ($update_id);
+        }
+    } 
+    
+    ## Insert new entry
+    print "Inserting new entry in annotation_updates; getting an update_id for it.\n";
+    my $query = "insert annotation_updates (gene_id, model_id, alt_splice_flag, before_gene_obj, after_gene_obj, compare_id, is_valid, have_before, have_after, is_novel_flag) values (?,?,?,?,?,?,?,?,?,?)";
+    print "BLOB Length: after_gene_obj: " . length ($after_gene_obj);
+    &Mysql_connect::RunMod($dbproc, $query, $gene_id, $model_id, $alt_splice_flag, undef, $after_gene_obj, $compare_id, $is_valid_flag, 0, 1, $is_novel_flag);
+    
+    $query = "select LAST_INSERT_ID()";
+    my $result = &Mysql_connect::first_result_sql($dbproc, $query);
+    $update_id = $result->[0];
+    print ", UPDATE_ID: $update_id\n";
+    return ($update_id); #undef returned if there's no reason to archive the data.
+}
+
+####
+sub get_latest_gene_models {
+    my ($dbproc, $TU_feat_name, $seq_ref) = @_;
+    print "Method: get_latest_gene_models ($TU_feat_name, $seq_ref)\n";
+    
+    ## Get list of working models:
+    my $query = "select model_id from annotation_store where gene_id = ? and annotation_version = ?";
+    my @results = &Mysql_connect::do_sql_2D($dbproc, $query, $TU_feat_name, $annot_version);
+    my @working_models;
+    foreach my $result (@results) {
+        my ($model) = @$result;
+        push (@working_models, $model);
+    }
+    
+    my @gene_objs;
+    foreach my $working_model (@working_models) {
+        ## See if exists in updated form in mysql db:
+        my $gene_obj;
+        my $blob = &Ath1_cdnas::get_updated_gene_obj($dbproc, $working_model, $compare_id);
+        if ($blob) {
+            print "Retrieving/restoring already updated $working_model gene_obj from mysql db.\n";
+            $gene_obj = thaw($blob);
+            $gene_obj->{Model_feat_name} = $working_model;
+            $gene_obj->{TU_feat_name} = $TU_feat_name;
+            
+        } else {
+            print "Retrieving $working_model gene_obj from annot_db.\n";
+            $gene_obj = &Ath1_cdnas::get_gene_obj_via_model_id($dbproc, $working_model, $annot_version);
+        }
+        push (@gene_objs, $gene_obj);
+    }
+    
+	if ($seq_ref) {
+		foreach my $gene_obj (@gene_objs) {
+			my $protein = $gene_obj->create_protein_sequence($seq_ref);
+			if ($protein !~ /^M/) {
+				$gene_obj->set_5prime_partial(1);
+			}
+			if ($protein !~ /\*$/) {
+				$gene_obj->set_3prime_partial(1);
+			}
+		}
+	}
+	
+	return (@gene_objs);
+}
+
+####
+sub check_UTRs {
+    print "Method: check_UTRs()\n";
+    my ($alignment_stitched, $old_gene_obj, $new_gene_obj) = @_;
+    # alignment_stitched is the alignment which was stitched into the old_gene_obj to derive new_gene_obj
+    
+    
+    my $valid = 1;
+    my $comment = "";
+    ## Check model span (CDS span)
+    my ($old_model_lend, $old_model_rend) = sort {$a<=>$b} $old_gene_obj->get_model_span();
+    my ($old_gene_lend, $old_gene_rend) = sort {$a<=>$b} $old_gene_obj->get_gene_span();
+    my ($new_model_lend, $new_model_rend) = sort {$a<=>$b} $new_gene_obj->get_model_span();
+    my ($new_gene_lend, $new_gene_rend) = sort {$a<=>$b} $new_gene_obj->get_gene_span();
+    my ($alignment_lend, $alignment_rend) = sort {$a<=>$b} $alignment_stitched->get_coords();
+    my $old_has_lend_UTR = (
+                            ($old_gene_obj->get_orientation() eq '+' && $old_gene_obj->has_5prime_UTR()) 
+                            ||
+                            ($old_gene_obj->get_orientation() eq '-' && $old_gene_obj->has_3prime_UTR())
+                            );
+    
+    my $old_has_rend_UTR = (
+                            ($old_gene_obj->get_orientation() eq '-' && $old_gene_obj->has_5prime_UTR()) 
+                            ||
+                            ($old_gene_obj->get_orientation() eq '+' && $old_gene_obj->has_3prime_UTR())
+                            );
+    
+    
+    
+    if ($old_model_lend == $new_model_lend && $old_model_rend == $new_model_rend) {
+        # start and stop the same, no problem.
+        return ($valid, $comment);
+    } 
+    
+    
+    ## False UTR check: artifact of stitching coupled with reading frame shift and/or intervening stop
+    ## Tell-tale sign: 
+    ## -either end of the original gene lacks a UTR
+    ## -the new gene has a UTR
+    ## -the new gene's UTR end is beyond that of the transcript alignment used to modify the gene object
+    
+    ## Check the Left UTR:
+    if (( ! $old_has_lend_UTR)
+        &&
+        $old_model_lend != $new_model_lend ## start or stop shift
+        &&
+        $old_model_lend == $new_gene_lend ## gene boundary the same
+        && 
+        $old_model_lend < $alignment_lend) # now has a UTR not supported by current transcript alignment
+    {
+        $valid = 0;
+        $comment .= "(False UTR) Left UTR diff and not supported by cDNA: old model lend: $old_model_lend, new_gene_lend: $new_gene_lend, old_gene_lend: $old_gene_lend\n";
+    }
+    
+    
+    ## Check the Right UTR:
+    if ( (! $old_has_rend_UTR)
+         &&
+         $old_model_rend != $new_model_rend ## start or stop shift
+         && 
+         $old_model_rend == $new_gene_rend ## gene boundary the same
+         &&
+         $old_model_rend > $alignment_rend) # now has a UTR not supported by current transcript alignment
+    {
+        $valid = 0;
+        $comment .= "(False UTR) Right UTR diff and not supported by cDNA: old model rend: $old_model_rend, new model rend: $new_model_rend, new_gene_rend: $new_gene_rend, old_gene_rend: $old_gene_rend ";
+    }
+    
+    
+    unless ($valid) {
+        print "False UTR info: \nOld gene: " . $old_gene_obj->toString() . "\nTentative new gene: " . $new_gene_obj->toString();
+    }
+    
+    return ($valid, $comment);
+}
+
+
+sub check_num_UTR_exons {
+    my $gene_obj = shift;
+    my $num_utr_exons = 0;
+    my @exons = $gene_obj->get_exons(); #should be in order
+    my ($valid, $comment) = (1,"");
+    my @utr_exon_counts;
+    foreach my $exon (@exons) {
+        my $cds = $exon->get_CDS_obj();
+        if (ref $cds) {
+            if ($num_utr_exons) {
+                push (@utr_exon_counts, $num_utr_exons);
+                $num_utr_exons = 0; #reset.
+            }
+        } else {
+            $num_utr_exons++;
+        }
+    }
+    
+    if ($num_utr_exons) {
+        push (@utr_exon_counts, $num_utr_exons);
+        $num_utr_exons = 0;
+    }
+    
+    if (@utr_exon_counts) {
+        @utr_exon_counts = sort {$a<=>$b} @utr_exon_counts;
+        $num_utr_exons = pop @utr_exon_counts; #set to maximum number of adjacent UTR exons.
+    }
+    
+    if ($num_utr_exons > $MAX_UTR_EXONS) {
+        $valid = 0;
+        $comment = "Contains $num_utr_exons UTR exons, greater than the $MAX_UTR_EXONS allowed.";
+    }
+    return ($valid, $comment);
+}
+
+
+####
+sub validate_existing_annotations {
+    my ($gene_models_aref, $seq_ref) = @_;
+    my $invalid = 0;
+    my $errors = "";
+    foreach my $gene_model (@$gene_models_aref) {
+        my $errorcomments = Gene_validator::validate_gene($gene_model, $seq_ref);
+        if ($errorcomments) {
+            my $feat_name = $gene_model->{Model_feat_name};
+            $invalid = 1;
+            $errorcomments =~ s/\s/ /g;
+            $errors .= "$feat_name errors: $errorcomments; ";
+        }
+    }
+    return ($invalid, $errors);
+}
+
+
+
+####
+sub get_annotated_gene_models_on_contig {
+    my ($dbproc, $asmbl_id) = @_;
+    
+    &populate_gene_to_model_list($dbproc, $asmbl_id);
+    
+    
+    my @models;
+    
+    # get the annotated working models for that chromosome:
+    my $query = "select a.gene_id, min(a.lend), max(a.rend), a.orient from annotation_store a where a.annotdb_asmbl_id = ? and annotation_version = ? group by a.gene_id\n";
+    my @results = &Mysql_connect::do_sql_2D($dbproc, $query, $asmbl_id, $annot_version);
+    
+    foreach my $result (@results) {
+        
+        my ($feat_name, $end5, $end3, $orientation) = @$result;
+        print "Gene: $feat_name\n";
+        
+        my $index = int ($end5/$bin_size);
+        my $model_list_ref = $models[$index];
+        my $model_ref =  {feat_name=>$feat_name,
+                          orient=>$orientation,
+                          end5=>$end5,
+                          end3=>$end3};
+        if (ref $model_list_ref)  {
+            push (@$model_list_ref, $model_ref);
+	    } else {
+            $models[$index] = [$model_ref];
+	    }
+    }
+    
+    
+    return (@models);
+}
+
+
+####
+sub get_contig_cluster_listing {
+    my ($dbproc, $asmbl_id) = @_;
+    my @all_clusters;
+    
+    ## Get all cluster info for that chromosome
+    my $query = "select cluster_id, lend, rend from clusters where annotdb_asmbl_id = ? order by cluster_id";
+    my @results = &Mysql_connect::do_sql_2D($dbproc, $query, $asmbl_id);
+    
+    foreach my $result (@results) {
+        my ($cluster_id, $lend, $rend) = @$result;
+        my $cluster_ref =  {cluster_id=>$cluster_id,
+                            lend=>$lend,
+                            rend=>$rend};
+        push (@all_clusters, $cluster_ref);
+    }
+    
+    return (@all_clusters);
+}
+
+
+####
+sub populate_gene_to_model_list {
+    my ($dbproc, $asmbl_id) = @_;
+    
+    my $query = "select gene_id, model_id from annotation_store where annotdb_asmbl_id = ? and annotation_version = ? ";
+    my @results = &do_sql_2D($dbproc, $query, $asmbl_id, $annot_version);
+    foreach my $result (@results) {
+        my ($gene_id, $model_id) = @$result;
+        
+        my $list_ref = $Gene_to_model_list{$gene_id};
+        unless (ref $list_ref) {
+            $list_ref = $Gene_to_model_list{$gene_id} = [];
+        }
+        push (@$list_ref, $model_id);
+    }
+}
+
+
+
+####
+sub get_subclusters_from_clusters {
+    my ($dbproc, $cluster_id) = @_;
+    
+    my @subclusters;
+    
+    my $query = "select subcluster_id from subclusters where cluster_id = $cluster_id order by subcluster_id";
+    
+    my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+    foreach my $result_aref (@results) {
+        my $subcluster_id = $result_aref->[0];
+        push (@subclusters, $subcluster_id);
+    }
+    
+    ## get spliced orientations for each subcluster:
+    my %subcluster_id_to_spliced_orient;
+    
+    foreach my $subcluster_id (@subclusters) {
+        my $query = "select al.spliced_orient from align_link al, subcluster_link sl where al.align_acc = sl.cdna_acc and sl.subcluster_id = ? limit 1";
+        my $spliced_orient = &very_first_result_sql($dbproc, $query, $subcluster_id);
+        $subcluster_id_to_spliced_orient{$subcluster_id} = $spliced_orient;
+    }
+    
+    my %rank_analysis_order = ( '+' => 1,
+                                '-' => 1,
+                                '?' => 2);  
+    
+    # order so unknown spliced orientation is analyzed last
+    @subclusters = sort { $rank_analysis_order{ $subcluster_id_to_spliced_orient{$a} } 
+                          <=>  
+                              $rank_analysis_order{ $subcluster_id_to_spliced_orient{$b} } } @subclusters; 
+    
+    
+    return (@subclusters);
+}
+
+
+####
+sub get_alignment_assemblies_via_subcluster_id {
+    my ($dbproc, $subcluster_id, $seq_ref, $using_as_nonFL_assembly_href) = @_;
+    
+    my @flcdna_assembly_wrappers;
+    my @non_fl_assembly_wrappers;
+    
+    my @assemblies;
+    my $query = "select cdna_acc from subcluster_link where subcluster_id = $subcluster_id";
+    my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+    
+    foreach my $result (@results) {
+        push (@assemblies, $result->[0]);
+    }
+    unless (@assemblies) {
+        die "Sorry, no assemblies for subcluster $subcluster_id.\n";
+    }
+    my @alignment_objs;
+    foreach my $assembly (@assemblies) {
+        my $alignment_obj = &Ath1_cdnas::get_alignment_obj_via_align_acc($dbproc, $assembly, $seq_ref);
+        push (@alignment_objs, $alignment_obj);
+    }
+    
+    ## Illustrate what we have as input:
+    print "# Incoming assemblies:\n";
+    my $assembler = new CDNA::PASA_alignment_assembler;
+    $assembler->{incoming_alignments} = [@alignment_objs];
+    $assembler->{assemblies} = [@alignment_objs];
+    print $assembler->toAlignIllustration();
+    
+    ## Wrap each alignment assembly for use here.
+    foreach my $assembly (@alignment_objs) {
+        my $assembly_wrapper = Annot_status_update->new($assembly);
+        my $cdna_acc = $assembly->get_acc();
+        my $is_fli = $assembly->is_fli();
+        if ($is_fli && $using_as_nonFL_assembly_href->{$cdna_acc}) {
+            $is_fli = 0;
+            $assembly_wrapper->{comment} .= " Using FL-cDNA assembly as a non-FL assembly. ";
+        }
+        print "ASMBL: $cdna_acc (fli_status: $is_fli)\n";
+        if ($is_fli) {
+            push (@flcdna_assembly_wrappers, $assembly_wrapper);
+        } else {
+            push (@non_fl_assembly_wrappers, $assembly_wrapper);
+        }
+    }
+    
+    ## order by number of segments, decreasing order
+    @flcdna_assembly_wrappers = reverse sort { 
+        $a->{alignmentObj}->get_num_segments() <=> $b->{alignmentObj}->get_num_segments() 
+        } @flcdna_assembly_wrappers;
+    
+    ## order the nonFL assemblies
+    @non_fl_assembly_wrappers = reverse sort {
+        $a->{alignmentObj}->get_num_segments() <=> $b->{alignmentObj}->get_num_segments()
+        } @non_fl_assembly_wrappers;
+    
+    
+    return (\@flcdna_assembly_wrappers, \@non_fl_assembly_wrappers);
+}
+
+
+
+####
+sub validate_FLcdna_inferred_geneObjs {
+    print "Method: validate_FLcdna_inferred_geneObjs()\n";
+    my ($dbproc, $flcdna_assembly_wrappers_aref, $validating_wrappers_aref, $use_as_non_FL_assemblies_aref, $using_as_non_FL_assembly_href, $FL_assembly_wrappers_aref, $seq_ref) = @_;
+    
+
+  FL_ANALYSIS:
+    foreach my $assembly_wrapper (@$flcdna_assembly_wrappers_aref) {
+        my $assembly = $assembly_wrapper->{alignmentObj};
+        my $cdna_acc = $assembly->get_acc();
+        
+        print "validate_FLcdna_inferred_geneObjs: $cdna_acc\n";
+        
+        my $gene_obj = $assembly->get_gene_obj_via_alignment( ## for now, let's not make assumptions of completeness.
+                                                              { '5prime' => 0,
+                                                                '3prime' => 0 
+                                                                } 
+                                                              );  
+        $gene_obj->{Model_feat_name} = $cdna_acc;
+                
+        
+        ## Validate gene object for integrity
+        my $errors = Gene_validator::validate_gene($gene_obj, $seq_ref);
+        $errors =~ s/\s/ /g; # convert all whitespace to blanks.
+        if ($errors) {
+            print $gene_obj->toString(noSeqs=>1) . "\nErrors: $errors\n";
+            $assembly_wrapper->{comment} .= $errors;
+        }
+        
+        # check for appropriate protein coding region.
+        my $protein = $gene_obj->get_protein_sequence();
+		
+        ########################################################
+        ## Check for Partial Protein:
+        ## See if should use this as a non-FL assembly instead.
+        ########################################################
+
+        if ( ( # don't got protein, or protein is partial:
+              (! $protein) || ( ($protein =~ /\w/) && ($protein !~ /\*$/ || $protein !~ /^M/)) )
+             && (! $TRUST_FL_STATUS) 
+             
+             ) 
+        
+        { ## Treat like an EST (a non-FL assembly)
+            
+            print "Protein: $protein\nsetting $cdna_acc as non-fli for next round.\n";
+            $using_as_non_FL_assembly_href->{$cdna_acc} = 1;
+            push (@$use_as_non_FL_assemblies_aref, $assembly_wrapper);
+            next FL_ANALYSIS;
+            
+        } else {
+            ## got a FL-protein from the FL-assembly
+            push (@$FL_assembly_wrappers_aref, $assembly_wrapper);
+        }
+        
+        ####################################################
+        ## Validating FL-assemblies
+        ####################################################
+        print "$cdna_acc, running gene validation tests.\n";
+        
+        ## reset gene_obj to non-partial status:
+        $gene_obj = $assembly->get_gene_obj_via_alignment(); ## not allowing partials now.
+        $gene_obj->{Model_feat_name} = $cdna_acc; 
+        $gene_obj->set_5prime_partial(0);
+        $gene_obj->set_3prime_partial(0);
+        $gene_obj->create_all_sequence_types($seq_ref);
+        $protein = $gene_obj->get_protein_sequence();
+        my $cDNA_sequence = $gene_obj->get_cDNA_sequence();
+        
+        ## store tentative update for FL-cDNA inferred gene
+        $assembly_wrapper->{converted_gene_obj} = $gene_obj;	
+        $assembly_wrapper->{updated_annotated_gene_structure} = $gene_obj; 
+        
+        ##################################
+        ## Validate Aspects of Gene Obj
+        ##################################
+        
+        ## check percent protein coding and protein length size.
+        my $protein_length = length($protein);
+        my $percent_prot_coding = $protein_length*3/length($cDNA_sequence)*100;
+        if ($percent_prot_coding < $MIN_PERCENT_PROT_CODING) {
+            my $ignore_percent_flag = 0;
+            if ( (defined $MIN_FL_ORF_SIZE) && $protein_length > $MIN_FL_ORF_SIZE) {
+                $ignore_percent_flag = 1;
+            } elsif (defined ($MIN_FL_ORF_SIZE)) {
+                $errors .= "; prot length ($protein_length) < minimum of ($MIN_FL_ORF_SIZE). ";
+            }
+            unless ($ignore_percent_flag) {
+                $errors .=  "Protein coding only $percent_prot_coding % of cDNA sequence length.";
+                print "$errors\n";
+                $assembly_wrapper->{comment} .= $errors;
+            }
+        }
+        
+        if (!$errors) {
+            ## Check num UTR exons:
+            my ($valid, $comment) = &check_num_UTR_exons($gene_obj);
+            if (!$valid) {
+                $errors .= "Failed validation: $comment";
+                $assembly_wrapper->{comment} .= $comment;
+            }
+        }
+        
+        if (!$errors) {
+            print "$gene_obj->{acc} Validates. :)\n";
+            $validating_FL_cdnas{$cdna_acc} = 1;
+            push (@$validating_wrappers_aref, $assembly_wrapper);
+        } else {
+            print $gene_obj->toString(noSeqs=>1) . $gene_obj->{acc} . " DOES NOT VALIDATE. $errors\n";
+            
+            ## Store status and comments  	    
+            $assembly_wrapper->{status} = 1; # status 1 = lacks validation.	    $assembly_wrapper->{comment} = "$errors";
+            $assembly_wrapper->{is_novel} = 0;
+            $assembly_wrapper->{is_valid} = 0;
+            $assembly_wrapper->{alt_splice_flag} = 0;
+        }
+    }
+}
+
+####
+sub get_alignment_segments_from_assembly_wrappers {
+    my ($assembly_wrappers_aref) = @_;
+
+    my @seg_coords;
+
+    foreach my $assembly_wrapper (@$assembly_wrappers_aref) {
+        
+        my $alignment = $assembly_wrapper->{alignmentObj};
+        push (@seg_coords, &get_alignment_segment_coords_from_alignment($alignment));
+    }
+    
+
+    return (@seg_coords);
+}
+
+sub get_alignment_segment_coords_from_alignment {
+    my ($alignment) = @_;
+
+
+    my @seg_coords;
+    
+    my @segments = $alignment->get_alignment_segments();
+    print $alignment->toString();
+    
+    foreach my $segment (@segments) {
+        my ($seg_lend, $seg_rend) = $segment->get_coords();
+        push (@seg_coords, [$seg_lend, $seg_rend]);
+    }
+    
+    return (@seg_coords);
+    
+}
+
+
+####
+sub model_overlaps_exon_segment {
+    my ($dbproc, $model_struct, $segment_coords_aref) = @_;
+
+    my $feat_name = $model_struct->{feat_name};
+    
+    ## get the gene object from the database:
+    #my $gene_obj = &Ath1_cdnas::get_gene_obj_via_model_id($dbproc, $model_feat_name, $annot_version);
+    
+    my (@model_objs) = &get_latest_gene_models($dbproc, $feat_name);
+
+    foreach my $gene_obj (@model_objs) {
+        
+        foreach my $exon ($gene_obj->get_exons()) {
+            
+            my ($exon_lend, $exon_rend) = sort {$a<=>$b} $exon->get_coords();
+            
+            foreach my $segment_coords (@$segment_coords_aref) {
+                my ($seg_lend, $seg_rend) = sort {$a<=>$b} @$segment_coords;
+                
+                if ($seg_lend <= $exon_rend && $seg_rend >= $exon_lend) {
+                    ## found overlap!
+                    return (1);
+                }
+            }
+        }
+        
+    }
+    return (0); # no overlap
+}
+
+
+
+
+####
+sub get_span_and_orientation_from_wrappers {
+    my ($dbproc, $wrappers_list_aref) = @_;
+    
+    my @accessions;
+    my @coords;
+    my $spliced_strand;
+    foreach my $wrapper (@$wrappers_list_aref) { 
+        my $alignment = $wrapper->{alignmentObj};
+        my $accession = $alignment->get_acc();
+        push (@accessions, $accession);
+        
+        my @c = $alignment->get_coords;
+        push (@coords, @c);
+        
+        if ($spliced_strand) {
+            if ($alignment->get_spliced_orientation() ne $spliced_strand) {
+                confess "Error, conflicting spliced orientations in cluster of assemblies";
+            }
+        }
+        else {
+            ## set the spliced strand
+            $spliced_strand = $alignment->get_spliced_orientation();
+        }
+        
+    }
+    
+    @coords = sort {$a<=>$b} @coords;
+    my $lend = shift @coords;
+    my $rend = pop @coords;
+    
+    print "Span and orientation: $lend - $rend, spliced_orient: ($spliced_strand)\n";
+    
+    return ($lend, $rend, \@accessions, $spliced_strand);
+}
+
+####
+sub associate_annotated_gene_models_to_FL_alignments {
+    print "Method: associate_annotated_gene_models_to_FL_alignments()\n";
+    my ($dbproc, $validating_fl_wrappers_aref,
+        $annotated_gene_models_aref,
+        $annotated_model_to_alignment_assembly_href,
+        $alignment_assembly_to_annotated_model_href,
+        $model_feat_name_to_annotated_gene_obj_href,
+        $seq_ref,
+        $additional_treat_as_nonFL_aref,
+        $FL_wrappers_try_incorporate_aref) = @_;
+    
+    
+    my %treating_as_nonFL;
+    
+    foreach my $annotated_gene_model (@$annotated_gene_models_aref) {
+        my $model_feat_name = $annotated_gene_model->{Model_feat_name};
+        my $partial_href = &analyze_partial_status($annotated_gene_model);
+        my ($gene_lend, $gene_rend) = sort {$a<=>$b} $annotated_gene_model->get_gene_span();
+        
+        #tracking
+        $model_feat_name_to_annotated_gene_obj_href->{$model_feat_name} = $annotated_gene_model;
+        
+        foreach my $assembly_wrapper (@$validating_fl_wrappers_aref) {
+            my $alignment_obj = $assembly_wrapper->{alignmentObj};
+            my ($align_lend, $align_rend) = sort {$a<=>$b} $alignment_obj->get_coords();
+            
+            my $align_gene_obj = $assembly_wrapper->{converted_gene_obj};
+            my $cdna_acc = $alignment_obj->get_acc();
+            print "Comparing $model_feat_name to $cdna_acc\n";
+            
+            if ($treating_as_nonFL{$cdna_acc}) {
+                print "already decided to treat $cdna_acc as a non-FL cDNA\n";
+                next;
+            }
+            
+            if (my $cdna = $annotated_model_to_alignment_assembly_href->{$model_feat_name}) { 
+                print "Current gene model ($model_feat_name) already associated with alignment assembly ($cdna).\n";
+                last;
+            }
+            if (my $model = $alignment_assembly_to_annotated_model_href->{$cdna_acc}) {
+                print "cDNA assembly ($cdna_acc) already compatible with a gene model ($model).\n";
+                next;
+            }
+            
+            print "Assembling annotated gene with cDNA-based gene.\n";
+            my $assembler = new CDNA::Gene_obj_alignment_assembler($seq_ref);
+            $assembler->assemble_genes($annotated_gene_model, $align_gene_obj);
+            print $assembler->toAlignIllustration();
+            
+            my @assemblies = $assembler->get_assemblies();
+            foreach my $assembly (@assemblies) {
+                print $assembly->toToken() . " " . $assembly->get_acc() . "\n";
+            }
+            my $num_assemblies = $#assemblies + 1;
+            if ($num_assemblies == 1) {
+                #compatible alignment with gene annotation
+                
+                ## MUST CHECK FOR FL->EST classification if original gene model is longer than FL-assembly
+                if ( ($align_lend > $gene_lend || $align_rend < $gene_rend) && (!$TRUST_FL_STATUS)) { 
+                    push (@$additional_treat_as_nonFL_aref, $assembly_wrapper);
+                    $treating_as_nonFL{$cdna_acc} = 1;
+                    my $comment = "compatible FL-cdna is extended by existing gene model, suggests gene model is not FL. Treating like EST.";
+                    $assembly_wrapper->{comment} .= $comment;
+                    print "$comment\n";
+                    next;
+                }
+                
+                ## Make association between gene model and compatible alignment:
+                $annotated_model_to_alignment_assembly_href->{$model_feat_name} = $cdna_acc;
+                $alignment_assembly_to_annotated_model_href->{$cdna_acc} = $model_feat_name;
+                print "Alignment $cdna_acc *compatible* with gene annotation $model_feat_name.\n";
+                
+                ## Because some of the 'FL' may not be full-length, maybe use the merged version as the new tentative gene model:
+                #print "Because FL-cDNA may not be \'full-length\', checking to see if the merged compatible product can provide a suitable replacement:\n";
+                
+                
+                print "Because FL-cDNA may not be \'full-length\', using the merged compatible product to provide a suitable replacement:\n";
+                
+                my $assembly = $assemblies[0];
+                my $merged_gene_obj = $assembly->get_gene_obj_via_alignment($partial_href);
+                my ($valid, $comment) = &compare_updated_proteins($annotated_gene_model, $merged_gene_obj, $seq_ref, 0);
+                if ($valid) {
+                    print "Replacing the tentative FL-based gene_obj with that of the merged compatible FL-cDNA and annotated gene obj.\n";
+                    $assembly_wrapper->{updated_annotated_gene_structure} = $merged_gene_obj;
+                } else {
+                    print "Sorry, cannot use the merged compatible product for replacement of FL-inferred gene: $comment\n";
+                }
+                
+            } else {
+                print "Alignment $cdna_acc incompatible with gene annotation $model_feat_name.\n";
+            }
+        } ## end of foreach assembly_wrapper loop
+    } ## end of foreach annotated gene model loop
+    
+    
+    ## Separate those which should be treated as nonFL from the rest.
+    foreach my $FL_wrapper (@$validating_fl_wrappers_aref) {
+        my $cdna_acc = $FL_wrapper->{alignmentObj}->get_acc();
+        unless ($treating_as_nonFL{$cdna_acc}) {
+            push (@$FL_wrappers_try_incorporate_aref, $FL_wrapper);
+        }
+    }
+    
+}
+
+
+
+####
+sub update_genes_using_compatible_FL_alignments {
+    print "Method: update_genes_using_compatible_FL_alignments()\n";
+    my ($dbproc, $validating_fl_wrappers_aref, 
+        $updated_annotated_gene_models_href,
+        $alignment_assembly_to_annotated_model_href, 
+        $model_feat_name_to_annotated_gene_obj_href,
+        $seq_ref) = @_;
+    
+    foreach my $assembly_wrapper (@$validating_fl_wrappers_aref) {
+        
+        my $align_gene_obj = $assembly_wrapper->{updated_annotated_gene_structure};
+        my $alignment_obj = $assembly_wrapper->{alignmentObj}; ## this may have been replaced by compatible gene obj
+        my $cdna_acc = $alignment_obj->get_acc();
+        
+        my $compatible_annotated_model_feat_name;
+        unless ($compatible_annotated_model_feat_name = $alignment_assembly_to_annotated_model_href->{$cdna_acc}) {
+            print "-no compatible model assigned to $cdna_acc\n";
+            next; # no compatible model to compare to
+        }
+        print "$cdna_acc was previously found compatible with $compatible_annotated_model_feat_name; Comparing them.\n";
+        my $annotated_gene_model = $model_feat_name_to_annotated_gene_obj_href->{$compatible_annotated_model_feat_name};
+        my $annotated_model_feat_name = $annotated_gene_model->{Model_feat_name};
+        
+        my ($valid, $errorcomment, $status, $comment) = (0, "", undef, "");
+        &compare_genes($align_gene_obj, $annotated_gene_model);
+        if (&are_identical()) {
+            $comment =  "-Matching gene and cDNA alignment are identical.";
+            $status = 3; #status 3 = compat fl-cdna incorporated.
+            $valid = 1;
+            
+        } else {
+            my $check_cds_change = 0;
+            if (&are_CDS_same()) {
+                $comment =  "-CDS is the same, UTRs are different.";
+                $status = 4; #status 4 compat fl-cdna alters UTRs.
+                $valid = 1;
+            } elsif (&are_mRNA_same()) {
+                $comment =  "-Bizarre; mRNA same, CDS different.";
+                $check_cds_change = 1;
+
+            } else {
+                $comment = "-Major update in gene structure required.";
+                $check_cds_change = 1;
+            }
+            if ($check_cds_change) {
+                # compare proteins:
+                ($valid, $errorcomment) = &compare_updated_proteins ($annotated_gene_model, $align_gene_obj, $seq_ref, 0);
+                if ($valid) {
+                    $status = 6; #status 6 = compat fl-cdna changes protein, passes validation.
+                    $comment .= ";passed alignment tests.";
+                    
+                } else {
+                    $status = 7; #status 7 = compat fl-cdna changes protein, fails validation.
+                    $comment .= $errorcomment;
+                    $valid = 0;
+                    
+                }
+            }
+        }
+        
+        if ($valid) {
+            $updated_annotated_gene_models_href->{$compatible_annotated_model_feat_name} = 1;
+            $model_to_incorporated_alignments{$compatible_annotated_model_feat_name}->{$cdna_acc} = 1; # track global association
+        }
+        
+        $assembly_wrapper->{status} = $status;
+        $assembly_wrapper->{comment} = $comment;
+        $assembly_wrapper->{annotated_model_identifier} = $annotated_model_feat_name;
+        $assembly_wrapper->{is_valid} = $valid;
+        $assembly_wrapper->{alt_splice_flag} = 0;
+        $assembly_wrapper->{is_novel} = 0;
+        
+        print "Comment: $comment\n";
+        
+    } #end of foreach assembly_wrapper
+    
+}
+
+
+####
+sub update_incompatible_genes_using_FL_alignments {
+    print "Method: update_incompatible_genes_using_FL_alignments()\n";
+    my ($dbproc, $validating_fl_wrappers_aref,
+        $available_gene_model_feats_aref,
+        $updated_annotated_gene_models_href,
+        $model_feat_name_to_annotated_gene_obj_href,
+        $seq_ref) = @_;
+    
+    
+    ## Examine Acceptable Updates of Gene Structures (Stringent)
+    foreach my $assembly_wrapper (@$validating_fl_wrappers_aref) {
+        my $cdna_acc = $assembly_wrapper->{alignmentObj}->get_acc();
+        my $status = $assembly_wrapper->{status};
+        if ($status) {
+            #already examined for incorporation and already classified.
+            print "$cdna_acc already assigned to status: $status\n";
+            next;
+        } 
+        my $align_gene_obj = $assembly_wrapper->{converted_gene_obj};
+        foreach my $available_gene_model_feat (@$available_gene_model_feats_aref) {
+            ## Check for compatible update:
+            if ($updated_annotated_gene_models_href->{$available_gene_model_feat}) {
+                #already tentatively updated.
+                print "$available_gene_model_feat already flagged as tentatively updated\n"; 
+                next;
+            } 
+            my $available_gene_obj = $model_feat_name_to_annotated_gene_obj_href->{$available_gene_model_feat};
+            my ($valid, $comment) = &compare_updated_proteins($available_gene_obj, $align_gene_obj, $seq_ref, 0);
+            $assembly_wrapper->{comment} = $comment; #init in case of failure
+            $assembly_wrapper->{annotated_model_identifier} = $available_gene_model_feat;
+            
+            if ($valid) {
+                $updated_annotated_gene_models_href->{$available_gene_model_feat} = 1;
+                $model_to_incorporated_alignments{$available_gene_model_feat}->{$cdna_acc} = 1;
+                my $comment = "-Should update non-compatible gene with available fl-cDNA.";
+                $assembly_wrapper->{status} = 8; #status 8 = incompatible fl-cdna alignment updates gene structure.
+                $assembly_wrapper->{comment} .= $comment;
+                $assembly_wrapper->{is_novel} = 0;
+                $assembly_wrapper->{is_valid} = 1;
+                $assembly_wrapper->{alt_splice_flag} = 0;
+                print "$comment\n";
+                last;
+                
+            }
+        }
+    } 
+	
+    if ($STOMP_HIGH_PERCENTAGE_OVERLAPPING_GENE) {
+        foreach my $assembly_wrapper (@$validating_fl_wrappers_aref) {
+            my $status = $assembly_wrapper->{status};
+            if ($status) {
+                #already examined for incorporation and already classified.
+                next;
+            } 
+            my $align_gene_obj = $assembly_wrapper->{converted_gene_obj};
+            my $alignment_obj = $assembly_wrapper->{alignmentObj};
+            my $cdna_acc = $alignment_obj->get_acc();
+            
+            if ($assembly_wrapper->{alignmentObj}->get_num_segments() == 1) {
+                $assembly_wrapper->{comment} .= " Only one exon inferred from this alignment.  Skipping any potential stomping. ";
+                next; ## only operating on multiple exon alignments (ensures splicing, requirement of rice project)
+            }
+            
+            foreach my $available_gene_model_feat (@$available_gene_model_feats_aref) {
+                ## Check for compatible update:
+                if ($updated_annotated_gene_models_href->{$available_gene_model_feat}) {
+                    #already tentatively updated.
+                    next;
+                } 
+                my $available_gene_obj = $model_feat_name_to_annotated_gene_obj_href->{$available_gene_model_feat};
+                my ($valid, $comment) = &check_stomping_overlap_criteria($available_gene_obj, $align_gene_obj);
+                
+                if ($valid) {
+                    $updated_annotated_gene_models_href->{$available_gene_model_feat} = 1;
+                    $model_to_incorporated_alignments{$available_gene_model_feat}->{$cdna_acc} = 1;
+                    my $comment = "-Should update non-compatible gene with available fl-cDNA.";
+                    
+                    $assembly_wrapper->{status} = 26; #FL-cDNA spans single gene and allowed to STOMP it.
+                    $assembly_wrapper->{comment} = $comment;
+                    $assembly_wrapper->{annotated_model_identifier} = $available_gene_model_feat;
+                    $assembly_wrapper->{is_novel} = 0;
+                    $assembly_wrapper->{is_valid} = 1;
+                    $assembly_wrapper->{alt_splice_flag} = 0;
+                    print "$comment\n";
+                    last;
+                    
+                }
+            }
+        } 
+        
+    }
+    
+    
+}
+
+
+####
+sub assign_alt_splicing_isoforms_via_FL_alignments {
+    my ($dbproc, $validating_fl_wrappers_aref, 
+        $annotated_gene_models_aref,
+        $seq_ref) = @_;
+    print "Method: assign_alt_splicing_isoforms_via_FL_alignments()\n";
+    ## Incorporate remaining alt splice isoforms:
+    foreach my $assembly_wrapper (@$validating_fl_wrappers_aref) {
+        
+        my $align_gene_obj = $assembly_wrapper->{converted_gene_obj};
+        my $alignment_obj = $assembly_wrapper->{alignmentObj};
+        my $cdna_acc = $alignment_obj->get_acc();
+        
+        if (my $status = $assembly_wrapper->{status}) {
+            print "$cdna_acc already classified with status($status)\n";
+            next;
+        }
+		
+        print "FL $cdna_acc has not yet been applied to annotations.  Maybe it will provide a suitable splicing variant?\n"; 
+        my ($valid, $comment) = (0,""); #initialize.
+        
+        ## ensure compatible with existing annotations.
+        ## All we need is to compare it to one of any existing annotated model and have it validate properly.
+        
+        foreach my $annotated_gene_model (@$annotated_gene_models_aref) {
+            my $annotated_gene_model_feat_name = $annotated_gene_model->{Model_feat_name};
+            ($valid, $comment) = &compare_updated_proteins ($annotated_gene_model, $align_gene_obj, $seq_ref, 1);
+            if ($valid) {
+                $comment .= "-Should incorporate NOVEL alt splice model based on $cdna_acc";
+                $assembly_wrapper->{status} = 9; # status 9 = 9: incompatible fl-cdna provides 
+                # alternative splicing isoform, passes validation.
+                $assembly_wrapper->{comment} = $comment;
+                $assembly_wrapper->{is_novel} = 0;
+                $assembly_wrapper->{is_valid} = 1;
+                $assembly_wrapper->{annotated_model_identifier} = $annotated_gene_model_feat_name;
+                $assembly_wrapper->{alt_splice_flag} = 1;
+                last;
+            }
+        }  
+        
+        if ($STOMP_HIGH_PERCENTAGE_OVERLAPPING_GENE) {
+            unless ($valid) {
+                foreach my $annotated_gene_model (@$annotated_gene_models_aref) {
+                    my $annotated_gene_model_feat_name = $annotated_gene_model->{Model_feat_name};
+                    my $new_comment;
+                    ($valid, $new_comment) = &check_stomping_overlap_criteria ($annotated_gene_model, $align_gene_obj);
+                    if ($valid) {
+                        $new_comment .= "-Should incorporate NOVEL (STOMPED) alt splice model based on $cdna_acc";
+                        $comment .= $new_comment;
+                        $assembly_wrapper->{status} = 33; # status 33 = FL-assembly STOMPS new splice isoform
+                        # alternative splicing isoform, passes validation.
+                        $assembly_wrapper->{comment} = $comment;
+                        $assembly_wrapper->{is_novel} = 0;
+                        $assembly_wrapper->{is_valid} = 1;
+                        $assembly_wrapper->{annotated_model_identifier} = $annotated_gene_model_feat_name;
+                        $assembly_wrapper->{alt_splice_flag} = 1;
+                        last;
+                    }
+                }
+            }
+        }  
+        
+        unless ($valid) {
+            ## No such valid comparison performed.  It must be quite different from the annotated gene model(s)
+            
+            $assembly_wrapper->{status} = 21; # status 21 = incompatible fl-cdna suggests 
+            # alternative splicing isoform, fails validation.
+            $assembly_wrapper->{comment} = $comment;
+            $assembly_wrapper->{is_novel} = 0;
+            $assembly_wrapper->{is_valid} = 0;
+            $assembly_wrapper->{alt_splice_flag} = 1;
+        }
+        print "$comment\n";
+    }
+}
+
+
+
+####
+sub incorporate_compatible_nonFL_alignments_into_gene_annotations {
+    print "Method: incorporate_compatible_nonFL_alignments_into_gene_annotations()\n";
+    my ($dbproc, $non_fl_assembly_wrappers_aref,
+        $annotated_gene_models_aref, 
+        $merged_cdna_href,
+        $available_gene_models_aref,
+        $fl_updated_genemodels_href,
+        $model_feat_to_original_gene_obj_href,
+        $model_feat_to_updated_gene_obj_href,
+        $model_feat_name_to_latest_model_alignment_href,
+        $seq_ref) = @_;
+    
+    foreach my $annotated_gene_model (@$annotated_gene_models_aref) {
+        my $partial_href = &analyze_partial_status($annotated_gene_model);
+        my $model_feat_name = $annotated_gene_model->{Model_feat_name};
+        $model_feat_to_original_gene_obj_href->{$model_feat_name} = $annotated_gene_model;
+        $model_feat_to_updated_gene_obj_href->{$model_feat_name} = $annotated_gene_model; #init to orig
+        
+        ## Convert gene to an alignment:
+        my $gene_assembler = new CDNA::Gene_obj_alignment_assembler($seq_ref);
+        my $gene_alignment = $gene_assembler->gene_obj_to_cdna_alignment($annotated_gene_model); ## This will be updated to include alignments incorporated below.
+        $model_feat_name_to_latest_model_alignment_href->{$model_feat_name} = $gene_alignment; #store for later access; init to alignment based on gene structure.
+        
+        if ($models_unavail{$model_feat_name}) {
+            print "Sorry, model $model_feat_name is already updated based on a fl-cDNA assembly.\n";
+            $fl_updated_genemodels_href->{$model_feat_name} = 1;  ## Remember this; can use it later for stitching as last resort.
+            next;
+        }
+        push (@$available_gene_models_aref, $model_feat_name);
+        
+        
+        ## Attempt to greedily assign alignment assemblies to annotated gene models.
+        
+        ####################################################################################
+        ### Checking for compatibility between annotated gene and alignment assembly(s) ####
+        ####################################################################################
+        
+        foreach my $alignment_wrapper (@$non_fl_assembly_wrappers_aref) {
+            my $alignment = $alignment_wrapper->{alignmentObj};
+            my $cdna_acc = $alignment->get_acc();
+            print "Assembling annotated gene with alignment $cdna_acc.\n";
+            
+			if ($merged_cdna_href->{$cdna_acc}) { next; }  ## Do not associate a cDNA with more than one compatible gene model!
+
+            ## Check assembly alignment compatibility with the annotated gene
+            my $assembler = new CDNA::PASA_alignment_assembler($seq_ref);
+            $assembler->assemble_alignments($gene_alignment, $alignment);
+            print $assembler->toAlignIllustration();
+            my @assemblies = $assembler->get_assemblies();
+            foreach my $assembly (@assemblies) {
+                print $assembly->toToken() . " " . $assembly->get_acc() . "\n";
+            }
+            my $num_assemblies = scalar (@assemblies);
+            
+            if ($num_assemblies == 1) {
+                #compatible alignment with gene annotation
+                print "Gene $model_feat_name is compatible with cDNA alignment $cdna_acc.\n";
+                
+                my $assembly = $assemblies[0];
+				
+                ## See if/how any annotations changed as a result of incorporating the CDNA data.
+                my $spliced_orient = $assembly->get_spliced_orientation();
+                my $num_segments = $assembly->get_num_segments();
+                if ($num_segments == 1 && $spliced_orient ne $annotated_gene_model->{strand}) {
+                    $assembly->set_spliced_orientation($annotated_gene_model->{strand}); #make sure orients are the same for single-segment assemblies.
+                }
+                # create gene_obj based on the gene/alignment merge
+                my $new_gene_obj = $assembly->get_gene_obj_via_alignment($partial_href);
+                
+                my $comment;
+                my $status;
+                
+                my $incorporated_EST = 0;  ## Flag, use to determine if EST assembly can be incorporated into this annotated gene model.
+                
+                &compare_genes($new_gene_obj, $annotated_gene_model);
+                if (&are_identical()) {
+                    $comment =  "-Gene merged with EST assembly is no different from the original gene.";
+                    $status = 12; #status 12 = EST assembly incorporated.
+                    $incorporated_EST = 1;
+                    
+                } else {
+                    ## Non Identical, how exactly?
+                    my $check_cds_change = 0;
+                    if (&are_CDS_same()) {
+                        $comment = "-CDS is the same, UTRs are different.";
+                        $status = 13;
+                        $incorporated_EST = 1;
+                    } elsif (&are_mRNA_same()) {
+                        $comment =  "-Bizarre; mRNA same, CDS different.";
+                        $check_cds_change = 1;
+                    } else {
+                        ## Neither mRNA nor CDS are the same
+                        $comment =  "-Major update in gene structure required.";
+                        $check_cds_change = 1;
+                    }
+                    if ($check_cds_change) {
+                        # compare proteins:
+                        my ($valid, $errorcomment) = &compare_updated_proteins ($annotated_gene_model, $new_gene_obj, $seq_ref, 0);
+                        if ($valid) {
+                            ($valid, $errorcomment) = &check_num_UTR_exons($new_gene_obj);
+                        }
+                        
+                        if ($valid) {
+                            $status = 14; #compatible, update required.
+                            $comment .= "; passed alignment tests.";
+                            $incorporated_EST = 1;
+                        } else {
+                            $status = 15; #incompatible, conflict resolution required
+                            $comment .= $errorcomment;
+                            
+                        }
+                    }
+                    
+                } #end of identical/non-identical gene-alignment comparison.
+                print $comment . "\n";
+                if ($incorporated_EST) {
+                    
+                    ## Remember the current updated gene object and corresponding alignment assembly
+                    $model_feat_to_updated_gene_obj_href->{$model_feat_name} = $new_gene_obj;
+                    $gene_alignment = $assembly; #propagate alignment to next cdna test.
+                    $model_feat_name_to_latest_model_alignment_href->{$model_feat_name} = $gene_alignment;
+                    
+                    ## Set Status Flags for Current Alignment Assembly
+                    $alignment_wrapper->{is_novel} = 0;
+                    $alignment_wrapper->{is_valid} = 1;
+                    $alignment_wrapper->{alt_splice_flag} = 0;
+                    $alignment_wrapper->{status} = $status;
+                    $alignment_wrapper->{comment} = $comment;
+                    $alignment_wrapper->{annotated_model_identifier} = $model_feat_name;
+                    $alignment_wrapper->{updated_annotated_gene_structure} = 0; #base on future updated gene obj.
+                    
+                    ## Remember which alignment accessions were safely merged with genes
+                    if ($merged_cdna_href->{$cdna_acc}) { die "Error, already assigned $cdna_acc to another model!"; }
+					$merged_cdna_href->{$cdna_acc} = $model_feat_name;
+					$model_to_incorporated_alignments{$model_feat_name}->{$cdna_acc} = 1;  
+                    
+                }
+                
+                #end of num assemblies == 1 
+                
+            } 
+            
+        } # end of foreach alignment
+    } # end of foreach gene.
+    
+    ######################################################################################
+    ## Fail single exon EST assemblies which were found incompatible with gene structures:
+    ######################################################################################
+    foreach my $alignment_wrapper (@$non_fl_assembly_wrappers_aref) {
+        my $alignment = $alignment_wrapper->{alignmentObj};
+        my $cdna_acc = $alignment->get_acc();
+        
+        my $num_segments = $alignment->get_num_segments();
+        if ( (! $merged_cdna_href->{$cdna_acc}) && ($num_segments == 1) ) {
+            $alignment_wrapper->{is_novel} = 0;
+            $alignment_wrapper->{is_valid} = 0;
+            $alignment_wrapper->{alt_splice_flag} = 0;
+            $alignment_wrapper->{status} = 34; # 34 = single-exon EST-assembly  fails gene compatibility test        
+            $alignment_wrapper->{comment} = " single exon EST assembly fails to incorporate due to incompatibility or other reasons.\n";
+            $alignment_wrapper->{annotated_model_identifier} = 0;
+            $alignment_wrapper->{updated_annotated_gene_structure} = 0; # no tentative update
+        }
+    }
+    
+	return;
+}
+
+####
+sub incorporate_incompatible_nonFL_alignments_via_stitching {
+    print "Method: incorporate_incompatible_nonFL_alignments_via_stitching()\n";
+    my ($dbproc, $non_fl_assembly_wrappers_aref,
+        $merged_cdna_href,
+        $available_gene_models_aref,
+        $fl_updated_genemodels_href,
+        $model_feat_to_original_gene_obj_href,
+        $model_feat_name_to_latest_model_alignment_href,
+        $model_feat_to_updated_gene_obj_href,
+        $seq_ref) = @_;
+    
+    
+    foreach my $alignment_wrapper (@$non_fl_assembly_wrappers_aref) {
+        my $alignment = $alignment_wrapper->{alignmentObj};
+        my $acc = $alignment->get_acc();
+        
+        if (my $model_feat = $merged_cdna_href->{$acc}) {
+            print "-nonFL cDNA $acc shown to be compatible and already incorporated into annotation ($model_feat).\n";
+            next;
+        }
+        
+        if (my $status = $alignment_wrapper->{status}) {
+            print "-$acc already classified with status: $status\n";
+            next;
+        } 
+        
+        ## check for valid stitching into an existing gene model which **remains compatible with already merged EST assemblies**:
+        my ($status, $valid, $comment);
+        my @valid_isoform_templates; #remember which gene models are comparable and can serve as potential isoforms for creating alternative splicing isoforms.
+        my $last_stitch_example = 0; #if nothing works, at least show an example of a failure
+        my $have_flcdna_stitched = 0;
+        my $stitched_available_gene_needs_new_isoform = 0; ## Flag for those cases where the assembly stitches fine into a gene model, but remains incompatible with previously merged EST assemblies.
+        
+        foreach my $model_feat_name (@$available_gene_models_aref, keys %$fl_updated_genemodels_href) {
+            ## Examine the models w/o FL-cdna support first.
+            ## Also, available_gene_models are targeted for updates
+            ## Stitched FL-cDNAs provide alternative splicing isoforms, not updates to existing genes.
+            
+            print "\nTrying to stitch $acc into model $model_feat_name\n";
+            
+            my $gene_obj = $model_feat_to_original_gene_obj_href->{$model_feat_name};
+            print $gene_obj->toString(noSeqs=>1) if $SEE;
+            my $partial_href = &analyze_partial_status($gene_obj);
+            my $maximal_alignment = $model_feat_name_to_latest_model_alignment_href->{$model_feat_name};
+            
+            ## Stitch incompatible est alignment into maximal alignment:
+            my $stitched_alignment = &get_stitched_alignment($maximal_alignment, $alignment);
+            my $stitched_gene_obj = $stitched_alignment->get_gene_obj_via_alignment($partial_href);
+            $last_stitch_example = $stitched_gene_obj; # just in case.
+            
+            ($valid, $comment) = &check_UTRs($alignment, $gene_obj, $stitched_gene_obj); # check for false UTR
+            
+            if ($valid) {
+                ($valid, $comment) = &compare_updated_proteins($gene_obj, $stitched_gene_obj, $seq_ref, 0);
+            }
+            if ($valid) { 
+                ($valid, $comment) = &check_num_UTR_exons($stitched_gene_obj);
+            }
+            
+            if ($valid) {
+                $stitched_gene_obj->{Model_feat_name} = $model_feat_name;
+                push (@valid_isoform_templates, $stitched_gene_obj);
+                if ($fl_updated_genemodels_href->{$model_feat_name}) {
+                    $have_flcdna_stitched = 1;
+                }
+            }
+            
+            if ($valid && !$have_flcdna_stitched) {
+                ## Check for retained compatibility with original merged EST assemblies:
+                my @ESTasmblAccs;
+                my $ESTshref;
+                if ($ESTshref = $model_to_incorporated_alignments{$model_feat_name}) {
+                    @ESTasmblAccs = keys %$ESTshref;
+                }
+                if (@ESTasmblAccs) {
+                    print "-checking to see if still compatible with other already merged EST assemblies.\n";
+                    my @alignments = ($stitched_alignment);
+                    foreach my $est_acc (@ESTasmblAccs) {
+                        my $alignment = &Ath1_cdnas::get_alignment_obj_via_align_acc($dbproc, $est_acc, $seq_ref);
+                        push (@alignments, $alignment);
+                    }
+                    my $assembler = new CDNA::PASA_alignment_assembler($seq_ref);
+                    $assembler->assemble_alignments(@alignments);
+                    print $assembler->toAlignIllustration();
+                    my @assemblies = $assembler->get_assemblies();
+                    if ($#assemblies > 0) { #multiple assemblies
+                        ## A valid gene model, but inconsistent with currently set of updates already applied here.
+                        $comment .= ", but Stitched product is incompatible with previously merged ESTs\n";
+                        $stitched_available_gene_needs_new_isoform = 1;
+                    } else {
+                        # Beautiful single assembly
+                        my $final_assembly = shift @assemblies;
+                        my $updated_gene_obj = $final_assembly->get_gene_obj_via_alignment($partial_href);
+                        ## Check protein compatibility just to be prudent.
+                        ($valid, $comment) = &compare_updated_proteins($gene_obj, $updated_gene_obj, $seq_ref, 0);
+                        # should be compatible since potentially a longer version of the same stitched gene...but just to be sure
+                        unless ($valid) {
+                            die "ERROR: The stitched gene now doesn't validate upon incorporation of other ESTassemblies.  This should not happen!\n";
+                        }
+                        $merged_cdna_href->{$acc} = $model_feat_name;
+                        $model_feat_to_updated_gene_obj_href->{$model_feat_name} = $updated_gene_obj; #store for later.
+                        $ESTshref->{$acc} = 1; #add to list of compatible EST assemblies in updated gene structure.
+                        $model_feat_name_to_latest_model_alignment_href->{$model_feat_name} = $final_assembly; #store for further analysis.
+                    }
+                } else { #no other compatible EST assemblies.
+                    $merged_cdna_href->{$acc} = $model_feat_name;
+                    $model_feat_to_updated_gene_obj_href->{$model_feat_name} = $stitched_gene_obj;
+                    $model_to_incorporated_alignments{$model_feat_name}->{$acc} = 1;
+                    $model_feat_name_to_latest_model_alignment_href->{$model_feat_name} = $stitched_alignment;
+                }
+            }
+            
+            if ($valid && !$have_flcdna_stitched) { #if have_flcdna_stitched, want to try them all and take the longest protein.
+                # stitching worked and remained compatible with all other ESTs, 
+                # or EST was stitched into a fl-cdna updated gene successfully.
+                last;
+            } 
+        } #end of foreach model
+        
+        ########################################################################################
+        ## Setting Status Flags for assembly wrapper
+        ## Also, setting updated structures for Alt-splice variants and as examples of failures
+        
+        my $alt_splice_flag = 0;
+        my $updated_structure = 0;
+        if ($valid && (!$have_flcdna_stitched) && (!$stitched_available_gene_needs_new_isoform)) {
+            ## incorporated EST into existing annotated gene model via stitching.
+            $status = 16; #status 16: EST assembly properly stitched into gene structure.
+            # updated structure determined by the final version of the updated gene structure, done last in code block.
+        } elsif ($valid && 
+                 ($stitched_available_gene_needs_new_isoform || ($have_flcdna_stitched && @valid_isoform_templates)) 
+                 ) {
+            ## Adding Alternative Splicing Variation
+            if ($have_flcdna_stitched) {
+                ## Have an alternative splicing isoform based on the stitching of an EST assembly into a FL-cDNA.
+                @valid_isoform_templates = reverse sort {$a->{protein_seq_length}<=>$b->{protein_seq_length}} @valid_isoform_templates; 
+                # take the model w/longest protein
+                my $isoform_template = shift @valid_isoform_templates;
+                $updated_structure = $isoform_template;
+                $merged_cdna_href->{$acc} = $isoform_template->{Model_feat_name};
+                ## Give new status ID here.
+                $status = 24; #FL-cDNA assembly stitched by EST assembly to provide alt splicing isoform.
+            } else {
+                $merged_cdna_href->{$acc} = $last_stitch_example->{Model_feat_name};
+                $updated_structure = $last_stitch_example;
+                ## Give new status ID here.
+                $status = 25; #EST stitched into model but incompatible with other already incorporated alignments, provides alt splicing isoform.
+            }
+            # Deprecated: (using 24 or 25) #$status = 17; #status 17: EST assembly stitched into Gene model requires alternative splicing isoform.
+            $alt_splice_flag = 1;
+            
+        } else { #invalid, and no alt splice possible.
+            
+            $status = 18;
+            $comment .= "Stitched EST lacks compatibility with preexisting protein annotations; invalid and no alt-splice template available.";
+            $updated_structure = $last_stitch_example;
+        }
+        
+        ## Populate alignment attributes
+        my $model_match = $merged_cdna_href->{$acc} || 0;
+        $alignment_wrapper->{is_novel} = 0;
+        $alignment_wrapper->{status} = $status;
+        $alignment_wrapper->{comment} = $comment;
+        $alignment_wrapper->{annotated_model_identifier} = $model_match;
+        $alignment_wrapper->{is_valid} = $valid;
+        $alignment_wrapper->{alt_splice_flag} = $alt_splice_flag;
+        $alignment_wrapper->{updated_annotated_gene_structure} = $updated_structure;  #only using if alt_splice template required or 
+        #is invalid, otherwise, using the updated gene 
+        #structure of the stored gene_obj under model_match.
+        print "$comment\n";
+        
+    } #end of foreach alignment
+}
+
+
+####
+sub incorporate_incompatible_nonFL_alignments_via_STOMPING {
+    print "Method: incorporate_incompatible_nonFL_alignments_via_STOMPING()\n";
+    my ($dbproc, $non_fl_assembly_wrappers_aref,
+        $merged_cdna_href,
+        $available_gene_models_aref,
+        $fl_updated_genemodels_href,
+        $model_feat_to_original_gene_obj_href,
+        $model_feat_name_to_latest_model_alignment_href,
+        $model_feat_to_updated_gene_obj_href,
+        $seq_ref) = @_;
+    
+    
+    foreach my $alignment_wrapper (@$non_fl_assembly_wrappers_aref) {
+        my $alignment = $alignment_wrapper->{alignmentObj};
+        my $cdna_acc = $alignment->get_acc();
+        
+        ## Ignore single-exon ESTs:
+        if ($alignment_wrapper->{status} == 34) {
+            print "-single EXON EST-assembly already failed compatibility tests.  Not going to try to stomp it in.\n";
+            next;
+        }
+        
+        if (my $model_feat = $merged_cdna_href->{$cdna_acc}) {
+            print "-nonFL cDNA $cdna_acc already incorporated into annotation ($model_feat).\n";
+        } else {
+            ## check for stomping into an annotation
+            #  -replace a model w/o any EST/cDNA support
+            #  -if any transcript support whatsoever, make alt-splicing isoform
+            my @models_no_transcript_support;
+            my @models_transcript_support;
+            
+            foreach my $model_feat_name (@$available_gene_models_aref) { 
+                if ($model_to_incorporated_alignments{$model_feat_name}) {
+                    # transcript support
+                    push (@models_transcript_support, $model_feat_name);
+                } else {
+                    push (@models_no_transcript_support, $model_feat_name);
+                }
+            }
+            
+            foreach my $model_feat_name (@models_no_transcript_support, keys %$fl_updated_genemodels_href, @models_transcript_support) { #prioritized list
+                
+                my $has_transcript_support = 0; #init
+                
+                if ($model_to_incorporated_alignments{$model_feat_name} || $fl_updated_genemodels_href->{$model_feat_name}) {
+                    $has_transcript_support = 1;
+                }
+                
+                ## Let's do the stitching again
+                my $annotated_gene_obj = $model_feat_to_updated_gene_obj_href->{$model_feat_name};
+                my $partial_href = &analyze_partial_status($annotated_gene_obj);
+                my $maximal_alignment = $model_feat_name_to_latest_model_alignment_href->{$model_feat_name};
+                my $stitched_alignment = &get_stitched_alignment($maximal_alignment, $alignment);
+                my $stitched_gene_obj = $stitched_alignment->get_gene_obj_via_alignment($partial_href);
+                
+                ## Must do validation tests for new gene object: 
+                # -make sure we have a complete gene model
+                # -check for false UTRs
+                my ($valid, $comment) = &check_UTRs($alignment, $annotated_gene_obj, $stitched_gene_obj);
+                unless ($valid) {
+                    print "check_UTRs() invalid: $comment\n";
+                    next;
+                }
+                ($valid, $comment) = &check_num_UTR_exons($stitched_gene_obj);
+                unless ($valid) {
+                    print "check_num_UTR_exons() invalid: $comment\n";
+                    next;
+                }
+				
+                ## Check stomping:
+                ($valid, $comment) = &check_stomping_overlap_criteria($annotated_gene_obj, $stitched_gene_obj);
+                
+                if ($valid) {
+                    $alignment_wrapper->{is_valid} = 1;
+                    $alignment_wrapper->{is_novel} = 0;
+                    $alignment_wrapper->{annotated_model_identifier} = $model_feat_name;
+                    $alignment_wrapper->{updated_annotated_gene_structure} = $stitched_gene_obj;
+                    $alignment_wrapper->{comment} = $comment;
+                    
+                    ## indicate accession has been merged into annotation:
+                    $merged_cdna_href->{$cdna_acc} = $model_feat_name;
+                    
+                    if (! $has_transcript_support) {
+                        $alignment_wrapper->{alt_splice_flag} = 0;
+                        $alignment_wrapper->{status} = 31; # status 31 = EST-stitched assembly STOMPS model lacking transcript support.
+                        
+                        ## Update currently tracked settings for gene and transcript alignment
+                        $model_feat_to_updated_gene_obj_href->{$model_feat_name} = $stitched_gene_obj;
+                        $model_to_incorporated_alignments{$model_feat_name}->{$cdna_acc} = 1;
+                        $model_feat_name_to_latest_model_alignment_href->{$model_feat_name} = $stitched_alignment;
+                        
+                    } else {
+                        $alignment_wrapper->{alt_splice_flag} = 1;
+                        $alignment_wrapper->{status} = 32; # status 32 = EST-stitched gene w/pre-existing transcript support STOMPS a new alt splicing variation.
+                    }
+                    last;
+                }
+            }
+        }
+    }
+}
+
+
+####
+sub stitch_nonFL_alignments_into_FL_alignments {
+    print "Method: stitch_non_FL_alignments_into_FL_alignments()\n";
+    my ($non_fl_assembly_wrappers_aref, $fl_cdnas_for_stitching_aref, $seq_ref) = @_;
+    
+    foreach my $alignment_wrapper (@$non_fl_assembly_wrappers_aref) {
+        my $non_fl_alignment = $alignment_wrapper->{alignmentObj};
+        my $est_acc = $non_fl_alignment->get_acc();
+        
+        ## try each FL-cDNA
+        foreach my $fl_cdna_wrapper (@$fl_cdnas_for_stitching_aref) {
+            my $fl_alignment = $fl_cdna_wrapper->{alignmentObj};
+            my $fl_acc = $fl_alignment->get_acc();
+            print "Trying to stitch FL $fl_acc by EST $est_acc\n";
+            
+            my $fl_gene = $fl_alignment->get_gene_obj_via_alignment();
+            
+            my $stitched_alignment = &get_stitched_alignment($fl_alignment, $non_fl_alignment);
+            my $stitched_gene_obj = $stitched_alignment->get_gene_obj_via_alignment();
+            
+            my ($valid, $comment) = &check_num_UTR_exons ($stitched_gene_obj);
+            
+            if ($valid) {
+                ($valid, $comment) = &compare_updated_proteins($fl_gene, $stitched_gene_obj, $seq_ref, 0);
+                $comment .= ", based on FL alignment obj: " . $fl_alignment->get_acc();
+            }
+            
+            $alignment_wrapper->{is_novel} = 1;
+            $alignment_wrapper->{alt_splice_flag} = 1;
+            $alignment_wrapper->{comment} = $comment;
+            $alignment_wrapper->{updated_annotated_gene_structure} = $stitched_gene_obj;
+            $alignment_wrapper->{annotated_gene_identifiers} = $NOVEL_GENE_ID_via_ACC{$fl_acc} or die "no novel gene ID given to $fl_acc\n";
+            
+            if ($valid) {
+                $alignment_wrapper->{is_valid} = 1;
+                $alignment_wrapper->{status} = 27; # EST-assembly stitched into a FL-alignment providing new alt splice isoform.
+                $alignment_wrapper->{annotated_model_identifier} = 0;
+                last;
+            } else {
+                $alignment_wrapper->{is_valid} = 0;
+                $alignment_wrapper->{status} = 28; ## EST-assembly stitched into a FL-alignment but fails validation tests.
+                $alignment_wrapper->{annotated_model_identifier} = 0;
+            }
+        }
+    }
+}
+
+
+
+####
+sub check_stomping_overlap_criteria {
+    print "Method: Checking stomping overlap criteria.\n";
+    my ($annotation_gene_obj, $alignment_gene_obj) = @_;
+    
+    my $valid = 0;
+    my $comment = "";
+    
+    if ($annotation_gene_obj->{strand} ne $alignment_gene_obj->{strand}) {
+        die "check_stomping_overlap_criteria() ERROR: comparing two genes of opposite orientation.\n";
+    }
+    
+    my ($annot_lend, $annot_rend) = sort {$a<=>$b} $annotation_gene_obj->get_model_span();
+    
+    my ($align_lend, $align_rend) = sort {$a<=>$b} $alignment_gene_obj->get_model_span();
+    
+    my $nucs_in_common = &nucs_in_common($annot_lend, $annot_rend, $align_lend, $align_rend);
+    my $annot_gene_length = $annot_rend - $annot_lend + 1;
+    
+    my $percent_gene_overlap = $nucs_in_common/$annot_gene_length * 100;
+    
+    if ($percent_gene_overlap >= $MIN_PERCENT_OVERLAP_GENE_REPLACE) {
+        $valid = 1;
+        $comment = "; stomp: $percent_gene_overlap overlap of " . $annotation_gene_obj->{Model_feat_name} . " % exceeds the $MIN_PERCENT_OVERLAP_GENE_REPLACE % required.\n";
+    } else {
+        $valid = 0;
+        $comment = "; stomp: $percent_gene_overlap overlap of " . $annotation_gene_obj->{Model_feat_name} . " < the $MIN_PERCENT_OVERLAP_GENE_REPLACE required, insufficient.\n";
+    }
+    print "(valid: $valid): $comment\n";
+    return ($valid, $comment);
+}
+
+
+####
+sub analyze_multiple_gene_matching_assemblies {
+    print "\n\n\n#############\nMethod: analyze_multiple_gene_matching_assemblies()\n";
+    
+    my ($dbproc, $is_FL, $transcript_wrappers_aref, $seq_ref) = @_;
+    
+    my $gene_assembler = new CDNA::Gene_obj_alignment_assembler($seq_ref);
+    
+    
+    foreach my $wrapper (@$transcript_wrappers_aref) {
+        
+        eval {
+
+            
+            my $TU_listing = $wrapper->{annotated_gene_identifiers};
+            my @TUs = split (/\s+/, $TU_listing);
+            my @annotated_gene_objs;
+            
+            # set flags for comparison
+            my $has_transcript_support = 0;
+            my $within_coverage = 1;
+            my $has_existing_alt_splice_annot = 0;
+            my $already_merged_flag = 0;
+            my $model_already_has_FL_support = 0;
+            my $overlaps_genes_with_conflicting_orientations = 0;
+            
+            my $alignment_obj = $wrapper->{alignmentObj};
+            my $cdna_acc = $alignment_obj->get_acc();
+            
+            
+            print "\n## Analzying capacity of $cdna_acc to merge @TUs\n";
+            
+            foreach my $TU (@TUs) {
+                my @gene_models = &get_latest_gene_models($dbproc, $TU, $seq_ref);
+                if (scalar (@gene_models) > 1) {
+                    print "$TU has already annotated alt splicing isoforms.  No go.\n";
+                    $has_existing_alt_splice_annot = 1;
+                    last;
+                }
+                my $gene_model = $gene_models[0];
+                
+                ## check to see if any FL-cdnas are incorporated already:
+                my $model_feat_name = $gene_model->{Model_feat_name};
+                my $cdna_list_aref = $model_to_incorporated_alignments{$model_feat_name};
+                if (ref $cdna_list_aref) {
+                    foreach my $cdna (keys %$cdna_list_aref) {
+                        if ($FLCDNA{$cdna}) {
+                            $model_already_has_FL_support = 1;
+                            last;
+                        }
+                    }
+                }
+                push (@annotated_gene_objs, $gene_model);
+            }
+            
+            ## check to make sure the overlapping gene structures are of the same orientation
+            my %gene_orients;
+            foreach my $gene_model (@annotated_gene_objs) {
+                my $orient = $gene_model->get_orientation();
+                $gene_orients{$orient}++;
+            }
+            my @orients = keys %gene_orients;
+            if (scalar @orients != 1) {
+                ## cannot merge genes on opposite strands
+                $overlaps_genes_with_conflicting_orientations = 1;
+                my $comment = " overlapping annotated genes are on opposite strands and cannot be merged. ";
+                $wrapper->{comment} .= $comment;
+            }
+            
+            
+            
+            my $valid_update = 1;
+            
+            my $update_gene_obj;
+            my @model_feats;
+            
+            
+            if (    (! $has_existing_alt_splice_annot) 
+                    && (! $model_already_has_FL_support) 
+                    && (! $overlaps_genes_with_conflicting_orientations)
+                    
+                ) { 
+                
+                ## Determine the merged gene replacement structure:
+                
+                if ($is_FL) {
+                    $update_gene_obj = $wrapper->{converted_gene_obj};
+                } else {
+                    ## Must stitch into each gene:
+                    my $stitched_alignment = $alignment_obj;
+                    my @all_exons;
+                    foreach my $gene_model (@annotated_gene_objs) {
+                        my $gene_alignment = $gene_assembler->gene_obj_to_cdna_alignment($gene_model);
+                        $stitched_alignment = &get_stitched_alignment($gene_alignment, $stitched_alignment);
+                        push (@all_exons, $gene_model->get_exons());
+                    }
+                    $update_gene_obj = $stitched_alignment->get_gene_obj_via_alignment();
+                    
+                    my $combined_gene_obj = new Gene_obj();
+                    foreach my $exon (@all_exons) {
+                        $combined_gene_obj->add_mRNA_exon_obj($exon);
+                    }
+                    $combined_gene_obj->refine_gene_object();
+                    print "Combined fake gene obj: " . $combined_gene_obj->toString();
+                    
+                    ## ensure homology of new merged gene to the original supposedly split genes:
+                    foreach my $gene_model (@annotated_gene_objs) {
+                        my ($valid_prot_compare, $comment) = &compare_updated_proteins($gene_model, $update_gene_obj, $seq_ref, 0);
+                        unless ($valid_prot_compare) {
+                            print "Prot compare of merged to individual original annot: $comment\n";
+                            $valid_update = 0;
+                            $wrapper->{comment} = $comment;
+                            last;
+                        }
+                    }
+                    
+                    # utr check
+                    if ($valid_update) {
+                        my ($valid, $comment) = &check_UTRs($alignment_obj, $combined_gene_obj, $update_gene_obj);
+                        if (!$valid) {
+                            $wrapper->{comment} .= " stitched combined model failed utr check: $comment.";
+                            $valid_update = 0;
+                        }
+                    }
+                    
+                    if ($valid_update) {
+                        my ($valid, $comment) = &check_num_UTR_exons ($update_gene_obj);
+                        unless ($valid) {
+                            $wrapper->{comment} .= $comment;
+                            $valid_update = 0;
+                        }
+                    }
+                }
+                
+                
+                if ($valid_update) {
+                    print "-Checking for capacity to stomp the multiple overlapping gene models:\n";
+                    
+                    my ($update_lend, $update_rend) = sort {$a<=>$b} $update_gene_obj->get_model_span();
+                    
+                    
+                    ## Check each overlapping gene for stomp requirement 
+                    foreach my $annotated_model (@annotated_gene_objs) {
+                        my $annotated_model_feat_name = $annotated_model->{Model_feat_name};
+                        if ($MERGED_MODELS{$annotated_model_feat_name}) {
+                            $already_merged_flag = 1;
+                            last;
+                        }
+                        
+                        if ($models_unavail{$annotated_model_feat_name} #has FL support for update
+                            ||
+                            $model_to_incorporated_alignments{$annotated_model_feat_name} # has EST support
+                            ) {
+                            print "$annotated_model_feat_name has FL-cDNA support.\n";
+                            $has_transcript_support = 1;
+                        }
+                        my ($model_lend, $model_rend) = sort {$a<=>$b} $annotated_model->get_model_span();
+                        my $model_length = $model_rend - $model_lend + 1;
+                        my $nucs_in_common = &nucs_in_common($update_lend, $update_rend, $model_lend, $model_rend);
+                        
+                        print "UPDATE lend,rend: $update_lend, $update_rend;    ANNOT_MODEL lend,rend: $model_lend, $model_rend\n";
+                        print "Nucs in common: $nucs_in_common, model length: $model_length\n";
+                        
+                        if ( (my $percent_cov = $nucs_in_common/$model_length * 100) < $MIN_PERCENT_OVERLAP_GENE_REPLACE) {
+                            my $comment = "$annotated_model_feat_name has insufficient coverage: $percent_cov.  No go.\n";
+                            print "$comment\n";
+                            $wrapper->{comment} .= $comment; 
+                            $within_coverage = 0;
+                            last;
+                        }
+                        push (@model_feats, $annotated_model_feat_name);
+                    }
+                }
+            }
+            
+            if ($update_gene_obj) {
+                # if created an update_gene_obj above, then set it here
+                $wrapper->{updated_annotated_gene_structure} = $update_gene_obj;
+            }
+            $wrapper->{alt_splice_flag} = 0;
+            $wrapper->{is_novel} = 0;
+            
+            
+            ## see if passed above tests for merging potential:
+            
+            if (
+                $valid_update 
+                && ($within_coverage) 
+                && (! $has_existing_alt_splice_annot) 
+                && (! $already_merged_flag) 
+                && (! $model_already_has_FL_support) 
+                && (! $overlaps_genes_with_conflicting_orientations)
+                ) {
+                
+                ## Passed all tests.  Can replace with current gene_obj:
+                my @already_incorporated_transcripts;
+                print "model feats to merge: @model_feats\n";
+                foreach my $model_feat (@model_feats) {
+                    $MERGED_MODELS{$model_feat} = 1;
+                    
+                    if ($has_transcript_support) {
+                        ## invalidate current transcript updates:
+                        if (my $transcript_list_href = $model_to_incorporated_alignments{$model_feat}) {
+                            push (@already_incorporated_transcripts, keys %$transcript_list_href);
+                            delete ($model_to_incorporated_alignments{$model_feat});
+                        }
+                    }
+                }
+                if ($has_transcript_support) {
+                    unless (@already_incorporated_transcripts) {
+                        die "ERROR, @model_feats should have transcript support, but I have no transcript list!\n";
+                    }
+                    &set_status_to_delay_update($dbproc, \@already_incorporated_transcripts, "merged");
+                }
+                
+                my $model_feat_list = join (" ", @model_feats);
+                my $comment = "Successful merging of $model_feat_list by $cdna_acc";
+                print "$comment\n";
+                $wrapper->{status} = ($is_FL) ? 29 : 36; ## FL-cDNA / EST assembly found capable of merging multiple genes
+                $wrapper->{annotated_model_identifier} = $model_feat_list;
+                $wrapper->{is_valid} = 1;
+                $wrapper->{comment} .= $comment;
+            } else {
+                my $comment = "Failure in merging @TUs: within_coverage($within_coverage), has_existing_alt_splice_annot($has_existing_alt_splice_annot), already_merged_flag ($already_merged_flag), model_already_has_FL_support ($model_already_has_FL_support) ";
+                print "$comment\n";
+                $wrapper->{status} = ($is_FL) ? 30 : 35; ## FL-cDNA/EST assembly  found incapable of merging multiple genes
+                $wrapper->{annotated_model_identifier} = 0;
+                $wrapper->{is_valid} = 0;
+                $wrapper->{comment} .= $comment;
+            }
+        };
+        
+        if ($@) {
+            ## FIXME: rare error here, bypassing it for now
+            print STDERR "Error encountered: $@\n";
+        }
+        
+    }
+    
+}
+####
+sub set_status_to_delay_update {
+    my ($dbproc, $alignment_accessions_aref, $type) = @_;
+    
+    foreach my $cdna_acc (@$alignment_accessions_aref) {
+        
+        
+        my $query = "select status_link_id, annot_update_id, status_id, comment from status_link where compare_id = ? and cdna_acc = ?";
+        my $result = &Mysql_connect::first_result_sql($dbproc, $query, $compare_id, $cdna_acc);
+        my ($status_link_id, $update_id, $status_id, $comment) = @$result;
+        die "ERROR, no status link entry for $cdna_acc, compare: $compare_id!\n" unless ($status_link_id);
+        
+        my $new_status_id;
+		
+        if ($type eq "split") {
+            $new_status_id = 39; #only FL-cDNAs allowed
+        } else {
+            $new_status_id = ($FLCDNA{$cdna_acc}) ? 37 : 38;
+        }
+        
+        
+        ## Update status and comment field
+        $comment .= " Status $status_id changed to $new_status_id because this gene has been shown capable of being $type with another.";
+        $query = "update status_link set status_id = ?, comment = ? where status_link_id = ?";
+        &RunMod($dbproc, $query, $new_status_id, $comment, $status_link_id);
+        
+        ## change annot update to invalid:
+        $query = "update annotation_updates set is_valid = 0 where update_id = $update_id";
+        &RunMod($dbproc, $query);
+        
+        print "-disabling current incorporation status for $cdna_acc: Status changed from $status_id to $new_status_id\n";
+    }
+}
+
+
+####
+sub analyze_potential_gene_splitting {
+    my ($dbproc, $contig_id, $using_as_nonFL_assembly_href, $seq_ref) = @_;
+    
+    print "\n\n###################################################################\n";
+    print "Method: analyze_potential_gene_splitting(contig: $contig_id)\n\n";
+    
+    ## Indicator of potential gene splitting:
+    ## -FL-cDNAs map to the same gene but are in different subclusters
+    ## Make sure:
+    #     -the FL-cDNAs were shown to provide valid gene models
+    #     -none were classified as antisense
+    #     -each cDNA was mapped to *only* the one gene model of interest
+    #     -require all cDNA ORFs to overlap the existing gene model
+    #     -do Stomp based on max/min of all ORFs, not transcript ends.
+    
+    
+    my $query = "select al.gene_id, count(sl.subcluster_id) "
+        . " from annotation_link al, subcluster_link sl, align_link al2, cdna_info ci, clusters c "
+        . " where c.annotdb_asmbl_id = ? "
+        . " and c.cluster_id = al2.cluster_id "
+        . " and al2.cdna_info_id = ci.id "
+        . " and ci.is_fli = 1 "
+
+        . " and sl.cdna_acc = al2.align_acc "
+        . " and al.cdna_acc = sl.cdna_acc "
+        . " and al.compare_id = $compare_id "
+
+
+        . " and al.gene_id is not null group by al.gene_id having count(sl.subcluster_id) > 1";
+    
+    my @results = &Mysql_connect::do_sql_2D($dbproc, $query, $contig_id);
+    foreach my $result (@results) {
+        my ($gene_id, $count) = @$result;
+        
+        print "\n##Analyzing Gene $gene_id for potential splitting.:\n";
+        
+        ## if alt-splice exists, skip this one.
+        my @annotated_gene_models = &get_latest_gene_models($dbproc, $gene_id, $seq_ref);
+        my $num_gene_models = scalar (@annotated_gene_models);
+        if ($num_gene_models != 1) {
+            print "Already complicated gene (has $num_gene_models models).  Must skip this one, analyze it manually.\n";
+            next;
+        }
+        
+        my $annotated_gene_model = $annotated_gene_models[0];
+        my $annotated_model_feat_name = $annotated_gene_model->{Model_feat_name};
+        
+        my $annotated_model_orientation = $annotated_gene_model->get_orientation();
+        
+        my ($model_lend, $model_rend) = sort {$a<=>$b} $annotated_gene_model->get_model_span();
+        my $model_span_length = $model_rend - $model_lend +1;
+        
+        ## !! If Model has FL-support, do not try to split it!!
+        
+        if ($models_unavail{$annotated_model_feat_name}) {
+            print "model $annotated_model_feat_name is already updated based on a FL-cdna.  Skipping the splitting prospect.\n";
+            next;
+        }
+        
+        ## check for prospect of already merged with another gene.
+        if ($MERGED_MODELS{$annotated_model_feat_name}) {
+            print "model $annotated_model_feat_name has already been merged with another gene.  Must examine this manually.  Skipping split prospect.\n";
+            next;
+        }
+        
+        ## get list of subcluster's corresponding to each gene:
+        my $query = "select distinct sl.subcluster_id "
+            . " from annotation_link al, subcluster_link sl, align_link al2, cdna_info ci "
+            . " where al.cdna_acc = sl.cdna_acc "
+            . " and al.compare_id = $compare_id "
+            . " and sl.cdna_acc = al2.align_acc "
+            . " and al2.cdna_info_id = ci.id "
+            . " and ci.is_fli = 1 "
+            . " and al.gene_id = ? ";
+        my @results = &do_sql_2D($dbproc, $query, $gene_id);
+        
+        
+        ## Flags indicating problem cDNA set, no splitting.
+        my $conflicting_orientation_flag = 0;
+		
+        my @cdna_objs;
+        foreach my $result (@results) {
+            my ($subcluster_id) = @$result;
+            
+            ## get list of cdna_accs:
+            my $query = "select sl.cdna_acc "
+                . " from subcluster_link sl, align_link al, cdna_info ci "
+                . " where sl.subcluster_id = ? "
+                . " and sl.cdna_acc = al.align_acc "
+                . " and al.cdna_info_id = ci.id "
+                . " and ci.is_assembly = 1 "
+                . " and ci.is_fli = 1 ";
+            my @results = &do_sql_2D($dbproc, $query, $subcluster_id);
+            my @curr_alignments;
+            foreach my $result (@results) {
+                my $cdna_acc = $result->[0];
+                if (! $validating_FL_cdnas{$cdna_acc}) {
+                    print "skipping $cdna_acc, didn't validate as a FL-cdna should have.\n";
+                    next;
+                }
+                
+                ## make sure we didn't decide to treat a FL as a non-FL instead:
+                if ($using_as_nonFL_assembly_href->{$cdna_acc}) {
+                    print "skipping $cdna_acc as useful for splitting since we decided earlier that it was not likely FL afterall.\n";
+                    next;
+                }
+                
+            
+                if ($ANTISENSE_ACCS{$cdna_acc}) {
+                    print "skipping $cdna_acc, classified as an antisense transcript.\n";
+                    next;
+                }
+                
+                ## Check the number of genes it was mapped to:
+                my $query = "select distinct gene_id from annotation_link where compare_id = $compare_id and cdna_acc = ?";
+                my @results = &do_sql_2D($dbproc, $query, $cdna_acc);
+                if (scalar (@results) > 1) {
+                    my @genes_mapped;
+                    foreach my $result (@results) {
+                        push (@genes_mapped, $result->[0]);
+                    }
+                    print "skipping $cdna_acc, mapped to multple genes: (@genes_mapped).\n";
+                    next;
+                }
+                
+                my $alignment = &Ath1_cdnas::get_alignment_obj_via_align_acc($dbproc, $cdna_acc, $seq_ref);
+                my $alignment_gene_obj = $alignment->get_gene_obj_via_alignment();
+                my ($orf_lend, $orf_rend) = sort {$a<=>$b} $alignment_gene_obj->get_model_span();
+                unless ($orf_lend < $model_rend && $orf_rend > $model_lend) { #overlap
+                    print "Sorry, ORF inferred from alignment $cdna_acc does not overlap orf of model. Skipping $cdna_acc\n";
+                    next;
+                }
+                
+                push (@curr_alignments, $alignment);
+                
+            }
+            
+            unless (@curr_alignments) {
+                print "Sorry, no alignments to choose from for subcluster: $subcluster_id.\n";
+                next;
+            }
+            
+            @curr_alignments = sort {$a->{length} <=> $b->{length}} @curr_alignments;
+            my $longest_alignment = pop @curr_alignments;
+            
+            if ($longest_alignment->get_spliced_orientation() ne $annotated_model_orientation) {
+                $conflicting_orientation_flag = 1;
+                print "Error, conflicting orientation between annotated gene model and FL-alignments.\n";
+                last;
+            }
+            
+            unless (ref $longest_alignment) {
+                die "ERROR, no alignment obj for subcluster_id: $subcluster_id\n";
+            }
+            push (@cdna_objs, $longest_alignment);
+        }
+        
+        if (( my $num_cdna_objs = scalar (@cdna_objs)) < 2) {
+            print "Warning, only $num_cdna_objs cdna objs linked to current gene.\n";
+            print "Skipping splitting prospect.\n";
+            next;
+        } 
+        
+        
+        if ($conflicting_orientation_flag) {
+            print "ERROR, at least one of the FL-alignments has a spliced orientation conflicting with the annotated gene.\n";
+            print "Skipping splitting prospect.\n";
+            next;
+        }
+        
+        
+        ########## Passed Transcript Evaluation Tests.   Now, see if we can split the Gene.  ###########################
+        
+        ## Just use simple stomping criteria, but in reverse:
+        ## If the min and max of the new ORFs fall within MIN_PERCENT_OVERLAP_GENE_REPLACE of old ORF, split it.
+        
+        my @cdna_coords;
+        my @cdna_accs;
+        foreach my $cdna_obj (@cdna_objs) {
+            push (@cdna_coords, $cdna_obj->get_coords());
+            push (@cdna_accs, $cdna_obj->get_acc());
+        }
+        @cdna_coords = sort {$a<=>$b} @cdna_coords;
+        my $cdna_lend = shift @cdna_coords;
+        my $cdna_rend = pop @cdna_coords;
+        
+        
+        my $nucs_common = &nucs_in_common ($cdna_lend, $cdna_rend, $model_lend, $model_rend);
+        my $percent_orf_coverage = $nucs_common/$model_span_length * 100;
+        print "($percent_orf_coverage) percent coverage of orf $annotated_model_feat_name by cDNAs\n";
+        
+        if ($percent_orf_coverage >= $MIN_PERCENT_OVERLAP_GENE_REPLACE) {
+            print "Gene splitting has been approved. ** \n";
+            
+            # disable currently incorporated alignments:
+            if (my $transcript_list_href = $model_to_incorporated_alignments{$annotated_model_feat_name}) {
+                my @ests = keys %$transcript_list_href;
+                &set_status_to_delay_update($dbproc, \@ests, "split");
+            }
+            
+            ## set status of FL-alignments to gene splitting status.
+            print "Now, setting status to gene splitting status.\n";
+            &set_status_to_split_gene($dbproc, $gene_id, $annotated_model_feat_name, \@cdna_accs, 1, $seq_ref);
+            
+        } else {
+            print "Sorry, @cdna_accs are unable to split the gene.\n";
+            ## should add note to each one; also, change their status
+            &set_status_to_split_gene($dbproc, $gene_id, $annotated_model_feat_name, \@cdna_accs, 0, $seq_ref);
+            
+        }
+        
+        
+    }
+    
+}
+
+
+####
+sub set_status_to_split_gene { ## Should join this function with the status update function above.
+    my ($dbproc, $gene_id, $annotated_model_feat_name, $cdna_list_aref, $valid_update, $seq_ref) = @_;
+    
+    my $new_status_id = ($valid_update) ? 40 : 41;
+    
+    foreach my $cdna_acc (@$cdna_list_aref) {
+        
+        my $alignment = &Ath1_cdnas::get_alignment_obj_via_align_acc ($dbproc, $cdna_acc, $seq_ref);
+        my $gene_obj = $alignment->get_gene_obj_via_alignment(); ## replace current updated gene version with the FL-cDNA inferred gene, over-write any previous inferred update
+        ## want to store just the protein sequence as part of gene_obj
+        if ($gene_obj->get_CDS_length() != 0) {
+            my $protein = $gene_obj->create_protein_sequence($seq_ref);
+            $gene_obj->clear_sequence_info();
+            $gene_obj->{protein_seq} = $protein;
+        }
+        
+        my $query = "select status_link_id, annot_update_id, status_id, comment from status_link where compare_id = ? and cdna_acc = ?";
+        my $result = &Mysql_connect::first_result_sql($dbproc, $query, $compare_id, $cdna_acc);
+        my ($status_link_id, $update_id, $status_id, $comment) = @$result;
+        die "ERROR, no status link entry for $cdna_acc, compare: $compare_id!\n" unless ($status_link_id);
+        
+        $comment .= " Status $status_id changed to $new_status_id because ";
+        
+        ## Update status and comment field
+        if ($valid_update) {
+            $comment .= "this gene can be split into one or more separate genes.";
+        } else {
+            $comment .= "this gene suggests being split into one or more separate genes, but failed automatic update criteria.";
+        }
+        
+        $query = "update status_link set status_id = ?, comment = ? where status_link_id = ?";
+        &RunMod($dbproc, $query, $new_status_id, $comment, $status_link_id);
+        
+        ## change annot update to invalid:
+        $query = "update annotation_updates set gene_id = ?, model_id = ?, alt_splice_flag = 0, is_valid = $valid_update, is_novel_flag = 0, have_after = 1, after_gene_obj = ? where update_id = $update_id ";
+        &RunMod($dbproc, $query, $gene_id, $annotated_model_feat_name, nfreeze($gene_obj));
+    }
+}
+
+
+
+#### 
+sub analyze_partial_status {
+    my ($gene_obj) = shift;
+    my %partials;
+    if ($gene_obj->is_5prime_partial()) {
+        $partials{"5prime"} = 1;
+    }
+    if ($gene_obj->is_3prime_partial()) {
+        $partials{"3prime"} = 1;
+    }
+    return (\%partials);
+}
+
+
+
+
+
+#### 
+sub classify_antisense_transcripts {
+    my ($dbproc, $contig_id, $models_aref, $seq_ref) = @_;
+    
+    print "Method: classify_antisense_transcripts ($contig_id)\n";
+    
+    ## These are likely to be a subset of all transcrpts currently classified as intergenic because gene mapping requires the same
+    ## transcribed orientation.
+    
+    ## Status Classes for those likely to contain antisense:
+    ## FL-cDNAs:
+    #         - 1: fl-cdna assembly fails validation tests.
+    #         - 10: fl-cdna assembly provides a novel gene.
+    #         - 22: fl-cdna assembly provides novel gene which overlaps existing annotations
+    ## ESTs (non-FL):
+    #         - 19: EST assembly aligns to intergenic region.
+    #         -27: EST stitched into FL-cDNA provides novel alt splice isoform
+    #         -34: single-exon EST-assembly fails gene compatibility test
+    
+    my $query = "select sl.cdna_acc "
+        . " from status_link sl, align_link al, clusters c "
+        . " where c.annotdb_asmbl_id = \"$contig_id\" "
+        . " and c.cluster_id = al.cluster_id "
+        . " and al.align_acc = sl.cdna_acc "
+        . " and sl.compare_id = $compare_id "
+        . " and sl.status_id in (1,10,44,19,22,27,34)";
+    
+    print "$query\n";
+    my @results = &do_sql_2D($dbproc, $query);
+    my @cdna_accs;
+    foreach my $result (@results) {
+        my $cdna_acc = $result->[0];
+        push (@cdna_accs, $cdna_acc);
+    }
+    
+    foreach my $cdna_acc (@cdna_accs) {
+        
+        print "Processing $cdna_acc (FL:$FLCDNA{$cdna_acc}) for potential antisense.\n";
+        
+        my $alignment = &Ath1_cdnas::get_alignment_obj_via_align_acc($dbproc, $cdna_acc, $seq_ref);
+        my $spliced_orient = $alignment->get_spliced_orientation();
+        
+        if ($spliced_orient eq "?") {
+            next;
+        } elsif ($spliced_orient eq "+") {
+            $spliced_orient = "-";
+        } elsif ($spliced_orient eq "-") {
+            $spliced_orient = "+";
+        } else {
+            die "Error, don't recognize spliced orient ($spliced_orient) for cdna: $cdna_acc\n";
+        }
+        
+        my ($align_lend, $align_rend) = sort {$a<=>$b} $alignment->get_coords();
+
+        my @segment_coords = &get_alignment_segment_coords_from_alignment($alignment);
+
+        my @overlapping_genes = &get_potential_overlapping_annotations($dbproc, \@segment_coords, $models_aref, $align_lend, $align_rend, $spliced_orient, "nonfli");
+        if (@overlapping_genes) {
+            print "ANTISENSE: $cdna_acc to @overlapping_genes\n";
+            &set_status_to_antisense($dbproc, $cdna_acc, \@overlapping_genes);
+            $ANTISENSE_ACCS{$cdna_acc} = 1;
+        }
+        
+    }
+}
+
+
+####
+sub set_status_to_antisense {
+    my ($dbproc, $cdna_acc, $overlapping_genes_aref) = @_;
+    
+    my $query = "select status_link_id, annot_update_id, status_id, comment from status_link where compare_id = ? and cdna_acc = ?";
+    my $result = &Mysql_connect::first_result_sql($dbproc, $query, $compare_id, $cdna_acc);
+    my ($status_link_id, $update_id, $status_id, $comment) = @$result;
+    die "ERROR, no status link entry for $cdna_acc, compare: $compare_id!\n" unless ($status_link_id);
+    
+    my $new_status_id = ($FLCDNA{$cdna_acc}) ? 42:43;
+    
+    ## Update status and comment field
+    $comment .= " Status $status_id changed to $new_status_id because this gene aligns in antisense orientation to existing annotated genes (@$overlapping_genes_aref). ";
+    $query = "update status_link set status_id = ?, comment = ? where status_link_id = ?";
+    &RunMod($dbproc, $query, $new_status_id, $comment, $status_link_id);
+    
+    ## Update annotation updates flags:
+    $query = "update annotation_updates set is_valid = 0, alt_splice_flag = 0 where update_id = ?";
+    &RunMod($dbproc, $query, $update_id);
+    
+    
+    ## Disable any novel alt-splice isoforms based on novel gene:
+    ##    this is a patch.  should do this better than currently.
+    if ($FLCDNA{$cdna_acc} && (my $novel_gene_id = $NOVEL_GENE_ID_via_ACC{$cdna_acc})) {
+        $NOVEL_SPLICE_converted_antisense{$novel_gene_id} = 1;
+    }
+    
+    
+    ## Purge current annotation_link entries here:
+    $query = "delete from annotation_link where compare_id = $compare_id and cdna_acc = ?";
+    &RunMod($dbproc, $query, $cdna_acc);
+    
+    ## Insert new annotation link entries:
+    foreach my $gene_id (@$overlapping_genes_aref) {
+        my $model_id = $Gene_to_model_list{$gene_id}->[0];
+        my $query = "insert annotation_link (cdna_acc, gene_id, model_id, compare_id) values (?,?,?,?)";
+        &RunMod($dbproc, $query, $cdna_acc, $gene_id, $model_id, $compare_id);
+    }
+    
+}
+
+
+####
+sub convert_novel_alt_splice_of_antisense {
+    my ($dbproc) = @_;
+    
+    print "Method: convert_novel_alt_splice_of_antisense()\n";
+    foreach my $novel_gene_id (keys %NOVEL_SPLICE_converted_antisense) {
+        print "NOVEL GENE TURNED ANTISENSE: $novel_gene_id\n";
+        my $query = "select sl.cdna_acc from status_link sl, annotation_updates a where a.update_id = sl.annot_update_id and sl.compare_id = $compare_id and a.compare_id = $compare_id and sl.status_id in (27,44) and a.gene_id = ?";
+        my @results = &do_sql_2D($dbproc, $query, $novel_gene_id);
+        
+        foreach my $result (@results) {
+            my $cdna_acc = $result->[0];
+            print "Setting $cdna_acc to antisense because it was classified as a alt-splice variant of a novel gene subsequently classified as antisense.\n";
+            &set_status_to_antisense($dbproc, $cdna_acc, []);
+            
+        }
+        
+    }
+}
+
+## End Of cDNA_annotation_comparer ##
+
+
+#############################################################################################################################
+###### Helper Classes #######################################################################################################
+
+package Annot_status_update;  #wraps alignment object and attributes required for annotation comparisons
+
+sub new {
+    my $packagename = shift;
+    my $alignmentObj = shift;
+    
+    my $self = {
+        ## data structures:
+        alignmentObj => $alignmentObj,
+        converted_gene_obj => undef,
+        
+        ## status flags:
+        status => undef,
+        comment => undef,
+        is_valid => 0,
+        is_novel => 0,
+        alt_splice_flag => 0,
+        
+        ## gene(s) mapped to
+        annotated_gene_identifiers => undef, # text (TU feat_name or space-delimited list of TU feat_name's.
+        annotated_model_identifier => undef, # single model feat_name
+        
+        ## tentative updated annotated gene
+        updated_annotated_gene_structure => undef, # gene_obj 
+        
+	};
+    
+    bless ($self, $packagename);
+    return ($self);
+}
+
+

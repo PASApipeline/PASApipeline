@@ -1,0 +1,701 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Pasa_conf;
+use Mysql_connect;
+use strict;
+use DBI;
+use Ath1_cdnas;
+use Getopt::Std;
+use TiedHash;
+use Carp;
+use Data::Dumper;
+
+use vars qw ($opt_M $opt_f $opt_d $opt_h $opt_v);
+
+&getopts ('M:dhv');
+
+
+my $SEE = 0;
+
+
+my $usage =  <<_EOH_;
+
+############################# Options ###############################
+#
+# -M Mysql database name
+# 
+# -d Debug
+# 
+# -h print this option menu and quit
+# -v verbose
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+if ($opt_h) {die $usage;}
+
+my $DEBUG = $opt_d;
+$SEE = $opt_v;
+#our $DB_SEE = $SEE;
+
+
+my $MYSQLdb = $opt_M or die $usage;
+my $MYSQLserver = &Pasa_conf::getParam("MYSQLSERVER");
+my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+###################################################################
+## Begin program here
+
+$|++;
+
+## first index coordinates with the accessions in which the splicing variations are found.
+my $tmp_index_file_A = ".$$.svse.A.inx";
+my $coord_to_pasa_accs_index = new TiedHash ( { create => $tmp_index_file_A } );
+
+my $tmp_index_file_B = ".$$.svse.B.inx";
+my $coord_to_max_transcript_support_index = new TiedHash ( { create => $tmp_index_file_B } );
+
+
+my %EVENT_SEEN; ## track events already computed.
+
+
+{
+    ## populate the index file:
+    my $query = qq { select c.annotdb_asmbl_id, sv.cdna_acc, sv.type, sv.lend, sv.rend, sv.orient, svs.num_transcripts_A
+                         from clusters c, align_link al, cdna_info ci, splice_variation sv, splice_variation_support svs
+                         where c.cluster_id = al.cluster_id and al.cdna_info_id = ci.id
+                         and ci.is_assembly = 1
+                         and al.align_acc = sv.cdna_acc
+                         and sv.sv_id = svs.sv_id
+                     };
+
+    my $statementHandle = $dbproc->{dbh}->prepare($query);
+    $statementHandle->execute();
+    while (my @row = $statementHandle->fetchrow_array() ) {
+        my ($asmbl_id, $acc, $type, $lend, $rend, $orient, $num_transcript_support) = @row;
+        
+        my $key = join ("$;", ($asmbl_id, $type, $lend, $rend, $orient));
+        my $acc_list = $coord_to_pasa_accs_index->get_value($key);
+        if ($acc_list) {
+            ## if our acc doesn't already exist, add it
+            if ($acc_list !~ /\b$acc\b/) {
+                $acc_list .= " $acc";
+                $coord_to_pasa_accs_index->store_key_value($key, $acc_list);
+            }
+            
+        }
+        else {
+            # just store our current entry
+            $coord_to_pasa_accs_index->store_key_value($key, $acc);
+        }
+        
+        if ($num_transcript_support > $coord_to_max_transcript_support_index->get_value($key)) {
+            $coord_to_max_transcript_support_index->store_key_value($key, $num_transcript_support);
+        }
+    }
+}
+
+
+
+my $correlated_features_output_file = "$MYSQLdb.correlated_splicing_features.tab";
+{
+    ## query the symmetrical events
+    my $query = qq {
+        select distinct c.annotdb_asmbl_id, sv1.type, sv1.lend, sv1.rend, sv1.orient, sv2.type, sv2.lend, sv2.rend
+            from clusters c, align_link al, cdna_info ci, splice_variation sv1, splice_variation sv2, alt_splice_link asl
+            where c.cluster_id = al.cluster_id and al.cdna_info_id = ci.id and ci.is_assembly = 1 and al.align_acc = sv1.cdna_acc 
+            and sv1.sv_id = asl.sv_id_A and asl.sv_id_B = sv2.sv_id 
+            and sv1.sv_id < sv2.sv_id
+            and sv1.type != sv2.type
+        };
+    # remember that mutually exclusive skipped exons are linked to each other and have the same 'retained_exon' type.
+    # avoding these here by sv1.type != sv2.type
+    
+    
+    open (my $fh, ">$correlated_features_output_file") or die $!;
+
+    my $statementHandle = $dbproc->{dbh}->prepare($query);
+    $statementHandle->execute();
+    while (my @row = $statementHandle->fetchrow_array() ) {
+
+        my ($asmbl_id, $type_A, $lend_A, $rend_A, $orientation, $type_B, $lend_B, $rend_B) = @row;
+        if ($lend_A > $lend_B) {
+            # swap 'em
+            ($type_A, $lend_A, $rend_A, $type_B, $lend_B, $rend_B) = ($type_B, $lend_B, $rend_B, $type_A, $lend_A, $rend_A);
+        }
+        
+        my ($pasa_asmbls_A, $num_transcript_support_A) = &get_pasa_accs_with_variation($asmbl_id, $type_A, $lend_A, $rend_A, $orientation);
+        
+        my ($pasa_asmbls_B, $num_transcript_support_B) = &get_pasa_accs_with_variation($asmbl_id, $type_B, $lend_B, $rend_B, $orientation);
+        
+        print $fh "$asmbl_id\t$orientation"
+            . "\t$type_A\t$lend_A\t$rend_A\t$pasa_asmbls_A\t$num_transcript_support_A"
+            . "\t$type_B\t$lend_B\t$rend_B\t$pasa_asmbls_B\t$num_transcript_support_B"
+            . "\n";
+        
+    }
+    close $fh;
+    
+    
+}
+
+
+unlink $tmp_index_file_A;
+unlink $tmp_index_file_B;
+
+&find_splicing_events_from_features($correlated_features_output_file);
+
+
+exit(0);
+
+
+
+####
+sub get_pasa_accs_with_variation {
+    my ($asmbl_id, $type, $lend, $rend, $orient) = @_;
+    
+    my $key = join ("$;", ($asmbl_id, $type, $lend, $rend, $orient));
+    
+    my $acc_list_txt = $coord_to_pasa_accs_index->get_value($key);
+    
+    my @pasa_accs = split (/ /, $acc_list_txt);
+    my $pasa_list_adj = join (",", @pasa_accs);
+    
+    my $num_transcript_support = $coord_to_max_transcript_support_index->get_value($key);
+    
+    return ($pasa_list_adj, $num_transcript_support);
+    
+}
+
+
+####
+sub find_splicing_events_from_features {
+    my ($correlated_features_file) = @_;
+    
+    open (my $fh, $correlated_features_file) or die $!;
+    while (<$fh>) {
+        print "INPUT: $_" if $SEE;
+        chomp;
+        my ($asmbl_id, $orient, 
+            $type_A, $lend_A, $rend_A, $pasa_A_acc_list, $max_support_A,
+            $type_B, $lend_B, $rend_B, $pasa_B_acc_list, $max_support_B) = split (/\t/);
+        
+        my @accs_A = split (/,/, $pasa_A_acc_list);
+        my @accs_B = split (/,/, $pasa_B_acc_list);
+        
+        my %pasa_acc_to_alignment_obj;
+        foreach my $acc (@accs_A, @accs_B) {
+            my $alignment_obj = &Ath1_cdnas::get_alignment_obj_via_align_acc($dbproc, $acc);
+            $pasa_acc_to_alignment_obj{$acc} = $alignment_obj;
+        }
+        
+        ## perform_analysis_based_on_event_type:
+        if ($type_A eq 'alt_donor' || $type_A eq 'alt_acceptor') {
+            
+            my $text = &report_alternate_splicing_event_via_alt_donor_or_acceptor($asmbl_id, $orient, 
+                                                                                  $type_A, $lend_A, $rend_A, \@accs_A,
+                                                                                  $type_B, $lend_B, $rend_B, \@accs_B, 
+                                                                                  \%pasa_acc_to_alignment_obj);
+            
+            print "// Intron event based on type $type_A\n"
+                . "# $type_A dinuc $lend_A-$rend_A (orient:$orient) max_ev_support = $max_support_A\n"
+                . "# $type_B dinuc $lend_B-$rend_B (orient:$orient) max_ev_support = $max_support_B\n"
+                . "$text\n\n";
+        }
+        
+        
+        elsif ($type_A eq 'retained_exon' || $type_A eq 'skipped_exon') {
+            
+            
+            my $text = &report_skipped_exons($asmbl_id, $orient, 
+                                             $type_A, $lend_A, $rend_A, \@accs_A,
+                                             $type_B, $lend_B, $rend_B, \@accs_B, 
+                                             \%pasa_acc_to_alignment_obj);
+            
+            print "// Exon Skipping and Retention\n"
+                . "# $type_A $lend_A-$rend_A (orient:$orient) max_ev_support = $max_support_A\n"
+                . "# $type_B $lend_B-$rend_B (orient:$orient) max_ev_support = $max_support_B\n"
+                . "$text\n\n";
+            
+            
+        }
+        
+        elsif ($type_A eq 'alternate_exon') {
+            
+            
+            my $text = &report_alternate_exons($asmbl_id, $orient, 
+                                               $type_A, $lend_A, $rend_A, \@accs_A,
+                                               $type_B, $lend_B, $rend_B, \@accs_B, 
+                                               \%pasa_acc_to_alignment_obj);
+            
+            print "// Alternate terminal exons\n"
+                . "# $type_A $lend_A-$rend_A (orient:$orient) max_ev_support = $max_support_A\n"
+                . "# $type_B $lend_B-$rend_B (orient:$orient) max_ev_support = $max_support_B\n"
+                . "$text\n\n";
+            
+        }
+        
+        elsif ($type_A eq 'retained_intron' || $type_A eq 'spliced_intron') {
+            
+            
+            
+            my $text = &report_retained_intron($asmbl_id, $orient, 
+                                               $type_A, $lend_A, $rend_A, \@accs_A,
+                                               $type_B, $lend_B, $rend_B, \@accs_B, 
+                                               \%pasa_acc_to_alignment_obj);
+            
+             print "// Retained and Spliced Intron\n"
+                 . "# $type_A $lend_A-$rend_A (orient:$orient) max_ev_support = $max_support_A\n"
+                 . "# $type_B $lend_B-$rend_B (orient:$orient) max_ev_support = $max_support_B\n"
+                 . "$text\n\n";
+            
+            
+            
+        }
+    }
+    
+    
+    return;
+}
+
+####
+sub report_alternate_splicing_event_via_alt_donor_or_acceptor {
+    my ($asmbl_id, $orient, 
+        $type_A, $lend_A, $rend_A, $accs_A_aref,
+        $type_B, $lend_B, $rend_B, $accs_B_aref,
+        $pasa_acc_to_alignment_obj_href) = @_;
+    
+    
+    my @intron_features_A = &_get_introns_and_accessions_harboring_coords($accs_A_aref, $lend_A, $rend_A, $pasa_acc_to_alignment_obj_href);
+    
+    my @intron_features_B = &_get_introns_and_accessions_harboring_coords($accs_B_aref, $lend_B, $rend_B, $pasa_acc_to_alignment_obj_href);
+    
+    
+    my $text = "";
+    foreach my $intron_feature (@intron_features_A, @intron_features_B) {
+        my ($intron_lend, $intron_rend, $accs_aref) = ($intron_feature->{intron_lend}, 
+                                                       $intron_feature->{intron_rend},
+                                                       $intron_feature->{accs});
+        
+        $text .= "$asmbl_id\t$orient\tintron\t$intron_lend-$intron_rend\t". join (",", @$accs_aref) . "\n";
+    }
+    
+    
+    return ($text);
+    
+}
+
+####
+sub report_skipped_exons {
+    my ($asmbl_id, $orient, 
+        $type_A, $lend_A, $rend_A, $accs_A_aref,
+        $type_B, $lend_B, $rend_B, $accs_B_aref,
+        $pasa_acc_to_alignment_obj_href) = @_;
+    
+    my ($retained_exons_lend, $retained_exons_rend, $retained_exon_accs_aref, $skipped_exon_accs_aref);
+    
+    if ($type_A eq 'retained_exon') {
+        ($retained_exons_lend, $retained_exons_rend, $retained_exon_accs_aref, $skipped_exon_accs_aref) = 
+            ($lend_A, $rend_A, $accs_A_aref, $accs_B_aref);
+    }
+    else {
+        ($retained_exons_lend, $retained_exons_rend, $retained_exon_accs_aref, $skipped_exon_accs_aref) = 
+            ($lend_B, $rend_B, $accs_B_aref, $accs_A_aref);
+        
+    }
+    
+    my $text = "";
+    
+    # find the list of exons that are retained:
+    my @retained_exon_features;
+    my %coords_key_to_retained_exons;
+    
+    # struct like so:
+    #  coordsets => [  [lend,rend], [lend-rend], ...]
+    #  accs => [list of accs]
+    
+    foreach my $retained_exon_acc (@$retained_exon_accs_aref) {
+        my $alignment_obj = $pasa_acc_to_alignment_obj_href->{$retained_exon_acc};
+        my @segments = $alignment_obj->get_alignment_segments();
+        
+        my @exon_coords_encapsulated;
+        foreach my $segment (@segments) {
+            my ($exon_lend, $exon_rend) = $segment->get_coords();
+            if ($exon_lend >= $retained_exons_lend && $exon_rend <= $retained_exons_rend) {
+                push (@exon_coords_encapsulated, [$exon_lend, $exon_rend]);
+            }
+        }
+        
+        unless (@exon_coords_encapsulated) {
+            confess "Error, supposed to have retained exons but didn't find any here. " . $alignment_obj->toString();
+        }
+        
+        my $coord_key = "";
+        @exon_coords_encapsulated = sort {$a->[0]<=>$b->[0]} @exon_coords_encapsulated;
+        foreach my $coordset (@exon_coords_encapsulated) {
+            my ($lend, $rend) = @$coordset;
+            $coord_key .= "$lend-$rend,";
+        }
+        chop $coord_key; # strip trailing comma
+        
+        if (my $feature = $coords_key_to_retained_exons{$coord_key}) {
+            push (@{$feature->{accs}}, $retained_exon_acc);
+        }
+        else {
+            my $feature = { coordsets => [@exon_coords_encapsulated],
+                            accs => [$retained_exon_acc] };
+            $coords_key_to_retained_exons{$coord_key} = $feature;
+            push (@retained_exon_features, $feature);
+        }
+    }
+    
+    ## describe the retained exons:
+    foreach my $retained_exon_feature (@retained_exon_features) {
+        
+        my $coords_text = "";
+        foreach my $coordset (@{$retained_exon_feature->{coordsets}}) {
+            $coords_text .= join ("-", @$coordset) . ",";
+        }
+        chop $coords_text; # trim trailing comma
+        
+        $text .= "$asmbl_id\t$orient\tretained_exons\t$coords_text\t" . join (",", @{$retained_exon_feature->{accs}}) . "\n";
+    }
+    
+    
+    ## Report the introns skipping the exons:
+    my %intron_coords_to_feature;
+    my @intron_features;
+    foreach my $intron_pasa_acc (@$skipped_exon_accs_aref) {
+        my $alignment_obj = $pasa_acc_to_alignment_obj_href->{$intron_pasa_acc};
+        
+        my @intron_coords = $alignment_obj->get_intron_coords();
+        my $found = 0;
+        foreach my $intron (@intron_coords) {
+            my ($intron_lend, $intron_rend) = @$intron;
+            my $intron_key = "$intron_lend,$intron_rend";
+            
+            my $found_encaps_exon_flag = 0;
+          EXON_SEARCH:
+            foreach my $retained_exon_feature (@retained_exon_features) {
+               
+                foreach my $retained_exon_coordset (@{$retained_exon_feature->{coordsets}}) {
+                    
+                    my ($exon_lend, $exon_rend) = @$retained_exon_coordset;
+
+
+                    if ($intron_lend <= $exon_lend && $intron_rend >= $exon_rend) {
+                        ## exons are skipped by this intron:
+                        $found_encaps_exon_flag = 1;
+                        last EXON_SEARCH;
+                    }
+                }
+            }
+            if ($found_encaps_exon_flag) {
+                
+                if (my $intron_feature = $intron_coords_to_feature{$intron_key}) {
+                    push (@{$intron_feature->{accs}}, $intron_pasa_acc);
+                }
+                else {
+                    ## create it:
+                    my $feature = { intron_lend => $intron_lend,
+                                    intron_rend => $intron_rend,
+                                    accs => [$intron_pasa_acc] 
+                                    };
+                    $intron_coords_to_feature{$intron_key} = $feature;
+                    push (@intron_features, $feature);
+                }
+                $found = 1;
+            }
+        }
+        unless ($found) {
+            $text .= "ERROR: $intron_pasa_acc is supposed to have an intron that retains exon: $retained_exons_lend-$retained_exons_rend, but none found.  This may be a case of weaved exons, requiring PASA enhancements to properly address.\n";
+            
+            #print "error in $text\n";
+            #confess "Error, supposed to have an intron that skips exons here, but none found: $intron_pasa_acc\n" 
+            #    . $alignment_obj->toToken() . "\n"
+            #    . "retained exon range: $retained_exons_lend-$retained_exons_rend\n"
+            #    . "Introns: " . Dumper (\@intron_coords);
+        }
+    }
+    
+    ## describe these introns that skip exons:
+    foreach my $intron_feature (@intron_features) {
+        my ($intron_lend, $intron_rend) = ($intron_feature->{intron_lend}, $intron_feature->{intron_rend});
+        
+        $text .= "$asmbl_id\t$orient\tintron_skips_exon\t$intron_lend-$intron_rend\t" . join (",", @{$intron_feature->{accs}}) . "\n";
+        
+    }
+    
+    
+    return ($text);
+    
+    
+}
+
+
+####
+sub report_alternate_exons {
+    my ($asmbl_id, $orient, 
+        $type_A, $lend_A, $rend_A, $accs_A_aref,
+        $type_B, $lend_B, $rend_B, $accs_B_aref,
+        $pasa_acc_to_alignment_obj_href) = @_;
+    
+    
+    my $text = "";
+    
+    my @alt_exon_features;
+    my %coords_to_alt_exon_feature;
+    foreach my $aref ( [ $type_A, $lend_A, $rend_A, $accs_A_aref ],
+                       [ $type_B, $lend_B, $rend_B, $accs_B_aref ] ) {
+        
+        my ($type, $lend, $rend, $accs_aref) = @$aref;
+        
+        ## for each accession, find the list of alternate terminal exons 
+        ## corresponding to the coordinate range:
+        
+        foreach my $acc (@$accs_aref) {
+            
+            my $alignment_obj = $pasa_acc_to_alignment_obj_href->{$acc};
+            
+            my @segments = $alignment_obj->get_alignment_segments();
+            
+            my @exon_coords;
+            foreach my $segment (@segments) {
+                my ($seg_lend, $seg_rend) = $segment->get_coords();
+                if ($seg_lend >= $lend && $seg_rend <= $rend) {
+                    ## encapsulated
+                    push (@exon_coords, [$seg_lend, $seg_rend]);
+                }
+            }
+            
+            unless (@exon_coords) {
+                confess "Error, no exon coords found in alternate terminal exon region.\n";
+            }
+            
+            
+            my $coord_key = "";
+            @exon_coords = sort {$a->[0]<=>$b->[0]} @exon_coords;
+            foreach my $coordset (@exon_coords) {
+                my ($lend, $rend) = @$coordset;
+                $coord_key .= "$lend-$rend,";
+            }
+            chop $coord_key; # trim trailing comma
+            
+            if (my $feature = $coords_to_alt_exon_feature{$coord_key}) {
+                push (@{$feature->{accs}}, $acc);
+            }
+            else {
+                ## create new entry:
+                my $feature = { coords => [@exon_coords],
+                                accs => [$acc] };
+                push (@alt_exon_features, $feature);
+                $coords_to_alt_exon_feature{$coord_key} = $feature;
+            }
+        }
+    }
+    
+    
+    ## describe alt terminal exons:
+    my $text = "";
+    foreach my $feature (@alt_exon_features) {
+        my $coord_text = "";
+        foreach my $coordset (@{$feature->{coords}}) {
+            my ($lend, $rend) = @$coordset;
+            $coord_text .= "$lend-$rend,";
+        }
+        chop $coord_text;
+        
+        $text .= "$asmbl_id\t$orient\talt_terminal_exons\t$coord_text\t" . join (",", @{$feature->{accs}}) . "\n";
+        
+    }
+    
+    
+    return ($text);
+}
+
+
+
+
+####
+sub report_retained_intron {
+    my ($asmbl_id, $orient, 
+        $type_A, $lend_A, $rend_A, $accs_A_aref,
+        $type_B, $lend_B, $rend_B, $accs_B_aref,
+        $pasa_acc_to_alignment_obj_href) = @_;
+    
+    my ($retained_intron_lend, $retained_intron_rend, $retained_intron_accs_aref,
+        $spliced_intron_lend, $spliced_intron_rend, $spliced_intron_accs_aref);
+
+    if ($type_A eq 'retained_intron') {
+        ($retained_intron_lend, $retained_intron_rend, $retained_intron_accs_aref,
+         $spliced_intron_lend, $spliced_intron_rend, $spliced_intron_accs_aref) = 
+             ($lend_A, $rend_A, $accs_A_aref,
+              $lend_B, $rend_B, $accs_B_aref);
+    }
+    else {
+        # type_A must be spliced intron
+         ($retained_intron_lend, $retained_intron_rend, $retained_intron_accs_aref,
+         $spliced_intron_lend, $spliced_intron_rend, $spliced_intron_accs_aref) = 
+             ($lend_B, $rend_B, $accs_B_aref,
+              $lend_A, $rend_A, $accs_A_aref);
+     }
+    
+
+
+    ## get the exons including the retained introns:
+
+    my @exons_retaining_introns;
+    my %coords_to_exon_retaining_intron;
+
+    foreach my $acc (@$retained_intron_accs_aref) {
+        my $alignment_obj = $pasa_acc_to_alignment_obj_href->{$acc};
+
+        my @segments = $alignment_obj->get_alignment_segments();
+        my $found = 0;
+        foreach my $segment (@segments) {
+
+            my ($lend, $rend) = $segment->get_coords();
+            my $segment_key = "$spliced_intron_lend,$spliced_intron_rend"; ## change this to the intron itself instead of the exon.
+            
+            if ($lend < $spliced_intron_lend && $spliced_intron_rend < $rend) {
+                
+                if (my $feature = $coords_to_exon_retaining_intron{$segment_key}) {
+                    push (@{$feature->{accs}}, $acc);
+                }
+                else {
+                    ## create it
+                    my $feature = { retained_lend => $spliced_intron_lend,
+                                    retained_rend => $spliced_intron_rend,
+                                    accs => [$acc]
+                                    };
+                    
+                    $coords_to_exon_retaining_intron{$segment_key} = $feature;
+                    push (@exons_retaining_introns, $feature);
+                }
+                $found = 1;
+                last;
+            }
+        }
+        unless ($found) {
+            confess "Error, didn't find a segment containing the retained intron";
+        }
+
+    }
+    
+    
+    ## find the intron corresponding to the spliced intron in those that did not retain it.
+    my @spliced_intron_features;
+    my %coords_to_spliced_intron_feature;
+    foreach my $acc (@$spliced_intron_accs_aref) {
+        
+        my $alignment_obj = $pasa_acc_to_alignment_obj_href->{$acc};
+        my @intron_coords = $alignment_obj->get_intron_coords();
+        my $found = 0;
+        foreach my $intron (@intron_coords) {
+            my ($lend, $rend) = @$intron;
+            my $intron_key = "$lend,$rend";
+            if ($lend == $spliced_intron_lend && $rend == $spliced_intron_rend) {
+                # got it.
+                $found = 1;
+                if (my $feature = $coords_to_spliced_intron_feature{$intron_key}) {
+                    push (@{$feature->{accs}}, $acc);
+                }
+                else {
+                    ## create it:
+                    my $feature = { intron_lend => $lend,
+                                    intron_rend => $rend,
+                                    accs => [$acc]
+                                    };
+
+                    push (@spliced_intron_features, $feature);
+                    $coords_to_spliced_intron_feature{$intron_key} = $feature;
+                }
+                last;
+            }
+        }
+        unless ($found) {
+            confess "Error, didn't locate the spliced intron.\n";
+        }
+            
+    }
+
+
+    ## describe the features:
+    my $text = "";
+    foreach my $spliced_intron_feature (@spliced_intron_features) {
+        my ($intron_lend, $intron_rend) = ($spliced_intron_feature->{intron_lend},
+                                           $spliced_intron_feature->{intron_rend});
+                                           
+        
+        $text .= "$asmbl_id\t$orient\tintron\t$intron_lend-$intron_rend\t" . join (",", @{$spliced_intron_feature->{accs}}) . "\n";
+    }
+
+    foreach my $exon (@exons_retaining_introns) {
+        my ($retained_intron_lend, $retained_intron_rend) = ($exon->{retained_lend}, 
+                                                             $exon->{retained_rend});
+        
+        $text .= "$asmbl_id\t$orient\tretained_intron\t$retained_intron_lend-$retained_intron_rend\t" . join (",", @{$exon->{accs}}) . "\n";
+
+    }
+
+
+    return ($text);
+}
+
+
+####
+sub _get_introns_and_accessions_harboring_coords {
+    my ($accs_aref, $lend, $rend, $pasa_acc_to_alignment_obj_href) = @_;
+    
+    my @intron_features;
+    
+    ## intron feature structured like so:
+    ##  intron_lend => lend, 
+    ##  intron_rend => rend, 
+    ##  accs => [ list of accs]
+    ## 
+    
+    my %intron_coords_to_feature;
+    
+    foreach my $pasa_acc (@$accs_aref) {
+        
+        my $alignment_obj = $pasa_acc_to_alignment_obj_href->{$pasa_acc};
+        
+        my @intron_coords = $alignment_obj->get_intron_coords();
+        my $found = 0;
+        foreach my $intron_coord (@intron_coords) {
+            my ($intron_lend, $intron_rend) = @$intron_coord;
+            if ($intron_lend == $lend  ||  $rend == $intron_rend) {
+                
+                my $intron_key = "$intron_lend,$intron_rend";
+                if (my $feature = $intron_coords_to_feature{$intron_key}) {
+                    ## add current accession to feature acc list:
+                    push (@{$feature->{accs}}, $pasa_acc);
+                    $found = 1;
+                    last;
+                }
+                else {
+                    ## new feature to add:
+                    my $feature = {  intron_lend => $intron_lend,
+                                     intron_rend => $intron_rend,
+                                     accs => [ $pasa_acc ],
+                                 };
+                    
+                    push (@intron_features, $feature);
+                    $intron_coords_to_feature{$intron_key} = $feature;
+                }
+            }
+        }
+        
+    }
+    
+    return (@intron_features);
+}

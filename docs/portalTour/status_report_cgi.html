@@ -1,0 +1,271 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en-US" lang="en-US"><head><title>PASA-2 status report for sample_mydb_pasa</title>
+
+
+<style type="text/css">
+	
+	body {
+	    font-family: verdana,helvetica,sans-serif;
+	    font-size: 10pt;
+	}
+	
+	a {
+	    color: rgb(25,25,255);
+	}
+	
+	a {
+	  text-decoration: none;
+	}  
+	
+	
+	h1 {
+	   font-size: 120%;
+	   text-align: center;
+	}
+	
+	h2 {
+	   font-size: 100%;
+	}
+	
+	h1, h2 {
+	    font-weight: bold;
+	    color: rgb(00,66,66);
+	    border-bottom: 1px dashed rgb(00,66,66);
+	    padding-bottom: 5px;
+	}
+	
+	img {
+	    border: 1px solid rgb(165,165,165);
+	    padding: 3px;
+	    margin-bottom: 7px;
+	}
+	
+	input, select {
+	    border: 1px solid rgb(0,0,0);
+	    padding-left: 3px;
+	}
+	
+	
+	table {
+	    border-style: none;
+	    border-collapse: collapse;
+	}    
+	
+	table table {
+	        border-style: none;
+	}
+	
+	
+	td, th {
+	    font-family: verdana,helvetica,sans-serif;
+	    font-size: 10pt;
+	    border-style: solid;
+	    border-width: 1px;
+	    padding-left: 3px;
+	    padding-right: 3px;
+	}
+	
+	     
+	th {
+	    background-color: rgb(00,66,66);
+	    color: rgb(255,255,255);
+	    font-weight: bold;
+	}
+	
+	
+	#refreshLink { background-color: rgb(200,200,200); 
+	}
+	
+	h1{ 
+	    text-align: center;
+	}
+	
+	.annotComparison { border: 1px solid rgb(0,0,0);
+	}
+	
+	#pasaAlignmentAssemblyStatsTable { 
+	    margin: 0 auto 0 auto;
+	}                                 
+	
+	.alignmentAssemblyClassificationsTable {
+	       margin: 0 auto 0 auto;
+	}
+	
+	.geneComparisonOverviewTable {
+	    margin: 0 auto 0 auto;
+	}
+	
+	#pasaLinksList {
+	    list-style-type: none;
+	}
+	
+	#pasaLinksList a:hover { 
+	    background-color: rgb(200,200,200);
+	}
+	
+</style></head><body><h1>PASA Database sample_mydb_pasa Report</h1>
+<table id="pasaAlignmentAssemblyStatsTable"><tbody><tr><th>Transcripts or Assemblies</th><th>Count</th></tr>
+<tr><td>Total transcript seqs</td><td>7359</td></tr>
+<tr><td>Fli cDNAs</td><td>834</td></tr><tr><td>partial cDNAs (ESTs)</td><td>6525</td></tr><tr><td>Number transcripts with any alignment</td><td>7243</td></tr>
+<tr><td>Valid <b>gmap alignments</b></td><td>5650</td></tr>
+<tr><td>Total Valid alignments</td><td>5650</td></tr><tr><td>Valid FL-cDNA alignments</td><td>627</td></tr>
+<tr><td>Valid EST alignments</td><td>5023</td></tr>
+<tr><td>Number of assemblies</td><td>413</td></tr><tr><td>Number of subclusters (genes)</td><td>330</td></tr><tr><td>Number of fli-containing assemblies</td><td>279</td></tr><tr><td>Number of non-fli-containing assemblies</td><td>134</td></tr></tbody></table>
+<h2>PASA resources:</h2>
+<ul id="pasaLinksList">
+<li><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/describe_alignment_assemblies.cgi?db=sample_mydb_pasa" target="_blank">Describe alignment assemblies</a>
+</li><li><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/describe_subclusters.cgi?db=sample_mydb_pasa" target="_blank">Describe subclusters of assemblies</a>
+</li><li><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/retrieve_assembly_sequences.cgi?db=sample_mydb_pasa" target="_blank">Retrieve alignment assembly tentative cDNA sequences</a>
+</li><li><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/search_page.cgi?db=sample_mydb_pasa" target="search_sample_mydb_pasa">Search the database.</a>
+</li><li><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/url_constructor.cgi?db=sample_mydb_pasa" target="url_constructor_sample_mydb_pasa">Construct customized URLs linked from PASA assembly report pages.</a></li><li><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/alt_splice_report.cgi?db=sample_mydb_pasa" target="alternative_splicing">Alternative Splicing Report</a></li></ul>
+<h1>Status Report for cDNA Assembly Annotation Comparison</h1>
+<div class="annotComparison">
+<h2>Comparison # 2, Annotation Version: 2, date: 2008-06-06 20:22:27</h2>
+<i>some FL-assemblies may have been deprecated to EST status</i>
+    
+    <table class="alignmentAssemblyClassificationsTable">
+	<tbody><tr><th colspan="5">Annotation Classification for Alignment Assemblies</th></tr> 
+    <tr><th></th><th colspan="2">FL-assemblies</th><th colspan="2">EST-assemblies</th></tr>
+	<tr><th></th><th>PASS</th><th>fail</th><th>PASS</th><th>fail</th></tr>
+	<tr><td>Incorporated</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=3&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="gene-compatible fl-cdna assembly incorporated"><b>210</b></a></td><td></td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=12&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="EST assembly incorporated."><b>83</b></a></td><td></td></tr>
+	<tr><td>UTR addition</td><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=4&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="gene-compatible fl-cdna assembly alters UTRs."><b>0</b></a></td><td></td><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=13&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="EST assembly extends UTRs."><b>0</b></a></td><td></td></tr>
+	<tr><td>Gene extension</td><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=6&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="gene-compatible fl-cdna assembly alters protein, passed validation."><b>0</b></a></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=7&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="gene-compatible fl-cdna assembly alters protein, fails validation."><b>0</b></a></td><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=14&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="EST assembly alters protein sequence, passes validation."><b>0</b></a></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=15&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="EST assembly alters protein sequence, fails validation."><b>0</b></a></td></tr>
+	<tr><td>Internal gene structure rearrangement</td><td></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=23&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="incompatible fl-cdna assembly fails validation"><b>6</b></a></td><td></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=18&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="EST assembly stitched into gene model fails validation."><b>21</b></a></td></tr>
+	<tr><td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;-passes homology tests</td><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=8&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="incompatible fl-cdna assembly alignment updates gene structure."><b>0</b></a></td><td></td><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=16&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="EST assembly properly stitched into gene structure."><b>0</b></a></td><td></td></tr>
+	<tr><td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;-fails homology, passes ORF span</td><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=26&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="FL-cDNA spans single gene and allowed to STOMP it."><b>0</b></a></td><td></td><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=31&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="EST-stitched assembly STOMPS model lacking transcript support."><b>0</b></a></td><td></td></tr>
+	<tr><td>Gene Merging</td><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=29&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="FL-cDNA found capable of merging multiple genes"><b>2</b></a></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=30&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="FL-cDNA overlaps multiple genes, but found incapable of merging them."><b>6</b></a></td><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=36&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="EST-assembly found capable of merging multiple genes."><b>0</b></a></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=35&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="EST-assembly  overlaps multiple genes, but found incapable of merging them."><b>0</b></a></td></tr>
+	<tr><td>Gene Splitting</td><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=40&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="FL-cDNAs split single gene into multiple genes"><b>0</b></a></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=41&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="FL-cDNAs suggest split single gene into multiple genes, failed automation"><b>0</b></a></td><td></td><td></td></tr>
+	<tr><td>Alt Splicing Isoform</td><td></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=21&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="fl-cdna assembly provides alternate splicing isoform, fails validation"><b>2</b></a></td><td></td><td></td></tr>
+	<tr><td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;-passes homology test</td><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=9&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="incompatible fl-cdna assembly provides alternative splicing isoform, passes validation."><b>1</b></a></td><td></td>
+    <td><table width="100%"><tbody><tr><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=25&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="EST assembly stitched into Gene model requires alternative splicing isoform."><b>1</b></a></td></tr><tr><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=24&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="FL-cDNA assembly stitched by EST assembly to provide alt splicing isoform."><b>0</b></a></td></tr></tbody></table>
+    </td><td></td></tr>
+	<tr><td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;-fails homology, passes ORF span</td><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=33&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="FL-assembly STOMPS new splice isoform"><b>0</b></a></td><td></td><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=32&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="EST-stitched gene w/preexisting transcript support STOMPS a new alt splicing variation."><b>0</b></a></td><td></td></tr>
+	<tr><td>New Gene</td><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=10&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="fl-cdna assembly provides a novel gene."><b>0</b></a></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=22&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="fl-cdna assembly provides novel gene which overlaps existing annotations"><b>0</b></a></td><td></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=19&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="EST assembly aligns to intergenic region."><b>23</b></a></td></tr>
+	<tr><td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Alt splice of new gene</td><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=44&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="FL-cDNA provides alt splicing isoform of a novel gene"><b>0</b></a></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=45&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="fl-cdna assembly provides isoform for novel gene which overlaps existing annotations"><b>0</b></a></td><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=27&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="EST-assembly stitched into a FL-alignment providing new alt splice isoform."><b>0</b></a></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=28&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="EST-assembly stitched into a FL-alignment but fails validation tests."><b>0</b></a></td></tr>
+	<tr><td colspan="5">&nbsp;</td></tr>
+	<tr><td>FL-assembly fails gene requirements</td><td></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=1&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="fl-cdna assembly fails validation tests."><b>26</b></a></td><td></td><td></td></tr>
+	<tr><td>Antisense</td><td></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=42&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="FL-cDNA aligns as antisense to existing annotated gene"><b>10</b></a></td><td></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=43&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="EST assembly aligns as antisense to existing annotated gene"><b>6</b></a></td></tr>
+	<tr><td>Single-exon EST-assembly incompatible</td><td></td><td></td><td></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=34&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="single-exon EST-assembly  fails gene compatibility test"><b>16</b></a></td></tr>
+	<tr><td colspan="5">&nbsp;</td></tr>
+	<tr><td>delayed incorporation due to gene merging</td><td></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=37&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="Delayed incorporation of FL-assembly due to successful merging operation."><b>0</b></a></td><td></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=38&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="Delayed incorporation of EST-assembly due to successful merging operation."><b>0</b></a></td></tr>
+	<tr><td>delayed incorporation due to gene splitting</td><td></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=39&amp;db=sample_mydb_pasa&amp;compare_id=2" target="_new" title="Delayed incorporation of FL-assembly due to successful splitting operation"><b>0</b></a></td><td></td><td></td></tr>
+	<tr><td colspan="5">&nbsp;</td></tr>
+	<tr><td>Total</td><td colspan="4"><b>413</b></td></tr>
+    </tbody></table>
+	
+
+<br><h2>Gene Comparison Overview</h2>
+<table class="geneComparisonOverviewTable">
+<tbody><tr><th colspan="2">A total of <b>267</b> genes mapped to PASA assemblies</th></tr>
+<tr><td colspan="2"><b>279</b> FL-assemblies mapped to <b>224</b> genes</td></tr><tr><th colspan="2">Successful Incorporations by Genes</th></tr>
+<tr><td>Genes supported by PASA assemblies</td><td><b>240</b></td></tr>
+<tr><td>Genes supported by <b>229</b> FL assemblies</td><td><b>202</b></td></tr>
+<tr><td>Genes supported by <b>68</b> EST assemblies only <i>(no FL assemblies)</i></td><td><b>38</b></td></tr>
+<tr><th colspan="2">Failed Incorporations by Genes</th></tr>
+<tr><td>Genes failing PASA assembly incorporation</td><td><b>79</b></td></tr>
+<tr><td colspan="2"><i>of these, <b>52</b> genes successfully incorporate other PASA assemblies</i></td></tr>
+<tr><td>Genes failing FL assembly incorporation</td><td><b>46</b></td></tr>
+<tr><td colspan="2"><i>but <b>24</b> of these genes incorporate other FL assemblies successfully.</i></td></tr>
+<tr><td>Genes failing EST assemblies only</td><td><b>33</b></td></tr>
+</tbody></table>
+<i>The same gene may be counted in multiple categories.</i>
+<p><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/passAndFail_GeneLists.cgi?db=sample_mydb_pasa&amp;compare_id=2" target="_new">Retrieve Lists of Genes Corresponding to Pass and Fail Categories.</a></p><h2>Proposed Annotation Updates <i><font size="-1">[counts as unique models, not genes]</font></i></h2><table><tbody><tr><th>status_id</th><th>Description</th><th>Num Gene Model Updates</th><th>Num Alt Splice isoforms to Add</th><th>Num Novel Genes to Add</th></tr>
+<tr><td>4</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=4&amp;compare_id=2">gene-compatible fl-cdna assembly alters UTRs.</a></td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td>6</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=6&amp;compare_id=2">gene-compatible fl-cdna assembly alters protein, passed validation.</a></td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td>8</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=8&amp;compare_id=2">incompatible fl-cdna assembly alignment updates gene structure.</a></td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td>9</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=9&amp;compare_id=2">incompatible fl-cdna assembly provides alternative splicing isoform, passes validation.</a></td><td>0</td><td>1</td><td>0</td></tr>
+<tr><td>10</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=10&amp;compare_id=2">fl-cdna assembly provides a novel gene.</a></td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td>24</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=24&amp;compare_id=2">FL-cDNA assembly stitched by EST assembly to provide alt splicing isoform.</a></td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td>26</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=26&amp;compare_id=2">FL-cDNA spans single gene and allowed to STOMP it.</a></td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td>29</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=29&amp;compare_id=2">FL-cDNA found capable of merging multiple genes</a></td><td>2</td><td>0</td><td>0</td></tr>
+<tr><td>33</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=33&amp;compare_id=2">FL-assembly STOMPS new splice isoform</a></td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td>40</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=40&amp;compare_id=2">FL-cDNAs split single gene into multiple genes</a></td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td>44</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=44&amp;compare_id=2">FL-cDNA provides alt splicing isoform of a novel gene</a></td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td>13</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=13&amp;compare_id=2">EST assembly extends UTRs.</a></td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td>14</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=14&amp;compare_id=2">EST assembly alters protein sequence, passes validation.</a></td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td>16</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=16&amp;compare_id=2">EST assembly properly stitched into gene structure.</a></td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td>17</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=17&amp;compare_id=2">EST assembly stitched into Gene model requires alternative splicing isoform. (deprecated, see status_ids: 24,25)</a></td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td>25</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=25&amp;compare_id=2">EST assembly stitched into Gene model requires alternative splicing isoform.</a></td><td>0</td><td>1</td><td>0</td></tr>
+<tr><td>27</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=27&amp;compare_id=2">EST-assembly stitched into a FL-alignment providing new alt splice isoform.</a></td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td>31</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=31&amp;compare_id=2">EST-stitched assembly STOMPS model lacking transcript support.</a></td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td>32</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=32&amp;compare_id=2">EST-stitched gene w/preexisting transcript support STOMPS a new alt splicing variation.</a></td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td>36</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=36&amp;compare_id=2">EST-assembly found capable of merging multiple genes.</a></td><td>0</td><td>0</td><td>0</td></tr>
+<tr><th>&nbsp;</th><th>Totals <i><font=-2>(some models in multiple classes)</font=-2></i></th><th>2</th><th>2</th><th>0</th></tr></tbody></table>
+<p><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/summarize_updates.cgi?db=sample_mydb_pasa&amp;compare_id=2">Summarize Gene Structure Updates to be Performed.</a></p>
+</div><!-- end of annotation comparison 2 -->
+<div class="annotComparison">
+<h2>Comparison # 1, Annotation Version: 1, date: 2008-06-06 20:21:52</h2>
+<i>some FL-assemblies may have been deprecated to EST status</i>
+    
+    <table class="alignmentAssemblyClassificationsTable">
+	<tbody><tr><th colspan="5">Annotation Classification for Alignment Assemblies</th></tr> 
+    <tr><th></th><th colspan="2">FL-assemblies</th><th colspan="2">EST-assemblies</th></tr>
+	<tr><th></th><th>PASS</th><th>fail</th><th>PASS</th><th>fail</th></tr>
+	<tr><td>Incorporated</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=3&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="gene-compatible fl-cdna assembly incorporated"><b>2</b></a></td><td></td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=12&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="EST assembly incorporated."><b>16</b></a></td><td></td></tr>
+	<tr><td>UTR addition</td><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=4&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="gene-compatible fl-cdna assembly alters UTRs."><b>86</b></a></td><td></td><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=13&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="EST assembly extends UTRs."><b>39</b></a></td><td></td></tr>
+	<tr><td>Gene extension</td><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=6&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="gene-compatible fl-cdna assembly alters protein, passed validation."><b>19</b></a></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=7&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="gene-compatible fl-cdna assembly alters protein, fails validation."><b>0</b></a></td><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=14&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="EST assembly alters protein sequence, passes validation."><b>4</b></a></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=15&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="EST assembly alters protein sequence, fails validation."><b>0</b></a></td></tr>
+	<tr><td>Internal gene structure rearrangement</td><td></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=23&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="incompatible fl-cdna assembly fails validation"><b>6</b></a></td><td></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=18&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="EST assembly stitched into gene model fails validation."><b>20</b></a></td></tr>
+	<tr><td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;-passes homology tests</td><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=8&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="incompatible fl-cdna assembly alignment updates gene structure."><b>48</b></a></td><td></td><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=16&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="EST assembly properly stitched into gene structure."><b>12</b></a></td><td></td></tr>
+	<tr><td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;-fails homology, passes ORF span</td><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=26&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="FL-cDNA spans single gene and allowed to STOMP it."><b>0</b></a></td><td></td><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=31&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="EST-stitched assembly STOMPS model lacking transcript support."><b>0</b></a></td><td></td></tr>
+	<tr><td>Gene Merging</td><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=29&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="FL-cDNA found capable of merging multiple genes"><b>2</b></a></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=30&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="FL-cDNA overlaps multiple genes, but found incapable of merging them."><b>6</b></a></td><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=36&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="EST-assembly found capable of merging multiple genes."><b>0</b></a></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=35&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="EST-assembly  overlaps multiple genes, but found incapable of merging them."><b>0</b></a></td></tr>
+	<tr><td>Gene Splitting</td><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=40&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="FL-cDNAs split single gene into multiple genes"><b>0</b></a></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=41&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="FL-cDNAs suggest split single gene into multiple genes, failed automation"><b>0</b></a></td><td></td><td></td></tr>
+	<tr><td>Alt Splicing Isoform</td><td></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=21&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="fl-cdna assembly provides alternate splicing isoform, fails validation"><b>3</b></a></td><td></td><td></td></tr>
+	<tr><td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;-passes homology test</td><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=9&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="incompatible fl-cdna assembly provides alternative splicing isoform, passes validation."><b>20</b></a></td><td></td>
+    <td><table width="100%"><tbody><tr><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=25&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="EST assembly stitched into Gene model requires alternative splicing isoform."><b>3</b></a></td></tr><tr><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=24&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="FL-cDNA assembly stitched by EST assembly to provide alt splicing isoform."><b>10</b></a></td></tr></tbody></table>
+    </td><td></td></tr>
+	<tr><td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;-fails homology, passes ORF span</td><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=33&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="FL-assembly STOMPS new splice isoform"><b>0</b></a></td><td></td><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=32&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="EST-stitched gene w/preexisting transcript support STOMPS a new alt splicing variation."><b>0</b></a></td><td></td></tr>
+	<tr><td>New Gene</td><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=10&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="fl-cdna assembly provides a novel gene."><b>26</b></a></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=22&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="fl-cdna assembly provides novel gene which overlaps existing annotations"><b>0</b></a></td><td></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=19&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="EST assembly aligns to intergenic region."><b>25</b></a></td></tr>
+	<tr><td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Alt splice of new gene</td><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=44&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="FL-cDNA provides alt splicing isoform of a novel gene"><b>8</b></a></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=45&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="fl-cdna assembly provides isoform for novel gene which overlaps existing annotations"><b>0</b></a></td><td bgcolor="#00ff00"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=27&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="EST-assembly stitched into a FL-alignment providing new alt splice isoform."><b>0</b></a></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=28&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="EST-assembly stitched into a FL-alignment but fails validation tests."><b>2</b></a></td></tr>
+	<tr><td colspan="5">&nbsp;</td></tr>
+	<tr><td>FL-assembly fails gene requirements</td><td></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=1&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="fl-cdna assembly fails validation tests."><b>26</b></a></td><td></td><td></td></tr>
+	<tr><td>Antisense</td><td></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=42&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="FL-cDNA aligns as antisense to existing annotated gene"><b>10</b></a></td><td></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=43&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="EST assembly aligns as antisense to existing annotated gene"><b>5</b></a></td></tr>
+	<tr><td>Single-exon EST-assembly incompatible</td><td></td><td></td><td></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=34&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="single-exon EST-assembly  fails gene compatibility test"><b>15</b></a></td></tr>
+	<tr><td colspan="5">&nbsp;</td></tr>
+	<tr><td>delayed incorporation due to gene merging</td><td></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=37&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="Delayed incorporation of FL-assembly due to successful merging operation."><b>0</b></a></td><td></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=38&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="Delayed incorporation of EST-assembly due to successful merging operation."><b>0</b></a></td></tr>
+	<tr><td>delayed incorporation due to gene splitting</td><td></td><td bgcolor="#ff9f9f"><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/status_to_asmbl_listing.cgi?status_id=39&amp;db=sample_mydb_pasa&amp;compare_id=1" target="_new" title="Delayed incorporation of FL-assembly due to successful splitting operation"><b>0</b></a></td><td></td><td></td></tr>
+	<tr><td colspan="5">&nbsp;</td></tr>
+	<tr><td>Total</td><td colspan="4"><b>413</b></td></tr>
+    </tbody></table>
+	
+
+<br><h2>Gene Comparison Overview</h2>
+<table class="geneComparisonOverviewTable">
+<tbody><tr><th colspan="2">A total of <b>265</b> genes mapped to PASA assemblies</th></tr>
+<tr><td colspan="2"><b>279</b> FL-assemblies mapped to <b>222</b> genes</td></tr><tr><th colspan="2">Successful Incorporations by Genes</th></tr>
+<tr><td>Genes supported by PASA assemblies</td><td><b>238</b></td></tr>
+<tr><td>Genes supported by <b>228</b> FL assemblies</td><td><b>200</b></td></tr>
+<tr><td>Genes supported by <b>67</b> EST assemblies only <i>(no FL assemblies)</i></td><td><b>38</b></td></tr>
+<tr><th colspan="2">Failed Incorporations by Genes</th></tr>
+<tr><td>Genes failing PASA assembly incorporation</td><td><b>77</b></td></tr>
+<tr><td colspan="2"><i>of these, <b>50</b> genes successfully incorporate other PASA assemblies</i></td></tr>
+<tr><td>Genes failing FL assembly incorporation</td><td><b>45</b></td></tr>
+<tr><td colspan="2"><i>but <b>23</b> of these genes incorporate other FL assemblies successfully.</i></td></tr>
+<tr><td>Genes failing EST assemblies only</td><td><b>32</b></td></tr>
+</tbody></table>
+<i>The same gene may be counted in multiple categories.</i>
+<p><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/passAndFail_GeneLists.cgi?db=sample_mydb_pasa&amp;compare_id=1" target="_new">Retrieve Lists of Genes Corresponding to Pass and Fail Categories.</a></p><h2>Proposed Annotation Updates <i><font size="-1">[counts as unique models, not genes]</font></i></h2><table><tbody><tr><th>status_id</th><th>Description</th><th>Num Gene Model Updates</th><th>Num Alt Splice isoforms to Add</th><th>Num Novel Genes to Add</th></tr>
+<tr><td>4</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=4&amp;compare_id=1">gene-compatible fl-cdna assembly alters UTRs.</a></td><td>86</td><td>0</td><td>0</td></tr>
+<tr><td>6</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=6&amp;compare_id=1">gene-compatible fl-cdna assembly alters protein, passed validation.</a></td><td>19</td><td>0</td><td>0</td></tr>
+<tr><td>8</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=8&amp;compare_id=1">incompatible fl-cdna assembly alignment updates gene structure.</a></td><td>48</td><td>0</td><td>0</td></tr>
+<tr><td>9</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=9&amp;compare_id=1">incompatible fl-cdna assembly provides alternative splicing isoform, passes validation.</a></td><td>0</td><td>20</td><td>0</td></tr>
+<tr><td>10</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=10&amp;compare_id=1">fl-cdna assembly provides a novel gene.</a></td><td>0</td><td>0</td><td>26</td></tr>
+<tr><td>24</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=24&amp;compare_id=1">FL-cDNA assembly stitched by EST assembly to provide alt splicing isoform.</a></td><td>0</td><td>10</td><td>0</td></tr>
+<tr><td>26</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=26&amp;compare_id=1">FL-cDNA spans single gene and allowed to STOMP it.</a></td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td>29</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=29&amp;compare_id=1">FL-cDNA found capable of merging multiple genes</a></td><td>2</td><td>0</td><td>0</td></tr>
+<tr><td>33</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=33&amp;compare_id=1">FL-assembly STOMPS new splice isoform</a></td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td>40</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=40&amp;compare_id=1">FL-cDNAs split single gene into multiple genes</a></td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td>44</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=44&amp;compare_id=1">FL-cDNA provides alt splicing isoform of a novel gene</a></td><td>0</td><td>8</td><td>0</td></tr>
+<tr><td>13</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=13&amp;compare_id=1">EST assembly extends UTRs.</a></td><td>35</td><td>0</td><td>0</td></tr>
+<tr><td>14</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=14&amp;compare_id=1">EST assembly alters protein sequence, passes validation.</a></td><td>4</td><td>0</td><td>0</td></tr>
+<tr><td>16</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=16&amp;compare_id=1">EST assembly properly stitched into gene structure.</a></td><td>11</td><td>0</td><td>0</td></tr>
+<tr><td>17</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=17&amp;compare_id=1">EST assembly stitched into Gene model requires alternative splicing isoform. (deprecated, see status_ids: 24,25)</a></td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td>25</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=25&amp;compare_id=1">EST assembly stitched into Gene model requires alternative splicing isoform.</a></td><td>0</td><td>3</td><td>0</td></tr>
+<tr><td>27</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=27&amp;compare_id=1">EST-assembly stitched into a FL-alignment providing new alt splice isoform.</a></td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td>31</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=31&amp;compare_id=1">EST-stitched assembly STOMPS model lacking transcript support.</a></td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td>32</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=32&amp;compare_id=1">EST-stitched gene w/preexisting transcript support STOMPS a new alt splicing variation.</a></td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td>36</td><td><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/gene_update_report.cgi?db=sample_mydb_pasa&amp;status_id=36&amp;compare_id=1">EST-assembly found capable of merging multiple genes.</a></td><td>0</td><td>0</td><td>0</td></tr>
+<tr><th>&nbsp;</th><th>Totals <i><font=-2>(some models in multiple classes)</font=-2></i></th><th>199</th><th>41</th><th>26</th></tr></tbody></table>
+<p><a href="http://localhost:8080/cgi-bin/PASA/cgi-bin/summarize_updates.cgi?db=sample_mydb_pasa&amp;compare_id=1">Summarize Gene Structure Updates to be Performed.</a></p>
+</div><!-- end of annotation comparison 1 -->
+<p>Page originally generated in 2 seconds.</p>
+</body></html>

@@ -1,0 +1,116 @@
+
+Notes contributed by: Mike Donaldson (mike.donaldson@gmail.com) on May, 21, 2014
+
+
+Setting Up the PASA Web Portal: GD & Apache2
+Note: installing 'httpd-2.4.9' with the required files: APR and APR-UTIL (and even the recoomended files) did not work! Moreso, editing my httpd.conf file so that it was similar to B. Haas' .conf file did not work either. All make test runs passed and apache2 was loading via:
+
+CMD: sudo /home/user/httpd-2.4.9/bin/apachectl -d /home/user/httpd-2.4.9/ -k start
+
+Additionally, installing apache2 and then editing the apache2.conf file did not work.
+
+GD-2.53
+Download and extract
+CMD: sudo apt-get libgd2-xpm-dev
+CMD: cpan
+CMD: install GD
+
+To remove apache2
+CMD: sudo apt-get --purge remove apache2*
+CMD: sudo apt-get --purge autoremove
+
+To make sure LAMP server is correctly installed
+CMD: sudo apt-get install tasksel
+CMD: sudo tasksel
+choose lamp server
+
+https://www.digitalocean.com/community/articles/how-to-install-linux-apache-mysql-php-lamp-stack-on-ubuntu-14-04
+
+CMD: sudo apt-get update
+CMD: sudo apt-get install apache2
+CMD: ip addr show eth0 | grep inet | awk '{ print $2; }' | sed 's/\/.*$//'
+
+Make sure requirements have been installed
+CMD: sudo apt-get install mysql-server libapache2-mod-auth-mysql php5-mysql
+CMD: sudo apt-get install php5 libapache2-mod-php5 php5-mcrypt
+CMD: sudo nano /etc/apache2/mods-enabled/dir.conf
+
+<IfModule mod_dir.c>
+DirectoryIndex index.php index.html index.cgi index.pl index.xhtml index.htm
+</IfModule>
+
+CMD: sudo service apache2 restart
+CMD: sudo nano /var/www/html/info.php
+
+<?php
+phpinfo();
+?>
+
+http://your_server_IP_address/info.php
+
+CMD: sudo rm /var/www/html/info.php
+CMD: sudo service apache2 restart
+
+Error message: AH00558: apache2: Could not reliably determine the server's fully qualified domain name, using 127.0.1.1. Set the 'ServerName' directive globally to suppress this message
+Specifying ServerName localhost in your configuration files outside of the virtual host sections is the way to do this. Other answers suggest that you should modify /etc/apache2/httpd.conf. This file gets overwritten when apache gets upgraded from apt. For Apache configuration that you don't want to get overwritten, you should create a new file. Here is the Debian way to make this configuration change:
+
+# create the configuration file in the "available" section
+CMD: echo "ServerName localhost" | sudo tee /etc/apache2/conf-available/servername.conf
+# enable it by creating a symlink to it from the "enabled" section
+CMD: sudo a2enconf servername
+# restart the server
+CMD: sudo service apache2 restart
+
+Make apache2 run a cgi?
+http://askubuntu.com/questions/54251/how-do-i-make-apache-run-a-cgi-instead-of-showing-the-text
+
+CMD: sudo a2enmod cgi
+CMD: sudo service apache2 restart
+
+https://www.digitalocean.com/community/articles/how-to-use-suexec-in-apache-to-run-cgi-scripts-on-an-ubuntu-vps
+
+CMD: less /etc/apache2/mods-enabled/cgi.load
+CMD: LoadModule cgi_module /usr/lib/apache2/modules/mod_cgi.so
+CMD: sudo nano /etc/apache2/sites-enabled/000-default
+
+<VirutalHost *:80>
+ServerName your_domain_or_IP_address
+ServerAdmin your_email_address
+
+ScriptAlias /cgi-bin/ /usr/lib/cgi-bin/
+<Directory "/usr/lib/cgi-bin">
+AllowOverride None
+Options +ExecCGI -MultiViews +SymLinksIfOwnerMatch
+AddHandler cgi-script .pl .rb
+Order allow,deny
+Allow from all
+</Directory>
+
+CMD: sudo service apache2 restart
+
+
+Test cgi file format
+CMD: sudo cp -r ~/PASA_r20140417/ /usr/lib/cgi-bin
+CMD: sudo chmod 755 -R ./PASA_r20140417/
+
+http://172.25.30.44/cgi-bin/PASA_r20140417/cgi-bin/testme.cgi
+
+EDIT PASA CONFIG FILE
+BASE_PASA_URL=http://your_server_ip_address/cgi-bin/PASA_r20140417/cgi-bin
+
+PASA run_sample_pipeline stalls at ~ CMD 23?
+DB::mysql script not working properly, something must have happened when I purged apache??
+CMD: sudo apt-get install libmysqlclient-dev
+CMD: cpan
+CMD: install DBD::mysql
+
+rerun PASA sample_data
+CMD: ./run_sample_pipeline.pl > PASA_outlog.txt
+
+sudo cp -r ~/PASA_r20140417/ /usr/lib/cgi-bin
+cd /usr/lib/cgi-bin
+sudo chmod -R 755 ./PASA_r20140417/
+
+http:// your_server_ip_address/cgi-bin/PASA_r20140417/cgi-bin/status_report.cgi?db=sample_mydb_pasa
+
+SUCCESS!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

@@ -1,0 +1,76 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Pasa_conf;
+use Mysql_connect;
+use strict;
+use DBI;
+use Getopt::Std;
+
+use vars qw ($opt_f $opt_h $opt_D $opt_d $DEBUG $opt_S $opt_M);
+
+&getopts ('hD:dS:M:f:');
+
+
+$|=1;
+our $SEE = 0;
+
+open (STDERR, "&>STDOUT");
+
+my $usage =  <<_EOH_;
+
+Sets the spliced orientation (transcribed orientation) to the aligned orientation for strand-specific assemblies.
+
+############################# Options ###############################
+#
+# -M Mysql database name
+# 
+# -d Debug
+# 
+# -h print this option menu and quit
+#
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+if ($opt_h) {die $usage;}
+
+my $MYSQLdb = $opt_M or die $usage;
+my $MYSQLserver = &Pasa_conf::getParam("MYSQLSERVER");
+my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+my $DEBUG = $opt_d;
+
+my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+my $query = "select align_id, align_acc, aligned_orient, spliced_orient from align_link";
+my @results = &do_sql_2D($dbproc, $query);
+
+
+foreach my $result (@results) {
+	my ($align_id, $cdna_acc, $aligned_orient, $spliced_orient) = @$result;
+	
+	#print join("\t", @$result) . "\n";
+	
+	if ($spliced_orient eq '?') {
+
+		print "setting $cdna_acc => $aligned_orient\n";
+		
+		my $query = "update align_link set spliced_orient = \'$aligned_orient\' where align_id = $align_id";
+		
+		&RunMod($dbproc, $query);
+
+	}
+	
+}
+
+
+$dbproc->disconnect;
+
+exit(0);
+

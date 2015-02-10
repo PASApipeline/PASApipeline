@@ -1,0 +1,58 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Pasa_conf;
+use Mysql_connect;
+use strict;
+use ConfigFileReader;
+use DBI;
+use Cwd;
+use Ath1_cdnas;
+use Getopt::Long qw(:config no_ignore_case bundling pass_through);
+
+
+
+our $SEE = 0;
+
+my $usage =  <<_EOH_;
+
+############################# Options ###############################
+#
+# -c * <filename>  configuration file for align-assembly
+#
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+my $configfile;
+
+&GetOptions('c=s' => \$configfile,
+            );
+
+unless ($configfile) {
+    die $usage;
+}
+
+
+## Read configuration file.
+my %config = &readConfig($configfile);
+
+
+my $mysql_db = $config{MYSQLDB} or die "Error, couldn't extract mysql_db name from config file " . cwd() . "/$configfile\n";
+my $mysql_server = &Pasa_conf::getParam("MYSQLSERVER");
+my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+my ($dbproc) = &connect_to_db($mysql_server,$mysql_db,$user,$password);
+
+my $query = "use $mysql_db";
+&RunMod($dbproc, $query);
+
+
+$dbproc->disconnect;
+
+exit(0);

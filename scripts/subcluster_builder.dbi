@@ -1,0 +1,263 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Pasa_conf;
+use Mysql_connect;
+use strict;
+use DBI;
+use CDNA::CDNA_alignment;
+use CDNA::Genome_based_cDNA_assembler;
+use Gene_obj;
+use Ath1_cdnas;
+use SingleLinkageClusterer;
+use Fasta_retriever;
+use Getopt::Std;
+require "overlapping_nucs.ph";
+
+use vars qw ($opt_h $opt_D $opt_p $opt_d $DEBUG $opt_S $opt_M $opt_G $opt_m $opt_v);
+
+&getopts ('hD:dS:M:G:m:v');
+
+my $usage =  <<_EOH_;
+
+Subclusters broken out of clusters to group together potential alt-splice variations.
+
+############################# Options ###############################
+#
+# -M Mysql database name
+# -G genomic_sequence fasta file db
+# -m minimum percent overlap for two cDNA sequences to be grouped into the same subcluster
+#    (default: 50)
+# -d Debug
+# 
+# -h print this option menu and quit
+###################### Process Args and Options #####################
+
+
+_EOH_
+
+    ;
+
+
+our $VERBOSE = $opt_v;
+if ($opt_h) {die $usage;}
+
+my $MYSQLdb = $opt_M or die $usage;
+my $MYSQLserver = &Pasa_conf::getParam("MYSQLSERVER");
+my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+my $DEBUG = $opt_d;
+my $genomic_seq_db = $opt_G or die $usage;
+
+my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+our $SEE = 0;
+my $MIN_PERCENT_OVERLAP = $opt_m;
+unless ($MIN_PERCENT_OVERLAP) {
+    $MIN_PERCENT_OVERLAP = 50; #minimum percent overlap for two cDNA sequences to be considered corresponding to the same feature (ie. gene).
+}
+
+my $bin_size = 100000; #bin all ests/cdnas/assemblies into 100 kb bins based on alignment coordinates.
+
+my $fasta_retriever = new Fasta_retriever($genomic_seq_db);
+
+
+
+## populate full-length cDNA listing. 
+my %FLCDNA;
+my $query = "select align_acc from cdna_info ci, align_link al where ci.id = al.cdna_info_id and is_fli = 1 and is_assembly = 0";
+my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+foreach my $result_aref (@results) {
+    my $acc = $result_aref->[0];
+    $FLCDNA{$acc} = 1;
+}
+
+my $query = "select distinct annotdb_asmbl_id from clusters c, cdna_info ci, align_link al "
+    . "where c.cluster_id = al.cluster_id and al.cdna_info_id = ci.id and ci.is_assembly = 1";
+print $query;
+my @results = &Mysql_connect::do_sql_2D ($dbproc, $query);
+foreach my $result (@results) {
+    my $asmbl_id = $result->[0];
+    print STDERR "\r$asmbl_id";  ## FIXME: add multi-threading here.
+    
+    #my $sequence = &Ath1_cdnas::get_seq_from_fasta($asmbl_id, $genomic_seq_db);
+    
+    my $sequence = $fasta_retriever->get_seq($asmbl_id);
+    my $seq_ref = \$sequence;
+    
+    ## Get all cluster info for that chromosome
+    my $query = "select distinct c.cluster_id, c.lend, c.rend "
+        . " from clusters c, align_link al, cdna_info ci "
+        . " where c.annotdb_asmbl_id = \"$asmbl_id\" and al.cluster_id = c.cluster_id and al.cdna_info_id = ci.id and ci.is_assembly = 1 ";
+    my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+    
+    my @clusters; #index to bin of clusters
+    my @all_clusters; #simple unindexed list of clusters.
+    # put in bins.
+    foreach my $result (@results) {
+        my ($cluster_id, $lend, $rend) = @$result;
+        my $cluster_ref =  {cluster_id=>$cluster_id,
+                            lend=>$lend,
+                            rend=>$rend};
+        my $index = int ($lend/$bin_size);
+        if (ref $clusters[$index]) {
+            
+            push (@{$clusters[$index]}, $cluster_ref);
+        } else {
+            $clusters[$index] = [$cluster_ref]; #initialize array
+        }
+        push (@all_clusters, $cluster_ref);
+    }
+    
+    
+    ## Go thru cDNA clusters, break into gene-centric subclusters, examine fl-cdna containing sets of incompatible overlapping assemblies:
+    
+    foreach my $cluster (@all_clusters) {
+        my $cluster_id = $cluster->{cluster_id};
+        
+        print "\n\n\n\n\n*****************************************************************************\n// Processing cluster: $cluster_id\n";
+        my @assemblies;
+        my $query = "select al.align_id from align_link al, cdna_info ci "
+            . " where al.cluster_id = $cluster_id and al.cdna_info_id = ci.id and ci.is_assembly = 1";
+        my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+        
+        foreach my $result (@results) {
+            push (@assemblies, $result->[0]);
+        }
+        unless (@assemblies) {
+            print "Sorry, no assemblies for cluster $cluster_id.  No composite cdna's must have validated.\n";
+            next;
+        }
+        my @alignment_objs;
+        foreach my $align_id (@assemblies) {
+                        
+            my $alignment_obj = Ath1_cdnas::create_alignment_obj($dbproc, $align_id, $seq_ref);
+
+            push (@alignment_objs, $alignment_obj);
+        }
+        
+        print "# Incoming assemblies:\n";
+        my $assembler = new CDNA::Genome_based_cDNA_assembler;
+        $assembler->{incoming_alignments} = [@alignment_objs];
+        $assembler->{assemblies} = [@alignment_objs];
+        print $assembler->toAlignIllustration();
+        
+        my @assembly_clusters; #contains refs to lists of alignment objs.
+        if ($#alignment_objs > 0) { #multiple assemblies in cluster
+            
+            my @pairs;
+            ## identify subclusters of relevant assemblies:
+            for (my $i = 0; $i <= $#alignment_objs; $i++) {
+                my $ialign = $alignment_objs[$i];
+                my ($ilend, $irend) = $ialign->get_coords();
+                my $i_numsegs = $ialign->get_num_segments();
+                my $i_spliced_orientation = $ialign->get_spliced_orientation();
+                
+                for (my $j = $i+1; $j <= $#alignment_objs; $j++) {
+                    my $jalign = $alignment_objs[$j];
+                    my ($jlend, $jrend) = $jalign->get_coords();
+                    my $j_numsegs = $jalign->get_num_segments();
+                    my $j_spliced_orientation = $jalign->get_spliced_orientation();
+                    
+                    ## check for compatible spliced orientations.
+                    unless ($i_spliced_orientation eq $j_spliced_orientation) {
+                        next; #must have same spliced orientation
+                    }
+                    
+                    ## make sure overlap via coordinates:
+                    unless ($ilend < $jrend && $irend > $jlend) {
+                        next; #don't overlap
+                    }
+                    
+                    ## make sure the overlap is more than certain percentage length of either sequence
+                    my $ilength = abs ($ilend - $irend) + 1;
+                    my $jlength = abs ($jlend - $jrend) + 1;
+                    my $length_in_common = &nucs_in_common($ilend, $irend, $jlend, $jrend);
+                    unless ( ($length_in_common/$ilength*100 >= $MIN_PERCENT_OVERLAP) || ($length_in_common/$jlength*100 >= $MIN_PERCENT_OVERLAP)) {
+                        next; #not sufficient overlap
+                    }
+                    
+                    
+                    ## passed test
+                    push (@pairs, [$i, $j]);
+                }
+            }
+            
+            ## Get sets of overlapping clusters
+            my @clusters = &SingleLinkageClusterer::build_clusters(@pairs);
+            # add to clusters the singletons.
+            my %incluster;
+            foreach my $cluster (@clusters) {
+                my @elements = @$cluster;
+                foreach my $element (@elements) {
+                    $incluster{$element} = 1;
+                    print "$element in cluster\n";
+                }
+            }
+            for (my $i = 0; $i <= $#alignment_objs; $i++) {
+                unless ($incluster{$i}) {
+                    print "adding $i to cluster listings.\n";
+                    push (@clusters, [$i]);
+                }
+            }
+            
+            
+            # retrieve the alignment objects based on cluster index.
+            
+            foreach my $cluster (@clusters) {
+                my @elements = @$cluster;
+                my @assemblies;
+                foreach my $element (@elements) {
+                    my $assembly = $alignment_objs[$element];
+                    print $assembly->get_acc() . "\t";
+                    push (@assemblies, $assembly);
+                }
+                push (@assembly_clusters, [@assemblies]);
+                print "\n";
+            }
+        } else {
+            push (@assembly_clusters, [@alignment_objs]);
+        }
+        
+        ## process clusters for fl-cdna containing genes:
+        ## Process the assemblies:
+        foreach my $assembly_set (@assembly_clusters) {
+            my @assemblies = @$assembly_set;
+            my @flcdna_assemblies; #store and process only those containing fl-cdnas.
+            my @acc_listing;
+            foreach my $assembly (@assemblies) {
+                my $cdna_acc = $assembly->get_acc();
+                push (@acc_listing, $cdna_acc);
+                ## get the list of composite cdnas:
+                my @composite_accs;
+                my $query = "select cdna_acc from asmbl_link where asmbl_acc = ?";
+                my @results = &Mysql_connect::do_sql_2D($dbproc, $query, $cdna_acc);
+                my $is_fl_containing = 0;
+                foreach my $result_ref (@results) {
+                    my $acc = $result_ref->[0];
+                    push (@composite_accs, $acc);
+                    if ($FLCDNA{$acc}) {
+                        $is_fl_containing = 1;
+                    }
+                }
+                $assembly->{composite_accs} = [@composite_accs];
+                print "ASMBL: $cdna_acc\tCOMPOSITE: @composite_accs\n";
+                if ($is_fl_containing) {
+                    print "fli-containing: $cdna_acc\n";
+                }
+            }
+            
+            print "sub-cluster: @acc_listing\n";
+		    
+        }
+    }
+}
+
+print "\n";
+$dbproc->disconnect;
+
+exit(0);
+

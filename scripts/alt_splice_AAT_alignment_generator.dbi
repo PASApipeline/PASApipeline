@@ -1,0 +1,223 @@
+#!/usr/bin/env perl
+
+use lib ("/home/bhaas/CVS/ANNOTATION/EUK_GENOME_DEVEL/PASA/PerlLib");
+use Pasa_init;
+use Pasa_conf;
+use DBI;
+use Data::Dumper;
+use Mysql_connect;
+use Ath1_cdnas;
+use strict;
+use POSIX qw(ceil);
+use CdbTools;
+use Cwd;
+use Nuc_translator;
+
+my $usage = "usage: db genome_fasta transcript_fasta [max_delta=4]\n";
+
+my $db = $ARGV[0] or die $usage;
+my $genome_db = $ARGV[1] or die $usage;
+my $transcript_db = $ARGV[2] or die $usage;
+my $max_delta = $ARGV[3] || 4;
+
+unless ($db) {
+    die "Must set the db parameter.\n";
+}
+
+
+my $mysql_server = &Pasa_conf::getParam("MYSQLSERVER");
+my $mysql_ro_user = &Pasa_conf::getParam("MYSQL_RO_USER");
+my $mysql_ro_password = &Pasa_conf::getParam("MYSQL_RO_PASSWORD");
+
+my ($dbproc) = &connect_to_db($mysql_server,$db,$mysql_ro_user,$mysql_ro_password);
+
+my %genome_contig;
+
+## get genomic contig info
+my $query = "select c.annotdb_asmbl_id, cl.cdna_acc from clusters c, cluster_link cl where c.cluster_id = cl.cluster_id and cl.is_assembly = 1";
+my @results = &do_sql_2D($dbproc, $query);
+foreach my $result (@results) {
+    my ($contig_id, $cdna_acc) = @$result;
+    $genome_contig{$cdna_acc} = $contig_id;
+}
+
+
+my @structs;
+
+foreach my $splice_type ("alt_acceptor", "alt_donor") {
+
+
+    my $query = qq {select sv1.sv_id, sv1.cdna_acc, sv1.orient, sv1.lend, sv1.rend, 
+                            sv2.sv_id, sv2.cdna_acc, sv2.lend, sv2.rend 
+                        from splice_variation sv1, splice_variation sv2, alt_splice_link asl
+                        where sv1.sv_id = asl.sv_id_A 
+                        and asl.sv_id_B = sv2.sv_id
+                        and asl.sv_id_A < asl.sv_id_B 
+                        and sv1.type = "$splice_type"
+                        and sv2.type = "$splice_type"
+                        
+                    };
+    
+    
+    
+    
+    my @results = &do_sql_2D($dbproc, $query);
+    
+        
+    foreach my $result (@results) {
+        my ($sv_id_A, $cdna_acc_A, $orient, $lend_A, $rend_A, 
+            $sv_id_B, $cdna_acc_B, $lend_B, $rend_B) = @$result;
+        
+        my $delta = abs ($lend_A - $lend_B);
+        
+        if ($delta > $max_delta) { next; }
+
+        push (@structs, { sv_id_A => $sv_id_A,
+                          cdna_acc_A => $cdna_acc_A,
+                          
+                          sv_id_B => $sv_id_B,
+                          cdna_acc_B => $cdna_acc_B,
+
+                          delta => $delta,
+                          splice_type => $splice_type,
+                          
+                          genome_contig => $genome_contig{$cdna_acc_A},
+                          
+                          orient => $orient,
+
+                          
+                      } );
+        
+    }
+}
+
+
+
+my $curr_dir = cwd;
+
+@structs = sort {$a->{genome_contig}<=>$b->{genome_contig}} @structs;
+
+foreach my $struct (@structs) {
+    my ($sv_id_A, $sv_id_B, $cdna_acc_A, $cdna_acc_B, $splice_type, $delta) = ($struct->{sv_id_A},
+                                                                               $struct->{sv_id_B},
+                                                                               $struct->{cdna_acc_A},
+                                                                               $struct->{cdna_acc_B},
+                                                                               $struct->{splice_type},
+                                                                               $struct->{delta},
+                                                                               );
+    
+    my $genome_contig = $struct->{genome_contig};
+    my $orient = $struct->{orient};
+
+    print "$genome_contig: $cdna_acc_A, $cdna_acc_B, $splice_type [delta: $delta]\n";
+    &make_mult_align($genome_contig, $sv_id_A, $sv_id_B, $splice_type, $delta, $orient);
+    
+    
+}
+
+
+
+
+
+
+exit(0);
+
+
+
+
+my $genome_seq = "";
+my $current_contig = "";
+
+
+####
+sub make_mult_align {
+    my ($genome_contig, $sv_id_A, $sv_id_B, $splice_type, $delta, $orient) = @_;
+    
+    if ($genome_contig ne $current_contig) {
+        
+        $current_contig = $genome_contig;
+        my $genome_seq_fasta = cdbyank ($current_contig, $genome_db);
+        my ($x, $y);
+        ($x, $y, $genome_seq) = linearize($genome_seq_fasta);
+    }
+
+    my %cdna_accs;
+    &get_transcript_accs($sv_id_A, \%cdna_accs);
+    &get_transcript_accs($sv_id_B, \%cdna_accs);
+
+    my ($min_lend, $max_rend) = &get_max_coordspan (keys %cdna_accs);
+    
+    my $outdir = "${splice_type}_${delta}/${sv_id_A}_${sv_id_B}";
+    system "mkdir -p $outdir" if !-d $outdir;
+    
+    my $genome_region = substr ($genome_seq, $min_lend -1, $max_rend - $min_lend + 1);
+    
+    if ($orient eq '-') {
+        $genome_region = &reverse_complement($genome_region);
+    }
+    $genome_region =~ s/(\S{60})/$1\n/g;
+    chomp $genome_region;
+    
+
+    ## write fasta sequences
+    open (my $fh, ">$outdir/genome.fasta") or die $!;
+    print $fh ">$current_contig/$min_lend-$max_rend ($orient)\n$genome_region\n";
+    close $fh;
+    
+    open ($fh, ">$outdir/trans.fasta") or die $!;
+    foreach my $acc (keys %cdna_accs) {
+        my $acc_fasta = cdbyank($acc, $transcript_db);
+        print $fh $acc_fasta;
+    }
+    close $fh;
+
+
+    ## run AAT
+    chdir $outdir or die $!;
+    my $cmd = "AAT.pl -N -q genome.fasta -s trans.fasta --dds \'-f 100 -i 20 -o 75 -p 70 -a 2000\'  --filter \'-c 10\' --gap2 \'-x 1\' ";
+    system $cmd;
+
+    $cmd = "show \*.gap2 > multalign";
+    system $cmd;
+    
+    chdir $curr_dir;
+    
+    
+}
+
+####
+sub get_transcript_accs {
+    my ($sv_id, $cdna_accs_href) = @_;
+    
+    my $query = "select transcripts_A, transcripts_B from splice_variation_support where sv_id = $sv_id";
+    my $result = &first_result_sql($dbproc, $query);
+    my ($transcripts_A, $transcripts_B) = @$result;
+    foreach my $transcript (split (/,/, $transcripts_A), split (/,/, $transcripts_B) ) {
+        $cdna_accs_href->{$transcript} = 1;
+    }
+
+}
+
+
+####
+sub get_max_coordspan {
+    my (@accs) = @_;
+    
+    my @coords;
+    foreach my $acc (@accs) {
+        
+        my ($lend, $rend) = &Ath1_cdnas::get_alignment_span($dbproc, $acc);
+        push (@coords, $lend, $rend);
+    }
+
+    @coords = sort {$a<=>$b} @coords;
+
+    my $min_lend = shift @coords;
+    
+    my $max_rend = pop @coords;
+
+    return ($min_lend, $max_rend);
+}
+
+
+            

@@ -1,0 +1,445 @@
+#!/usr/bin/env perl
+
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Mysql_connect;
+use strict;
+use DBI;
+use Ath1_cdnas;
+use Getopt::Std;
+use TiedHash;
+use Carp;
+use Data::Dumper;
+use CDNA::PASA_alignment_assembler;
+
+use vars qw ($opt_M $opt_p $opt_f $opt_d $opt_h $opt_v);
+
+&getopts ('M:p:dhv');
+
+
+$|=1;
+my $SEE = 0;
+
+open (STDERR, "&>STDOUT");
+
+my $usage =  <<_EOH_;
+
+############################# Options ###############################
+#
+# -M Mysql database/server ie. ("ath1_cdnas:haasbox")
+# -p passwordinfo  (contains "username:password")
+# 
+# -d Debug
+# 
+# -h print this option menu and quit
+# -v verbose
+###################### Process Args and Options #####################
+_EOH_
+
+    ;
+
+if ($opt_h) {die $usage;}
+my $MYSQLstring = $opt_M or die "Must indicate MySQL parameters.\n\n$usage";
+
+my ($MYSQLdb, $MYSQLserver) = split (/:/, $MYSQLstring); 
+my $passwordinfo = $opt_p or die "Must specify password info.\n\n\n$usage";
+my $DEBUG = $opt_d;
+$SEE = $opt_v;
+#our $DB_SEE = $SEE;
+
+my $time = sprintf ("%X", time());
+
+my ($user, $password) = split (/:/, $passwordinfo);
+
+my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+###################################################################
+## Begin program here
+
+my %pasa_acc_to_subcluster;
+my %pasa_subclusters_data;
+my %subcluster_to_pasa_list;
+
+{ # populate subcluster info:
+    my $query = "select subcluster_id, cdna_acc from subcluster_link";
+    my @results = &do_sql_2D($dbproc, $query);
+    foreach my $result (@results) {
+        my ($subcluster_id, $cdna_acc) = @$result;
+        $pasa_acc_to_subcluster{$cdna_acc} = $subcluster_id;
+    }
+}
+
+
+my $event_class = "";
+my $event_counter = 0;
+## parse the splicing events:
+while (<STDIN>) {
+    chomp;
+    my $line = $_;
+    unless (/\w/) { next; }
+    if (/^\#/) { next; }
+    if (/\/\//) {
+        $event_class = ""; #reinit
+        if (/alt_acceptor/i) {
+            $event_class = "alt_acceptor";
+        }
+        elsif (/alt_donor/i) {
+            $event_class = "alt_donor";
+        }
+        elsif (/retained and spliced intron/i) {
+            $event_class = "retained_intron";
+        }
+        elsif (/exon skipping and retention/i) {
+            $event_class = "exon_skipping";
+        }
+        elsif (/alternate terminal exons/i) {
+            $event_class = "alternate_terminal_exons";
+        }
+        else {
+            die "Error, no event class recognzied by $_";
+        }
+        
+        
+        next;
+    }
+    
+    my @x = split (/\t/);
+    my $pasa_list = pop @x;
+    while ($pasa_list !~ /asmbl/ && @x) {
+        $pasa_list = pop @x;
+    }
+    
+    my @pasa_accs = split (/,/, $pasa_list);
+    my $subcluster = $pasa_acc_to_subcluster{$pasa_accs[0]} or die "Error, no pasa subcluster for @pasa_accs\n";
+    
+    my ($chromo, $orient, $type, $coords, @rest ) = @x;
+    
+    my $key = "$chromo$;$orient$;$type$;$coords";
+    
+    $pasa_subclusters_data{$subcluster}->{$key}->{line} = $line;
+    $pasa_subclusters_data{$subcluster}->{$key}->{class}->{$event_class} = 1;
+    foreach my $pasa_acc (@pasa_accs) {
+        $subcluster_to_pasa_list{$subcluster}->{$pasa_acc} = 1;
+    }
+
+}
+
+foreach my $subcluster (sort {$a<=>$b} keys %pasa_subclusters_data) {
+    print "// subcluster $subcluster\n";
+    
+    my @pasa_alignment_objs = &get_alignment_objs_from_accs(keys %{$subcluster_to_pasa_list{$subcluster}});
+    
+    my @transcript_alignment_objs = &get_alignment_objs_for_transcripts($subcluster);
+
+    my @coord_keys = keys %{$pasa_subclusters_data{$subcluster}};
+    foreach my $coord_key (@coord_keys) {
+        my $line = $pasa_subclusters_data{$subcluster}->{$coord_key}->{line};
+        my $event_classes_href = $pasa_subclusters_data{$subcluster}->{$coord_key}->{class};
+        my $event_classes = join (",", keys %$event_classes_href);
+        my ($chromo, $orient, $type, $coords, $asmbl_acc, $rest) = split (/\t/, $line, 6);
+        
+
+        ## count supporting evidence features:
+        my $count = 0;
+        if ($type eq 'intron' || $type eq 'intron_skips_exon') {
+            $count = &count_transcripts_with_intron($coords, \@transcript_alignment_objs);
+        }
+        elsif ($type eq 'retained_intron') {
+            $count = &count_transcripts_with_retained_intron($coords, \@transcript_alignment_objs);
+        }
+        elsif ($type eq 'alt_terminal_exons') {
+            $count = &count_transcripts_with_terminal_exons($coords, \@transcript_alignment_objs);
+        }
+        elsif ($type eq 'retained_exons') {
+            $count = &count_transcripts_with_retained_exons($coords, \@transcript_alignment_objs);
+        }
+        else {
+            die "Error, don't recognize type: $type\n";
+        }
+        
+        $event_counter++;
+
+        my $event_token = sprintf ("$time-%05X", $event_counter);
+        print "$event_token\t$line\t$event_classes\t$count\n"; 
+        if ($count == 0) {
+            die "Error, no transcripts found that exhibit feature!";
+        }
+        
+    }
+    print "\n";
+    
+    ## generate illustration:
+    &dump_illustration(@pasa_alignment_objs);
+    
+    print "\n\n";
+}
+
+
+exit(0);
+
+####################################################################################################
+
+
+
+####
+sub get_alignment_objs_from_accs {
+    my @pasa_accs = @_;
+    my @alignments;
+    foreach my $pasa_acc (@pasa_accs) {
+        my $alignment_obj = &Ath1_cdnas::get_alignment_obj_via_acc($dbproc, $pasa_acc);
+        push (@alignments, $alignment_obj);
+    }
+
+    return (@alignments);
+}
+
+####
+sub get_alignment_objs_for_transcripts {
+    my ($subcluster_id) = @_;
+
+    my @alignment_objs;
+
+    ## get the list of transcripts:
+    my $query = "select distinct asl.cdna_acc from asmbl_link asl, subcluster_link sl where sl.cdna_acc = asl.asmbl_acc and sl.subcluster_id = $subcluster_id";
+    my @results = &do_sql_2D($dbproc, $query);
+
+    my @cdna_accs;
+    foreach my $result (@results) {
+        push (@cdna_accs, $result->[0]);
+    }
+    
+    unless (@cdna_accs) {
+        die "Error, no cdna_accs retrieved for subcluster_id $subcluster_id";
+    }
+
+    foreach my $cdna_acc (@cdna_accs) {
+        my $alignment_obj = &Ath1_cdnas::get_alignment_obj_via_acc($dbproc, $cdna_acc);
+        push (@alignment_objs, $alignment_obj);
+    }
+        
+
+    unless (@alignment_objs) {
+        die "Error, no alignment objects extracted for transcripts in subcluster $subcluster_id";
+    }
+    
+    return (@alignment_objs);
+    
+}
+
+
+####
+sub dump_illustration {
+    my (@alignments) = @_;
+
+   
+    
+    my $assembler = new CDNA::PASA_alignment_assembler;
+    $assembler->{incoming_alignments} = [@alignments];
+    $assembler->{assemblies} = [];
+    my $alignment_text = $assembler->toAlignIllustration();
+    
+    $alignment_text =~ s/ASSEMBLIES: \(0\)//;
+    $alignment_text =~ s/\# Incoming assemblies://;
+    $alignment_text =~ s/Individual Alignments: \(\d+\)\n//;
+    
+    print "$alignment_text\n";
+    return;
+}
+
+##############################################################################
+######### Transcript Evidence Support for Event Counting #####################
+
+####
+sub count_transcripts_with_intron {
+    my ($coords, $alignment_objs_aref) = @_;
+
+    my ($lend, $rend) = sort {$a<=>$b} split (/-/, $coords);
+
+    my $count = 0;
+    foreach my $alignment_obj (@$alignment_objs_aref) {
+        
+        my @intron_coords = $alignment_obj->get_intron_coords();
+        foreach my $intron_coordset (@intron_coords) {
+            my ($intron_lend, $intron_rend) = sort {$a<=>$b} @$intron_coordset;
+            
+            if ($intron_lend == $lend && $intron_rend == $rend) {
+                
+                $count++;
+                last;
+            }
+        }
+    }
+
+    return ($count);
+
+}
+
+
+####
+sub count_transcripts_with_retained_intron {
+    my ($coords, $alignment_objs_aref) = @_;
+
+    my ($lend, $rend) = sort {$a<=>$b} split (/-/, $coords);
+
+    my $count = 0;
+
+    foreach my $alignment_obj (@$alignment_objs_aref) {
+        
+        #print "searching for retained intron: $lend-$rend in " . $alignment_obj->toString() . "\n";
+        
+        my @segments = $alignment_obj->get_alignment_segments();
+        
+        foreach my $segment (@segments) {
+            
+            my $type = $segment->get_type();
+            
+            my ($exon_lend, $exon_rend) = sort {$a<=>$b} $segment->get_coords();
+            if ($type eq 'internal' && $exon_lend < $lend && $rend < $exon_rend) {
+                ## exon encapsulates intron:
+                $count++;
+                last;
+            }
+            else {
+                ## check for overlap:
+                if ($exon_lend < $rend && $exon_rend > $lend) {
+                    # got overlap
+                    $count++;
+                    last;
+                }
+            }
+
+        }
+    }
+    
+    return ($count);
+}
+
+
+####
+sub count_transcripts_with_terminal_exons {
+    my ($coords, $alignment_objs_aref) = @_;
+
+    # print "\n\n********* searching for alt-terminal exons: $coords\n";
+    
+    my %splice_bounds;
+    my @alt_terminal_exon_coords = split (/,/, $coords);
+    
+    foreach my $alt_term_exon (@alt_terminal_exon_coords) {
+        my ($lend, $rend) = split (/-/, $alt_term_exon);
+        $splice_bounds{$lend} = 1;
+        $splice_bounds{$rend} = 1;
+    }
+
+    my $count = 0;
+    
+    foreach my $alignment_obj (@$alignment_objs_aref) {
+        my @segments = $alignment_obj->get_alignment_segments();
+        
+      SEGSEARCH:
+        foreach my $segment (@segments) {
+            my ($lend, $rend) = $segment->get_coords();
+
+            ## if segment encapsulates an exon and shares the boundary, count it.
+            if ($splice_bounds{$lend} || $splice_bounds{$rend}) {
+                ## check for encapsulation:
+                foreach my $exon (@alt_terminal_exon_coords) {
+                    my ($exon_lend, $exon_rend) = sort {$a<=>$b} split (/-/, $exon);
+                    if ($exon_lend-20 <= $lend && $rend <= $exon_rend+20) { #including fuzz dist.
+                        ## got both criteria
+                        $count++;
+                        last SEGSEARCH;
+                    }
+                }
+            }
+        }
+    }
+
+
+    return ($count);
+}
+
+
+####
+sub count_transcripts_with_retained_exons {
+    my ($coords, $alignment_objs_aref) = @_;
+
+    my @retained_exon_coords;
+    foreach my $coord_pair (split (/,/, $coords)) {
+        my ($lend, $rend) = sort {$a<=>$b} split (/-/, $coord_pair);
+        push (@retained_exon_coords, [$lend,$rend]);
+    }
+
+    @retained_exon_coords = sort {$a->[0]<=>$b->[0]} @retained_exon_coords;
+
+    my $count_retained_exons = scalar @retained_exon_coords;
+
+    ## KISS, require all to be included.
+
+    my $count_alignments_supporting_retained_exons = 0;
+
+    foreach my $alignment_obj (@$alignment_objs_aref) {
+        
+        my @segments = $alignment_obj->get_alignment_segments();
+        
+        my $count_found = 0;
+        foreach my $retained_exon (@retained_exon_coords) {
+            my ($retained_lend, $retained_rend) = @$retained_exon;
+            
+            foreach my $segment (@segments) {
+                my ($seg_lend, $seg_rend) = sort {$a<=>$b} $segment->get_coords();
+                
+                if ($seg_lend == $retained_lend && $seg_rend == $retained_rend) {
+                    $count_found++;
+                }
+            }
+        }
+        if ($count_found == $count_retained_exons) {
+            $count_alignments_supporting_retained_exons++;
+        }
+        
+    }
+    
+    
+    if ($count_alignments_supporting_retained_exons == 0) {
+        ## less stringent, search for those that overlap and encapsulate at least one of the exons:
+        
+        foreach my $alignment_obj (@$alignment_objs_aref) {
+            
+            my @segments = $alignment_obj->get_alignment_segments();
+            
+            my $count_found = 0;
+            foreach my $retained_exon (@retained_exon_coords) {
+                my ($retained_lend, $retained_rend) = @$retained_exon;
+                
+                foreach my $segment (@segments) {
+                    my ($seg_lend, $seg_rend) = sort {$a<=>$b} $segment->get_coords();
+                    
+                    if ($seg_lend == $retained_lend || $seg_rend == $retained_rend) {
+                        
+                        if ($seg_lend -20 < $retained_lend && $seg_rend < $retained_rend + 20) {
+                            $count_found++;
+                        }
+                    }
+                }
+            }
+            
+            if ($count_found) {
+                $count_alignments_supporting_retained_exons++;
+            }
+            
+        }
+        
+    }
+    
+
+    return ($count_alignments_supporting_retained_exons);
+
+}
+
+
+
+
+
+

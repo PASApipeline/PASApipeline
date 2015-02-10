@@ -1,0 +1,96 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ("$FindBin::Bin/../PerlLib");
+use Mysql_connect;
+use Getopt::Std;
+use strict;
+use DBI;
+use vars qw ($opt_i $opt_u $opt_h $opt_D $opt_d $opt_p $opt_n $DEBUG $opt_S);
+
+&getopts ('hD:dp:n:S:u:i:');
+
+if ($opt_h) {
+	print <<_EOH_;
+
+Brian Haas\' version of runsql that requires an input as STDIN
+and processes the sql statements.
+
+statements are segmented based on \'\n\n\'
+
+
+############################# Options ###############################
+#
+# -D database 
+#
+# -d debug
+#
+# -u username
+# -p password
+# -i input query file (by default, uses STDIN)
+# -S server (default: localhost)
+#
+# -h print this option menu and quit
+#
+###################### Process Args and Options #####################
+
+_EOH_
+
+exit;
+}
+
+my ($passwordfile, $db, @pf, $numsqls, $SERVER);
+
+if (length($opt_D) > 0) {$db = $opt_D;} else {die "Must enter database\n";}
+if ($opt_d) {$DEBUG = 1;} else {$DEBUG = 0;}
+
+unless ($numsqls = $opt_n) { $numsqls = 1;}
+if ($opt_S) {
+    $SERVER = $opt_S;
+} else {
+    $SERVER = "localhost";
+}
+my $user = $opt_u or die "Require username";
+my $password = $opt_p or die "Require password";
+
+print STDERR "Using SERVER: $SERVER\n\n";
+my ($dbproc) = &connect_to_db($SERVER,$db,$user,$password);
+
+#############################################################################
+# begin program
+
+my $query;
+if ($opt_i) {
+    open (FILE, $opt_i) or die "Can't open $opt_i\n";
+    while (<FILE>) {
+	$query .= $_;
+    }
+    close FILE;
+}  else {
+    $query = <STDIN>;
+}
+
+$query =~ s/\"NULL\"/NULL/g;
+
+my @indivQueries = split (/\n\n/, $query);
+
+my $count = 0;
+foreach my $indivQuery (@indivQueries) {
+    $count++;
+    print STDERR "processing query $count\n";
+    
+    if ($indivQuery =~ /^\s*select/i) {
+        my @results = &do_sql_2D ($dbproc, $indivQuery);
+        foreach my $result (@results) {
+            print join ("\t", @$result) . "\n";
+        }
+    } elsif ($indivQuery =~ /^\s*(delete|update)/i) {
+        &RunMod($dbproc, $indivQuery);
+    } elsif ($indivQuery =~ /\w/) {
+        die "I don't recognize query:\n[ $indivQuery ]\n";
+    }
+}
+
+
+$dbproc->disconnect;
+

@@ -1,0 +1,31 @@
+To build pasa, just type 'make' in this directory.
+An executable 'pasa' will be created.
+
+The pasa program accepts a text file as an input parameter, and this file must have the following format:
+accession,orientation,coordset1,coordset2,...[coordsetN]
+For example:
+
+acc1,+,100-200,300-500
+acc2,+,300-500,700-800
+acc3,+,750-850,950-1000
+
+
+Only alignments with the same orientation can be assembled if they are found to be compatible (overlap with identical introns).
+
+There are several sample input files available for testing the pasa program, and each is a genuine example containing overlapping Arabidopsis transcript alignments.  See pasa_cpp_sample_input* files.
+
+Questions, comments, or bug reports can be sent to Brian Haas (bhaas@tigr.org)
+
+This software is freely available and open source.
+
+-------------------------------------------------------------------------
+This software is provided "AS IS".  TIGR makes no warranties, express
+or implied, including no representation or warranty with respect to
+the performance of the software and derivatives or their safety,
+effectiveness, or commercial viability.  TIGR shall
+not be liable for any claim, demand or action for any loss, harm,
+illness or other damage or injury arising from access to or use of the
+software or associated information, including without limitation any
+direct, indirect, incidental, exemplary, special or consequential
+damages.
+-------------------------------------------------------------------------

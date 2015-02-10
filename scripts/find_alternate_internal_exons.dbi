@@ -1,0 +1,249 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Pasa_conf;
+use Mysql_connect;
+use strict;
+use DBI;
+use Getopt::Std;
+use Ath1_cdnas;
+use CDNA::CDNA_alignment;
+use CDNA::Alternative_splice_comparer;
+use CDNA::PASA_alignment_assembler;
+use Carp;
+use Data::Dumper;
+use CdbTools;
+use Nuc_translator;
+
+use vars qw ($opt_M $opt_v $opt_G $opt_d $opt_h);
+open (STDERR, "&>STDOUT");
+&getopts ('M:G:dhv');
+my $usage =  <<_EOH_;
+
+Script loads the alignment textual representation for the pasa assemblies.
+
+############################# Options ###############################
+# -M Mysql database name
+# -G genome_seq fasta db
+# -d Debug
+# 
+# -h print this option menu and quit
+# -v verbose
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+our $SEE = $opt_v;
+our $DB_SEE = $opt_v;
+
+if ($opt_h) {die $usage;}
+
+my $MYSQLdb = $opt_M or die $usage;
+my $MYSQLserver = &Pasa_conf::getParam("MYSQLSERVER");
+my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+our $DEBUG = $opt_d;
+my $genomic_db = $opt_G or die $usage;
+
+my ($dbproc) = &connect_to_db($MYSQLserver, $MYSQLdb, $user, $password);
+
+my $subtype = "alternate_internal_exons";
+
+## init this subtype
+my $query = "update splice_variation set subtype = null where subtype = ?";
+&RunMod($dbproc, $query, $subtype);
+
+## get list of accessions labeled as having skipped exons:
+my %has_retained_exon;
+my $query = "select cdna_acc from splice_variation where type = 'retained_exon'";
+my @results = &do_sql_2D($dbproc, $query);
+foreach my $result (@results) {
+    $has_retained_exon{$result->[0]} = 1;
+}
+
+## get list of molecules
+my $query = "select distinct annotdb_asmbl_id from clusters";
+my @asmbl_ids;
+my @results = &do_sql_2D($dbproc, $query);
+
+foreach my $result (@results) {
+    my $asmbl_id = $result->[0];
+    push (@asmbl_ids, $asmbl_id);
+}
+
+foreach my $asmbl_id (@asmbl_ids) {
+    
+    my $genome_seq_fasta = cdbyank($asmbl_id, $genomic_db);
+    my ($acc, $header, $genome_seq) = linearize($genome_seq_fasta);
+    
+
+    my $query = qq { select distinct al.align_acc from clusters c, align_link al, splice_variation sv 
+                         where c.annotdb_asmbl_id = ? 
+                         and c.cluster_id = al.cluster_id
+                         and al.align_acc = sv.cdna_acc
+                         and sv.type = "retained_exon"
+                     };
+    my @results = &do_sql_2D($dbproc, $query, $asmbl_id);
+
+    #print "Got the following cdnas for asmbl_id: $asmbl_id\n";
+    
+    my @cdnas;
+    foreach my $result (@results) {
+        my $cdna = $result->[0];
+        push (@cdnas, $cdna);
+    }
+
+    #print "@cdnas\n";
+    
+    my %seen;
+
+
+    $dbproc->{dbh}->{AutoCommit} = 0;
+
+    foreach my $cdna (@cdnas) {
+        
+        my $alignment = &Ath1_cdnas::get_alignment_obj_via_align_acc($dbproc, $cdna);
+        my $gene_obj = $alignment->get_gene_obj_via_alignment();
+        
+        ## get range of skipped exons:
+        my $query = "select sv_id, lend, rend from splice_variation where cdna_acc = ? and type = ?";
+        my @results = &do_sql_2D($dbproc, $query, $cdna, "retained_exon");
+        
+        foreach my $result (@results) {
+            my ($sv_id, $lend, $rend) = @$result;
+            
+            ## get list of supporting accessions that also themselves have a retained exon
+            my @others;
+            my $query = "select distinct cdna_acc from splice_variation_support where sv_id = ?";
+            my @results = &do_sql_2D($dbproc, $query, $sv_id);
+            foreach my $result (@results) {
+                my ($other_acc) = @$result;
+                if ($has_retained_exon{$other_acc}) {
+                    push (@others, $other_acc);
+                }
+            }
+
+
+            if (@others) {
+                my ($adjusted_region_lend, $adjusted_region_rend) = &CDNA::Alternative_splice_comparer::extend_coords_to_intron_bounds($gene_obj, $lend, $rend);
+                
+                
+                ## examine each of the others to see if the skipped exons overlap
+                foreach my $other_acc (@others) {
+                    ## get the lend and rend for this skipped exon region
+                    
+                    my $pair = join (",", sort ($cdna, $other_acc));
+                    if ($seen{$pair}) { next;}
+                    $seen{$pair} = 1; # avoid reporting reciprocal findings.
+                    
+                    my $query = "select sv_id, lend, rend from splice_variation where type = 'retained_exon' and cdna_acc = ?";
+                    my @results = &do_sql_2D($dbproc, $query, $other_acc);
+                    
+                    foreach my $result (@results) {
+                        
+                        my ($other_sv_id, $other_lend, $other_rend) = @$result;
+                        
+                        ## make sure the skipped exon regions are different, and non-overlapping:
+                        if ($lend < $other_rend && $rend > $other_lend) {
+                            next; #overlap, not as interesting
+                        }
+                        
+                        my $other_alignment =  &Ath1_cdnas::get_alignment_obj_via_align_acc($dbproc, $other_acc);
+                        my $other_gene_obj = $other_alignment->get_gene_obj_via_alignment();
+                        my ($adjusted_other_lend, $adjusted_other_rend) = &CDNA::Alternative_splice_comparer::extend_coords_to_intron_bounds($other_gene_obj, $other_lend, $other_rend);
+                        
+                        if (&has_exon_overlap($other_gene_obj, $lend, $rend) 
+                            ||
+                            &has_exon_overlap($gene_obj, $other_lend, $other_rend) 
+                            ) {
+                            ## not as interesting.  Could be just simpler exon skipping.
+                            next;
+                        }
+                        
+
+                        ## check for overlap among the extended region so we know they're in the same general location
+                        if ($adjusted_region_lend < $adjusted_other_rend && $adjusted_region_rend > $adjusted_other_lend) {
+                            ## got overlap
+                            print "CANDIDATE: ($cdna, $other_acc)\n";
+                            
+                            &add_subtype($subtype, $sv_id, $other_sv_id);
+                            
+                            &link_alt_splice($sv_id, $other_sv_id);
+                            
+                        }
+                    }
+                    
+                    
+                }
+            }
+            
+        }
+
+        $dbproc->{dbh}->commit;
+
+        
+    }
+
+    $dbproc->{dbh}->commit;
+    $dbproc->{dbh}->{AutoCommit} = 1;
+
+    
+}
+
+
+exit(0);
+
+
+#### 
+sub add_subtype {
+    my ($subtype, @sv_id_list) = @_;
+    foreach my $sv_id (@sv_id_list) {
+        
+        my $query = "update splice_variation set subtype = ? where sv_id = ?";
+        &RunMod($dbproc, $query, $subtype, $sv_id);
+    }
+}
+
+
+####
+sub link_alt_splice {
+    my ($sv_id_A, $sv_id_B) = @_;
+    
+    foreach my $pair_aref ([$sv_id_A, $sv_id_B], [$sv_id_B, $sv_id_A]) {
+        my ($entry_A, $entry_B) = @$pair_aref;
+        
+        eval {
+            my $query = "insert alt_splice_link (sv_id_A, sv_id_B) values (?,?)";
+            &RunMod($dbproc, $query, $entry_A, $entry_B);
+        };
+
+        if ($@) {
+            # rid excep-handling later; keep now for debugging purposes.
+            print $@;
+        }
+    }
+}
+
+
+####
+sub has_exon_overlap {
+    my ($gene_obj, $feat_lend, $feat_rend) = @_;
+
+    foreach my $exon ($gene_obj->get_exons()) {
+        
+        my ($exon_lend, $exon_rend) = sort {$a<=>$b} $exon->get_coords();
+        
+        if ($exon_lend < $feat_rend && $exon_rend > $feat_lend) { 
+            # got some overlap here
+            return (1);
+        }
+    }
+
+    ## if got here, no overlap found.
+    return (0);
+}

@@ -1,0 +1,86 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Mysql_connect;
+use strict;
+use DBI;
+use Getopt::Std;
+use Pasa_conf;
+
+use vars qw ($opt_f $opt_h $opt_D $opt_p $opt_d $DEBUG $opt_S $opt_M);
+
+&getopts ('hD:dp:S:M:f:');
+
+
+$|=1;
+our $SEE = 0;
+
+open (STDERR, "&>STDOUT");
+
+my $usage =  <<_EOH_;
+
+Simply loads in the FL-cDNA status into the Mysql DB.
+
+############################# Options ###############################
+#
+# -M Mysql database name
+# 
+# -f fl-cdna accession list filename. ('NULL' results in graceful exit)
+# 
+# -d Debug
+# 
+# -h print this option menu and quit
+#
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+if ($opt_h) {die $usage;}
+
+my $DEBUG = $opt_d;
+
+
+
+my $MYSQLdb = $opt_M or die "Must indicate MySQL database name.\n\n$usage";
+my $MYSQLserver = &Pasa_conf::getParam("MYSQLSERVER");
+my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+my $filehandle;
+if ($opt_f) {
+    if ($opt_f eq "NULL") {
+	print "Nothing to upload to fli status.\n";
+	exit(0); # -f specified with no filename.  Exit gracefully.
+    } else { 
+	print "loading $opt_f\n";
+	open ($filehandle, $opt_f) or die "Can't open file: $opt_f";
+    }
+} else {
+    print "setting filehandle to STDIN.\n";
+    $filehandle = *STDIN;
+}
+
+
+my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+
+while (<$filehandle>) {
+    unless (/\w/) { next;}
+    my (@x) = split (/\s+/);
+    my $acc = shift @x;
+    $acc =~ s/>//;
+    my $query = "update cdna_info set is_fli = 1 where cdna_acc = \"$acc\"\n";
+    &RunMod($dbproc, $query);
+    
+    print STDERR "-updating $acc => full-length status.\n" if $SEE || $DEBUG;
+}
+
+close $filehandle;
+
+$dbproc->disconnect;
+
+

@@ -1,0 +1,102 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Mysql_connect;
+use strict;
+use DBI;
+use Getopt::Std;
+use Ath1_cdnas;
+
+use vars qw ($opt_f $opt_h $opt_D $opt_p $opt_d $DEBUG $opt_S $opt_M $opt_N);
+
+&getopts ('hD:dp:S:M:f:N:');
+
+
+$|=1;
+our $SEE = 0;
+
+open (STDERR, "&>STDOUT");
+
+my $usage =  <<_EOH_;
+
+Retrieves antisense transcripts
+
+############################# Options ###############################
+#
+# -M Mysql database/server ie. ("ath1_cdnas:haasbox")
+# 
+# -p passwordinfo  (contains "username:password")
+#
+# -N minimum number of segments.
+#
+#
+# -d Debug
+# 
+# -h print this option menu and quit
+#
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+if ($opt_h) {die $usage;}
+my $MYSQLstring = $opt_M or die $usage;
+
+my ($MYSQLdb, $MYSQLserver) = split (/:/, $MYSQLstring); 
+my $passwordinfo = $opt_p or die $usage;
+my $DEBUG = $opt_d;
+
+my $min_num_segs = undef;
+if ($opt_N) {
+	$min_num_segs = $opt_N;
+}
+
+my ($user, $password) = split (/:/, $passwordinfo);
+
+my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+## get latest annotation version:
+
+my $compare_id = &Ath1_cdnas::get_max_compare_id($dbproc);
+
+my $annot_version = &Ath1_cdnas::get_latest_annot_version($dbproc);
+
+my $query = "select sl.cdna_acc, cdl.num_segments, al.gene_id "
+	. " from annotation_link al, status_link sl, cdna_link cdl "
+	. " where sl.status_id in (42,43) "
+	. " and sl.cdna_acc = cdl.cdna_acc "
+	. " and sl.cdna_acc = al.cdna_acc "
+	. " and sl.compare_id = $compare_id "
+	. " and al.compare_id = $compare_id "
+	;
+
+if ($min_num_segs) {
+	$query .= " and cdl.num_segments >= $min_num_segs ";
+}
+
+
+my @results = &do_sql_2D($dbproc, $query);
+
+foreach my $result (@results) {
+	my ($cdna_acc, $num_segs, $gene_id) = @$result;
+
+	my ($gene_obj) = &Ath1_cdnas::get_gene_objs_via_gene_id($dbproc, $gene_id, $annot_version);
+
+	my $com_name = $gene_obj->{com_name};
+	
+	if (my $pub_locus = $gene_obj->{pub_locus}) {
+		$com_name = "$pub_locus; $com_name";
+	}
+	
+	print join("\t", $cdna_acc, $num_segs, $gene_id, $com_name) . "\n";
+		
+}
+
+
+$dbproc->disconnect;
+
+exit(0);
+

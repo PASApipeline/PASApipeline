@@ -1,0 +1,94 @@
+-- MySQL dump 10.10
+--
+-- Host: bhaas-lx    Database: PASA2_admin_06142006_devel
+-- ------------------------------------------------------
+-- Server version	3.23.57
+/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;
+/*!40103 SET TIME_ZONE='+00:00' */;
+/*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;
+/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
+/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
+/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
+
+--
+-- Table structure for table `PASA_database_info`
+--
+
+DROP TABLE IF EXISTS `PASA_database_info`;
+CREATE TABLE `PASA_database_info` (
+  `pasa_db_name` varchar(50) NOT NULL default '',
+  `annot_db_name` varchar(50) default NULL,
+  `workdir` varchar(250) NOT NULL default '',
+  `genome_db` varchar(250) NOT NULL default '',
+  `transcript_db` varchar(250) NOT NULL default '',
+  `fl_accs` varchar(250) default NULL,
+  `timestamp` datetime NOT NULL default '0000-00-00 00:00:00',
+  `trim_vector_polyA` tinyint(4) NOT NULL default '0',
+  PRIMARY KEY  (`pasa_db_name`)
+) TYPE=MyISAM;
+
+--
+-- Table structure for table `alignment_assembly_params`
+--
+
+DROP TABLE IF EXISTS `alignment_assembly_params`;
+CREATE TABLE `alignment_assembly_params` (
+  `job_id` int(11) NOT NULL default '0',
+  `max_intron_length` int(11) NOT NULL default '0',
+  `min_percent_trans_align` int(11) NOT NULL default '0',
+  `min_percent_identity` int(11) NOT NULL default '0',
+  `mapping_utility` varchar(20) default NULL,
+  `sim4_chaser_flag` tinyint(1) default NULL,
+  `use_splice_graph_assembler` tinyint(1) default '1',
+  `invalidate_single_exon_ESTs` tinyint(1) default '0',
+  PRIMARY KEY  (`job_id`)
+) TYPE=MyISAM;
+
+--
+-- Table structure for table `annot_compare_params`
+--
+
+DROP TABLE IF EXISTS `annot_compare_params`;
+CREATE TABLE `annot_compare_params` (
+  `job_id` int(11) NOT NULL default '0',
+  `min_percent_overlap` int(11) NOT NULL default '0',
+  `min_percent_prot_coding` int(11) NOT NULL default '0',
+  `min_perid_prot_compare` int(11) NOT NULL default '0',
+  `min_percent_length_fl_compare` int(11) NOT NULL default '0',
+  `min_percent_length_nonfl_compare` int(11) NOT NULL default '0',
+  `min_fl_orf_size` int(11) NOT NULL default '0',
+  `min_percent_align_length` int(11) NOT NULL default '0',
+  `min_percent_overlap_gene_replace` int(11) NOT NULL default '0',
+  `stomp_high_percentage_overlapping_gene` tinyint(1) NOT NULL default '0',
+  `trust_fl_status` tinyint(1) NOT NULL default '0',
+  `max_utr_exons` int(11) NOT NULL default '0',
+  `genetic_code` varchar(30) NOT NULL default '',
+  `load_latest_annots` tinyint(1) default '0',
+  PRIMARY KEY  (`job_id`)
+) TYPE=MyISAM;
+
+--
+-- Table structure for table `audit_info`
+--
+
+DROP TABLE IF EXISTS `audit_info`;
+CREATE TABLE `audit_info` (
+  `job_id` int(11) NOT NULL auto_increment,
+  `pasa_db_name` varchar(50) NOT NULL default '',
+  `is_started` tinyint(1) NOT NULL default '0',
+  `start_time` datetime default NULL,
+  `is_finished` tinyint(1) NOT NULL default '0',
+  `finish_time` datetime default NULL,
+  `is_success` tinyint(1) NOT NULL default '0',
+  `error_text` text,
+  `job_type` varchar(20) NOT NULL default '',
+  `email` varchar(100) NOT NULL default '',
+  PRIMARY KEY  (`job_id`)
+) TYPE=MyISAM;
+/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
+
+/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
+/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
+/*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
+/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
+

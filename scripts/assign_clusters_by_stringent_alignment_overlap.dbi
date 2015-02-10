@@ -1,0 +1,308 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Mysql_connect;
+use strict;
+use DBI;
+use Getopt::Std;
+use SingleLinkageClusterer;
+use Overlap_piler;
+
+use vars qw ($opt_V $opt_M $opt_p $opt_d $opt_h $opt_v $opt_L);
+
+&getopts ('M:dhvV:L:');
+
+
+$|=1;
+
+
+my $usage =  <<_EOH_;
+
+
+############################# Options ###############################
+#
+# -M Mysql database name
+# 
+# -L min percent of shorter length for linking pairs. (default: 30%)
+#
+# -d Debug
+# -h print this option menu and quit
+# -v verbose
+#
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+if ($opt_h) {die $usage;}
+
+my $MYSQLdb = $opt_M or die $usage;
+my $MYSQLserver = &Pasa_conf::getParam("MYSQLSERVER");
+
+my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+
+my $DEBUG = $opt_d;
+our $SEE = ($opt_v); # || $DEBUG);
+our $DB_SEE = $opt_v; # || $DEBUG;
+
+my $require_valid = 1;
+
+my $min_percent_shorter_length = 30;
+if ($opt_L) {
+	$min_percent_shorter_length = $opt_L;
+}
+
+my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+print STDERR "// retrieving valid alignments.\n";
+
+# get the list of annot-db asmbl_id and corresponding cdna_accs
+my $query = "select c.annotdb_asmbl_id, al.align_acc, al.spliced_orient "
+    . " from clusters c, align_link al, cdna_info ci "
+    . " where c.cluster_id = al.cluster_id and al.cdna_info_id = ci.id "
+    . " and ci.is_assembly = 0 and al.validate = 1";
+
+my %asmbl_id_to_cdna_accs;
+my @results = &do_sql_2D($dbproc, $query);
+
+foreach my $result (@results) {
+    my ($asmbl_id, $cdna_acc, $spliced_orient) = @$result;
+
+	$asmbl_id .= ";$spliced_orient";
+	
+    if (my $aref = $asmbl_id_to_cdna_accs{$asmbl_id}) {
+        push (@$aref, $cdna_acc);
+    } else {
+        $asmbl_id_to_cdna_accs{$asmbl_id} = [$cdna_acc];
+    }
+}
+
+print STDERR "// retrieving transcript coordinate data.\n";
+
+## Perform new overlap analysis, populate/update db.
+
+
+my $alignment_cluster_number = scalar(keys %asmbl_id_to_cdna_accs);
+print STDERR "Will process $alignment_cluster_number alignment assemblies...\n";
+$dbproc->{dbh}->{AutoCommit} = 0;
+my $progress = 0;
+
+foreach my $asmbl_id_info (keys %asmbl_id_to_cdna_accs) {
+    
+	my ($asmbl_id, $spliced_orient) = split(/;/, $asmbl_id_info);
+
+    my @transcripts;
+
+    ## Get list of cDNA_accs
+    my @cdna_accs = @{$asmbl_id_to_cdna_accs{$asmbl_id_info}};
+    ## Get cdna span for each alignment:
+
+	my %acc_to_struct;
+
+    foreach my $cdna_acc (@cdna_accs) {
+        my $align_id = &get_align_id($cdna_acc);
+        if ($align_id) {
+            my ($lend, $rend) = sort {$a<=>$b} &get_alignment_span($align_id);
+			
+			my $struct = { cdna_acc => $cdna_acc,
+						   lend => $lend,
+						   rend => $rend,
+					   };
+			
+
+			push (@transcripts, $struct);
+			
+			$acc_to_struct{$cdna_acc} = $struct;
+			
+
+		}
+    }
+    
+
+	@transcripts = sort {$a->{lend}<=>$b->{lend}} @transcripts;
+
+    my $overlap_piler = new Overlap_piler();
+    foreach my $transcript (@transcripts) {
+        $overlap_piler->add_coordSet($transcript->{cdna_acc}, $transcript->{lend}, $transcript->{rend});
+    }
+    my @clusters = $overlap_piler->build_clusters();
+    
+    my @pairs;
+    
+    foreach my $cluster_aref (@clusters) {
+        my $num_elements = scalar(@$cluster_aref);
+
+        print "Overlap_cluster_size: $num_elements\n";
+        
+        my @transcript_pile;
+        foreach my $ele (@$cluster_aref) {
+            my $transcript = $acc_to_struct{$ele} or die "Error, no cdna obj for $ele";
+            push (@transcript_pile, $transcript);
+        }
+        	
+        
+        @transcript_pile = sort {$a->{lend}<=>$b->{lend}} @transcript_pile;
+        
+        
+        for (my $i = 0; $i < $#transcript_pile; $i++) {
+
+            print "\r[$i of $#transcript_pile]   ";            
+            
+            my $trans_i = $transcript_pile[$i];
+            my $i_acc = $trans_i->{cdna_acc};
+            
+            my ($i_lend, $i_rend) = ($trans_i->{lend}, $trans_i->{rend});
+            
+            my $i_length = $i_rend - $i_lend + 1;
+            
+            
+
+
+            for (my $j = $i + 1; $j <= $#transcript_pile; $j++) {
+                
+                                
+                my $trans_j = $transcript_pile[$j];
+                my $j_acc = $trans_j->{cdna_acc};
+                
+                my ($j_lend, $j_rend) = ($trans_j->{lend}, $trans_j->{rend});
+                
+                my $j_length = $j_rend - $j_lend + 1;
+                
+                if ($j_lend > $i_rend) {
+                    last;
+                }
+                
+                my $overlap;
+                if ($j_rend < $i_rend) {
+                    $overlap = $j_rend - $j_lend + 1;
+                }
+                else {
+                    $overlap = $i_rend - $j_lend + 1;
+                }
+                
+                my $percent_overlap_i = $overlap/$i_length * 100;
+                my $percent_overlap_j = $overlap/$j_length * 100;
+                
+                if ($percent_overlap_i >= $min_percent_shorter_length || $percent_overlap_j >= $min_percent_shorter_length) {
+                    push (@pairs, [$i_acc, $j_acc]);
+                }
+            }
+        }
+    }
+     
+    my @clusters = &SingleLinkageClusterer::build_clusters(@pairs);
+    
+    my %seen;
+    foreach my $cluster (@clusters) {
+        my @accs = @$cluster;
+        
+        print "Cluster: " . join("\t", @accs) . "\n\n";
+        
+        foreach my $acc (@accs) {
+            $seen{$acc} = 1;
+        }
+        
+        &insert_cluster($dbproc, $asmbl_id, $cluster, \%acc_to_struct) unless $DEBUG;
+    }
+        
+    unless ($DEBUG) {
+        foreach my $acc (keys %acc_to_struct) {
+            unless ($seen{$acc}) {
+                &insert_cluster($dbproc, $asmbl_id, [$acc], \%acc_to_struct);
+            }
+        }
+    }
+
+    $progress++;
+    if ($progress % 50 == 0){
+        print STDERR "Committed $progress/$alignment_cluster_number ...\r";
+        $dbproc->{dbh}->commit;
+    }
+    
+    
+}
+
+$dbproc->{dbh}->commit;
+print STDERR "\nDone!\n";
+
+
+$dbproc->disconnect;
+exit(0);
+
+
+
+
+
+####
+sub insert_cluster {
+	my ($dbproc, $asmbl_id, $accs_aref, $accs_to_struct_href) = @_;
+
+	## Get new cluster_id:
+	my $cluster_id;
+	if ($DEBUG) {
+		$cluster_id = "DEBUG_cluster_id";
+	} else {
+		my $query = "insert clusters (annotdb_asmbl_id) values (\"$asmbl_id\")";
+		&RunMod($dbproc, $query);
+		$query = "select LAST_INSERT_ID()";
+		$cluster_id = &very_first_result_sql($dbproc, $query);
+	}
+	
+	## update cdna_accs to new cluster_id:
+	my @cdnas = @$accs_aref;
+	my @coords;
+	foreach my $cdna (@cdnas) {
+		my $query = "update align_link set cluster_id = $cluster_id where align_acc = ?";
+		&RunMod($dbproc, $query, $cdna);
+        
+		my $struct = $accs_to_struct_href->{$cdna};
+		
+
+		push (@coords, $struct->{lend}, $struct->{rend});
+	}
+	
+	@coords = sort {$a<=>$b} @coords;
+	my $lend = shift @coords;
+	my $rend = pop @coords;
+	my $query = "update clusters set lend = ?, rend = ? where cluster_id = ?";
+	&RunMod($dbproc, $query, $lend, $rend, $cluster_id);
+	
+
+	return;
+
+}
+
+
+
+
+####
+sub get_align_id {
+    my $cdna_acc = shift;
+    my $query = "select align_id from align_link where align_acc = ?";
+    if ($require_valid) {
+        $query .= " and validate = 1 ";
+    }
+    
+    my $align_id = &very_first_result_sql($dbproc, $query, $cdna_acc);
+    return ($align_id);
+}
+
+sub get_alignment_span {
+    my ($align_id) = shift;
+    my $query = "select lend, rend from alignment where align_id = $align_id";
+    my @results = &do_sql_2D($dbproc, $query);
+    my @coords;
+    foreach my $result (@results) {
+        push (@coords, @$result);
+    }
+    @coords = sort {$a<=>$b} @coords;
+    my $min = shift @coords;
+    my $max = pop @coords;
+    return ($min, $max);
+}
+

@@ -1,0 +1,106 @@
+#!/usr/bin/env perl
+
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Pasa_conf;
+use Mysql_connect;
+use strict;
+use DBI;
+use Getopt::Std;
+
+use vars qw ($opt_h $opt_v $opt_d $opt_M);
+
+# This script loads in the validate, spliced_orient, and num_segments fields based on the prog_validation files.
+
+&getopts ('hD:dM:v');
+my $usage =  <<_EOH_;
+
+Script updates the cdna_link table to include the validation status and textual data.
+
+usage: $0 -M "db:server" -p ~/.pwdfile < prog_validations
+
+
+############################# Options ###############################
+#
+# -M Mysql database name
+# -d Debug
+# -v verbose
+# -h print this option menu and quit
+#
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+if ($opt_h) {die $usage;}
+
+
+
+my $DEBUG = $opt_d;
+
+my $MYSQLdb = $opt_M or die $usage;
+my $MYSQLserver = &Pasa_conf::getParam("MYSQLSERVER");
+my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+
+$|++;
+
+my $VERBOSE = $opt_v;
+
+my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+$dbproc->{dbh}->{AutoCommit} = 0;  # using transactions for speed.
+
+my $num_validate = 0;
+
+
+my $count=0;
+while (<STDIN>) {
+    if (/^\#/) { next;}
+    
+    $count++;
+    
+    my @x = split (/\t/);
+    
+    my ($prog, $acc, $cluster_link_id, $align_id, $scaffold, $num_segs, 
+        $aligned_orient, $spliced_orient, $spliced_valid,
+        $coord_span, $avg_per_id, $percent_aligned, $score,
+        $alignment, $error_comment) = @x;
+    
+    $spliced_valid = ($spliced_valid eq "OK") ? 1:0;
+    $num_validate += $spliced_valid;
+
+    my ($lend, $rend) = sort {$a<=>$b} split(/-/, $coord_span);
+    
+    my $query = "update align_link set validate = ?, spliced_orient = ?, num_segments = ?, alignment = ?, "
+        . " avg_per_id = ?, percent_aligned = ?, score = ?, lend = ?, rend = ? ";
+    my @params = ($spliced_valid, $spliced_orient, $num_segs, $alignment, $avg_per_id, $percent_aligned, $score, $lend, $rend);
+    if ($error_comment =~ /\w/) {
+        $query .= ", comment = ?";
+        push (@params, $error_comment);
+    }
+    $query .= " where align_id = ?";
+
+    if ($VERBOSE) {
+        print "[$count] @params, $acc, $prog\n";
+    }
+    
+    &RunMod($dbproc, $query, @params, $align_id);
+
+    if ($count % 10000 == 0) {
+        $dbproc->{dbh}->commit();
+        print STDERR "\rcommitting $count   ";
+    }
+}
+
+
+$dbproc->{dbh}->commit(); # last ones.
+print STDERR "\rCommitted $count              \n";
+print "$num_validate validated.\n";
+
+
+exit(0);
+

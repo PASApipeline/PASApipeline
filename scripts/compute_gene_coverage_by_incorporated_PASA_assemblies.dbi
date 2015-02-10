@@ -1,0 +1,196 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Pasa_conf;
+use Mysql_connect;
+use strict;
+use DBI;
+use CDNA::CDNA_alignment;
+use CDNA::PASA_alignment_assembler;
+use Gene_obj;
+use Ath1_cdnas;
+use Gene_validator;
+require "overlapping_nucs.ph";
+require "fasta.ph";
+use Gene_obj_comparator;
+use CDNA::Gene_obj_alignment_assembler;
+use CDNA::CDNA_stitcher;
+use Getopt::Long qw(:config no_ignore_case bundling);
+use Storable qw (nfreeze thaw);
+use Nuc_translator;
+use Data::Dumper;
+use Carp;
+use Fasta_reader;
+
+
+my $usage = <<_EOUSAGE_;
+
+# -M Mysql database/server ie. ("ath1_cdnas:haasbox")
+# -p passwordinfo  (contains "username:password")
+# -d Debug
+# -h print this option menu and quit
+# --after_incorp   consider only after incorporating the assemblies
+
+
+_EOUSAGE_
+
+	;
+
+
+our ($opt_M, $opt_G, $opt_p, $DEBUG, $opt_h, $after_incorp);
+
+&GetOptions ('M=s' => \$opt_M,
+             'G=s' => \$opt_G,
+             'p=s' => \$opt_p,
+             'd' => \$DEBUG,
+             'h' => \$opt_h,
+			 'after_incorp' => \$after_incorp);
+
+if ($opt_h) {die $usage;}
+my $MYSQLstring = $opt_M or die $usage;
+my ($MYSQLdb, $MYSQLserver) = split (/:/, $MYSQLstring); 
+my $passwordinfo = $opt_p or die $usage;
+
+my $BEFORE = ($after_incorp) ? 0 : 1;
+
+my ($user, $password) = split (/:/, $passwordinfo);
+
+my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+
+
+## get latest annotation version:
+my $query = "select max(version_id) from annotation_admin";
+my $annot_version = &Mysql_connect::very_first_result_sql($dbproc, $query);
+unless ($annot_version) {
+    die "Sorry, no version of the annotation to compare to yet.\n";
+}
+
+#### get list of genes and compatible PASA assemblies
+$query = "select max(compare_id) from annotation_compare where annotation_version = $annot_version";
+my $compare_id = &Mysql_connect::very_first_result_sql($dbproc, $query);
+
+
+if ($BEFORE) {
+
+	$query = "select al.model_id, al.cdna_acc from annotation_link al, status_link sl "
+		. " where al.compare_id = sl.compare_id and al.compare_id = $compare_id "
+		. " and sl.cdna_acc = al.cdna_acc "
+		. " and sl.status_id in (3, 4, 12, 13) ";
+}
+else {
+	
+	$query = "select al.model_id, al.cdna_acc from annotation_link al, status_link sl, status s "
+		. " where al.compare_id = sl.compare_id and al.compare_id = $compare_id "
+		. " and sl.cdna_acc = al.cdna_acc "
+		. " and sl.status_id = s.status_id and s.fails_incorporation = 0 ";
+	
+}
+
+my %model_to_cdna_accs;
+my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+foreach my $result (@results) {
+	my ($model_id, $cdna_acc) = @$result;
+	push (@{$model_to_cdna_accs{$model_id}}, $cdna_acc);
+}
+
+foreach my $model_id (keys %model_to_cdna_accs) {
+	
+
+	
+	# get gene object:
+	my $gene_obj = &Ath1_cdnas::get_gene_obj_via_model_id($dbproc, $model_id, $annot_version);
+	
+	my $gene_id = $gene_obj->{TU_feat_name};
+
+	my ($cds_lend, $cds_rend) = sort {$a<=>$b} $gene_obj->get_model_span();
+	#print "Processing $gene_id\t$model_id\t$cds_lend-$cds_rend\n";
+	
+	my @cdnas = @{$model_to_cdna_accs{$model_id}};
+	
+	my @coverage;
+
+	my @cdna_coord_info;
+	
+	foreach my $cdna (@cdnas) {
+				
+		my ($lend, $rend) = &Ath1_cdnas::get_alignment_span($dbproc, $cdna);
+		
+		## get the align_id:
+        my $query = "select align_id from cdna_link where cdna_acc = \"$cdna\" and validate = 1";
+        my $align_id = &Mysql_connect::very_first_result_sql($dbproc, $query);
+        my $cdna_obj = &Ath1_cdnas::create_alignment_obj($dbproc, $align_id);
+		
+		my ($cdna_lend, $cdna_rend) = sort {$a<=>$b} $cdna_obj->get_coords();
+		
+		push (@cdna_coord_info, "$cdna\[$lend-$rend\]");
+		
+		my @segments = $cdna_obj->get_alignment_segments();
+
+		foreach my $segment (@segments) {
+			my ($lend, $rend) = sort {$a<=>$b} $segment->get_coords();
+			
+			$lend -= $cds_lend;
+
+			if ($lend < 0) { $lend = 0; }
+			$rend -= $cds_lend;
+			
+			for (my $i = $lend; $i <= $rend; $i++) {
+				
+				# check for crazy long genes that don't make sense... avoid using huge amts of memory
+				if ($i > 500000) { 
+					die "Error, coordinates are unreasonable for any realistic gene: "
+						. $gene_obj->toString() . "\n"
+						. $cdna_obj->toString() . "\n"; 
+				}
+				
+				$coverage[$i]++;
+			}
+
+		}
+	}
+	
+
+	## compute cds coverage:
+	my $CDS_length = 0;
+	my $covered_CDS_bases = 0;
+	foreach my $exon ($gene_obj->get_exons()) {
+		my $cds = $exon->get_CDS_exon_obj();
+		if ($cds) {
+			my ($lend, $rend) = sort {$a<=>$b} $cds->get_coords();
+			$lend -= $cds_lend;
+			$rend -= $cds_lend;
+			if ($lend < 0) { die "not possible.."; }
+			for (my $i = $lend; $i <= $rend; $i++) {
+				$CDS_length++;
+				my $cov = $coverage[$i];
+				if (defined($cov) && $cov > 0) {
+					$covered_CDS_bases++;
+				}
+			}
+		}
+	}
+	
+	unless ($CDS_length) {
+		die "Error, no CDS for gene: " . $gene_obj->toString();
+	}
+
+
+	my $model = $gene_obj->{Model_feat_name};
+	my $name = $gene_obj->{com_name};
+	
+	my $percent_coverage = sprintf("%.2f", $covered_CDS_bases/$CDS_length * 100);
+	
+	print join("\t", $model, "$cds_lend-$cds_rend", $name, 
+			   join(",", @cdna_coord_info),
+			   $CDS_length, $covered_CDS_bases, $percent_coverage) . "\n";
+	
+	
+	
+}
+
+exit(0);

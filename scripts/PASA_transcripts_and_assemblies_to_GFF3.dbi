@@ -1,0 +1,258 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Pasa_conf;
+use Mysql_connect;
+use GFF_maker;
+use strict;
+use DBI;
+use Getopt::Std;
+use Gene_obj;
+use Pasa_init;
+use Fasta_reader;
+use Ath1_cdnas;
+
+use vars qw ($opt_T $opt_P $opt_h $opt_D $opt_d $DEBUG $opt_S $opt_M $opt_f $opt_a $opt_B $opt_v $opt_F $opt_A);
+
+&getopts ('hD:dS:M:faP:BvF:TA');
+
+our $SEE = 0;
+
+my $usage =  <<_EOH_;
+
+Script loads the cDNA assembly alignment data into the annotation database for viewing in annotation station.
+
+############################# Options ###############################
+#
+# -M <string>      Mysql database name
+# 
+# -P <string>      program name, if alignment. Set to 'ALL' for all valid alignments, regardless of program
+# -f               failed alignments only (-P program name to use for failed alignment identification)
+# -v               valid alignments only
+# -F <string>      restrict to transcript IDs in fasta file.
+#
+# -a assemblies only (implies !-f)
+# -A alignments only (not assemblies)
+# -d Debug
+# -h print this option menu and quit
+#
+# -B  output in BED format instead of GFF3 alignment format
+# -T  output in GTF format
+#
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+if ($opt_h) {die $usage;}
+my $MYSQLdb = $opt_M or die $usage;
+
+my $MYSQLserver = &Pasa_conf::getParam("MYSQLSERVER");
+my $mysql_user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $mysql_password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+my $DEBUG = $opt_d;
+my $FAILED_ONLY = $opt_f;
+my $VALID_ONLY = $opt_v;
+my $ASSEMBLIES_ONLY = $opt_a;
+my $ALIGNMENTS_ONLY = $opt_A;
+my $BY_FASTA = $opt_F;
+
+
+my $BED_FORMAT = $opt_B;
+my $GTF_FORMAT = $opt_T;
+
+my $TIER_NAME = $MYSQLdb;
+#process passwords
+
+my $prog_name = $opt_P;# or die "Error, must specifiy prog name with -P ";
+
+unless ($prog_name || $ASSEMBLIES_ONLY || $BY_FASTA) {
+    die "error, must specifiy prog name with -P";
+}
+
+my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$mysql_user,$mysql_password);
+
+my $db_id;
+
+my %ALIGNMENTS;
+
+
+my %ACCS_WANT;
+if ($BY_FASTA) {
+    my $fasta_reader = new Fasta_reader($BY_FASTA);
+    while (my $seq_obj = $fasta_reader->next()) {
+
+        my $acc = $seq_obj->get_accession();
+        $ACCS_WANT{$acc} = 1;
+    }
+}
+   
+
+
+my $query = "select al.align_id from align_link al, cdna_info ci "
+    . " where al.cdna_info_id = ci.id";
+if ($prog_name) {
+
+	unless ($prog_name eq "ALL") {
+		$query .= " and al.prog = \"$prog_name\" " ;
+	}
+}	
+
+if ($VALID_ONLY) {
+    $query .= " and al.validate = 1 ";
+}
+elsif ($FAILED_ONLY) {
+    $query .= " and al.validate = 0 ";
+}
+
+
+my %asmbl_to_cluster_id;
+if ($ASSEMBLIES_ONLY) {
+    $query .= " and ci.is_assembly = 1 ";
+
+    {
+        ## get the gene-to-trans relationship
+        my $q = "select subcluster_id, cdna_acc from subcluster_link";
+        my @results = &Mysql_connect::do_sql_2D($dbproc, $q);
+        foreach my $result (@results) {
+            my ($subcluster_id, $cdna_acc) = @$result;
+            $asmbl_to_cluster_id{$cdna_acc} = $subcluster_id;
+        }
+    }
+}
+elsif ($ALIGNMENTS_ONLY) {
+    $query .= " and ci.is_assembly = 0 ";
+}
+
+my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+if (@results) {
+    
+    foreach my $result (@results) {
+        my ($align_id) = @$result;
+        
+        if ($GTF_FORMAT) {
+            ## this code is a mess...  should implement all methods in the CDNA alignment object as calls to output formats
+            
+            my $cdna_alignment_obj = &Ath1_cdnas::create_alignment_obj($dbproc, $align_id);
+            
+            my $acc = $cdna_alignment_obj->get_acc();
+            if (%ACCS_WANT && ! $ACCS_WANT{$acc}) { 
+                next;
+            }
+            
+            #print $cdna_alignment_obj->toString();
+
+            my $acc = $cdna_alignment_obj->get_acc();
+            my $align_acc = $cdna_alignment_obj->{align_acc};
+
+            my $trans_id = "align_id:$align_id|$acc";
+            if ($acc ne $align_acc) {
+                $trans_id .= "|$align_acc";
+            }
+
+            my $subcluster_id = $asmbl_to_cluster_id{$acc};
+            
+            print $cdna_alignment_obj->to_GTF_format( seq_id => $cdna_alignment_obj->{genome_acc},
+                                                      gene_id => ($subcluster_id) ? "PASA_cluster_$subcluster_id" : "align_id:$align_id|$acc",
+                                                      transcript_id => $trans_id,
+                                                      source => $cdna_alignment_obj->{prog},
+                                                      ) . "\n";
+            
+            next;
+
+        }
+        
+
+        my $query = "select c.annotdb_asmbl_id, ci.cdna_acc, al.align_acc, al.align_id, al.spliced_orient, "
+            . " a.lend, a.rend, a.mlend, a.mrend, a.orient, a.per_id, al.prog "
+            . " from clusters c, align_link al, alignment a, cdna_info ci "
+            . " where c.cluster_id = al.cluster_id "
+            . " and al.align_id = a.align_id "
+            . " and al.align_id = $align_id "
+            . " and al.cdna_info_id = ci.id ";
+            
+
+        my @Lresults = &Mysql_connect::do_sql_2D($dbproc, $query);
+        foreach my $Lresult (@Lresults) {
+            my ($asmbl_id, $acc, $align_acc, $align_id, $spliced_orient, $lend, $rend, $mlend, $mrend, $orient, $per_id, $prog)= @$Lresult;
+            if (%ACCS_WANT && ! $ACCS_WANT{$acc}) { 
+                last;
+            }
+            
+
+            if ($BED_FORMAT) {
+                my ($end5, $end3) = ($orient eq '+') ? ($lend, $rend) : ($rend, $lend);
+                $ALIGNMENTS{"$asmbl_id$;$acc$;$align_acc"}->{$end5} = $end3;
+            }
+            else {
+                &print_GFF_row($asmbl_id, $acc, $align_id, $spliced_orient, $lend, $rend, $mlend, $mrend, $orient, $per_id, $prog);
+            }
+        }
+    }
+}
+
+
+
+$dbproc->disconnect;
+
+if ($BED_FORMAT) {
+	
+	foreach my $alignment_acc (keys %ALIGNMENTS) {
+		my ($asmbl_id, $transcript_id, $align_acc) = split(/$;/, $alignment_acc);
+
+
+        my $com_name = $transcript_id;
+        if ($transcript_id ne $align_acc) {
+            $com_name .= ",$align_acc";
+        }
+		
+		my $coords_struct_href = $ALIGNMENTS{$alignment_acc};
+		my $gene_obj = new Gene_obj();
+		$gene_obj->{asmbl_id} = $asmbl_id;
+		$gene_obj->{com_name} = $com_name;
+		$gene_obj->populate_gene_object($coords_struct_href, $coords_struct_href);
+		
+		print $gene_obj->to_BED_format();
+	}
+}
+
+
+
+exit(0);
+
+####
+sub print_GFF_row {
+    my ($asmbl_id, $acc, $align_id, $spliced_orient, $lend, $rend, $mlend, $mrend, $orient, $per_id, $prog) = @_;
+    
+    if ($rend == $lend){ #gmap bug only single base
+        $orient = '+' unless $orient;   #default orientation hack
+    }
+    
+
+    unless ($spliced_orient =~ /\+|\-/) {
+        $spliced_orient = $orient; #we don't know, provide regular orient.
+    }
+    
+    my $rel_orient = "+";
+    if ($spliced_orient ne $orient) {
+        $rel_orient = "-";
+    }
+        
+    print &GFF_maker::get_GFF_line( { type => "cDNA_match",
+                                      source => "$prog-$MYSQLdb",
+                                      seq_id => $asmbl_id,
+                                      lend => $lend,
+                                      rend => $rend,
+                                      strand => $orient,
+                                      score => $per_id,
+                                      attributes => "ID=align_$align_id;Target=$acc $mlend $mrend $rel_orient",
+                                      }
+                                    );
+        
+    return;
+}
+

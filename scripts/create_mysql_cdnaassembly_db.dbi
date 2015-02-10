@@ -1,0 +1,82 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Pasa_conf;
+use Mysql_connect;
+use strict;
+use DBI;
+use Ath1_cdnas;
+use Getopt::Std;
+use ConfigFileReader;
+
+
+use vars qw ($opt_c $opt_p $opt_d $opt_h $opt_S $opt_r);
+
+&getopts ('c:p:S:r');
+
+
+$|=1;
+our $SEE = 0;
+
+open (STDERR, "&>STDOUT");
+
+my $usage =  <<_EOH_;
+
+############################# Options ###############################
+#
+# -c config file
+# -S Schema file path
+# -d Debug
+# -r Drop and rebuild database 
+# -h print this option menu and quit
+#
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+if ($opt_h) {die $usage;}
+my $schemafile = $opt_S or die "Require schema file path\n\n$usage";
+my $DEBUG = $opt_d;
+
+my $configfile = $opt_c or die $usage;
+my %config = &readConfig($configfile);
+my $mysql_db = ($config{MYSQLDB});
+my $mysql_server = &Pasa_conf::getParam("MYSQLSERVER");
+my $mysql_rw_user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $mysql_rw_password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+#my $admin_db = &Pasa_conf::getParam("PASA_ADMIN_DB");
+#$admin_db = ""; # just forcing a connection. ??? why???
+
+## Create the database if needed
+my $dbproc = &Mysql_connect::connect_to_db($mysql_server,"",$mysql_rw_user,$mysql_rw_password);
+&Mysql_connect::RunMod($dbproc,"drop database $mysql_db") if $opt_r;
+my $query = "create database $mysql_db";
+&Mysql_connect::RunMod($dbproc, $query);
+$dbproc->disconnect;
+
+
+# check for Mysql and build options
+my $mysql_exec = `which mysql`;chomp($mysql_exec);
+die "Cannot find mysql\n" unless -s $mysql_exec && -x $mysql_exec;
+my $mysql_options = "";
+$mysql_options .= " -u$mysql_rw_user" if $mysql_rw_user;
+$mysql_options .= " -p$mysql_rw_password" if $mysql_rw_password;
+if ($mysql_server=~s/:(\d+)$//){
+	# if $mysql_server includes :port then remove and add as port
+	$mysql_options .= " --port=$1";
+}
+$mysql_options .= " -h$mysql_server";
+
+
+## Populate the database structure and static data.
+my $cmd = "$mysql_exec $mysql_options -D$mysql_db -e 'source $schemafile'";
+my $result = system ($cmd);
+
+die "CMD: $cmd failed.\n" if $result;
+
+exit(0);

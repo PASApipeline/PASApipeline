@@ -1,0 +1,13 @@
+
+CDBTools can be obtained directly from here:
+
+http://compbio.dfci.harvard.edu/tgi/software/
+
+If you have difficulty compiling it, you might need to add:
+
+ -L/usr/local/lib -lezlib
+
+to the Makefile.
+
+It should compile without trouble on mac osx, suse and centos linux.   Fedora needed the above fix.
+

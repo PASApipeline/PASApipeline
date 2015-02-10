@@ -1,0 +1,60 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Pasa_conf;
+use Mysql_connect;
+use strict;
+use DBI;
+use Getopt::Std;
+use vars qw ($opt_c $opt_d $opt_p $opt_h);
+use ConfigFileReader;
+
+&getopts ('c:dh');
+
+## Process options.
+
+
+my $usage = <<_EOH_;
+
+############################# Options ###############################
+#
+# -c config file
+#
+# -d debug
+#
+# -p password info ("user:password")
+# 
+# -h print this option menu and quit
+#
+#
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+if ($opt_h) {die $usage;}
+our $DEBUG = ($opt_d) ? 1:0;
+
+my $configfile = $opt_c or die $usage;
+my %config = &readConfig($configfile);
+my ($MYSQLdb) = ($config{MYSQLDB});
+my $mysql_server = &Pasa_conf::getParam("MYSQLSERVER");
+my $mysql_rw_user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $mysql_rw_password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+
+my $dbproc = &Mysql_connect::connect_to_db($mysql_server,$MYSQLdb,$mysql_rw_user,$mysql_rw_password);
+
+my $query = "insert annotation_admin (date) values (now())";
+&Mysql_connect::RunMod($dbproc, $query);
+
+$query = "select LAST_INSERT_ID()";
+my $annot_version = &Mysql_connect::very_first_result_sql($dbproc, $query);
+
+print "\n\nNow ready to load annotation version: $annot_version\n\n";
+
+$dbproc->disconnect;
+

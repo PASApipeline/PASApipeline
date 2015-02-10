@@ -1,0 +1,183 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Mysql_connect;
+use strict;
+use DBI;
+use Getopt::Std;
+use Data::Dumper;
+
+
+use vars qw ($opt_v $opt_M $opt_p $opt_b $opt_P $opt_d $opt_h);
+
+&getopts ('M:p:b:P:d:hv');
+
+
+our $SEE = 0;
+$|++;
+
+open (STDERR, "&>STDOUT");
+
+my $usage =  <<_EOH_;
+
+Btab data is loaded into the alignment table.
+
+############################# Options ###############################
+#
+# -M Mysql database/server ie. ("ath1_cdnas:haasbox")
+# 
+# -p passwordinfo  (contains "username:password")
+# -b btab_file
+# -P program name (ie. sim4 or blat)
+# -d Debug
+# 
+# -h print this option menu and quit
+# -v verbose
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+if ($opt_h) {die $usage;}
+
+my $MYSQLstring = $opt_M or die $usage;
+our $DB_SEE = $opt_v;
+our $SEE = $opt_v;
+my ($MYSQLdb, $MYSQLserver) = split (/:/, $MYSQLstring); 
+my $passwordinfo = $opt_p or die $usage;
+my $DEBUG = $opt_d;
+my $btab_file = $opt_b or die $usage;
+my $prog = $opt_P or die $usage;
+
+my ($user, $password) = split (/:/, $passwordinfo);
+
+my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+my %data;
+open (BTAB, "$btab_file") or die "Can't open $btab_file.\n";
+
+my %asmbl_id_to_acc;
+
+while (<BTAB>) { #read btab files
+    
+    chomp;
+    unless (/\w/) { next;}
+    my @x = split (/\t/);
+
+    my ($asmbl_id, $acc, $chrend5, $chrend3, $cdnaend5, $cdnaend3, $per_id) = ($x[0], $x[5], $x[6], $x[7], $x[8], $x[9], $x[10]);
+    
+    print "$asmbl_id, $acc, $chrend5, $chrend3, $cdnaend5, $cdnaend3, $per_id\n" if $SEE;
+    $asmbl_id_to_acc{$asmbl_id}->{$acc} = 1;
+    
+        
+    if (%data && $data{acc} ne $acc) {
+        &process_alignment();
+        %data = ();
+    }
+    $data{acc} = $acc;
+    push (@{$data{coordset}}, { genomic=> [$chrend5, $chrend3],
+                                cdna => [$cdnaend5, $cdnaend3],
+                                per_id => $per_id});
+}
+if (%data) {
+    &process_alignment();
+}
+
+&store_cluster_links ();
+
+$dbproc->disconnect;
+exit(0);
+
+
+
+####                                                                                                                               
+sub store_cluster_links {
+    
+    print "\n\nStoring cluster links.\n\n";
+
+    foreach my $asmbl_id (keys %asmbl_id_to_acc) {
+        my @accs = keys %{$asmbl_id_to_acc{$asmbl_id}};
+        
+        ## install row in clusters table                                                                                           
+        my $query = qq { insert clusters (annotdb_asmbl_id) values (?) };
+        &RunMod($dbproc, $query, $asmbl_id);
+        
+        my $cluster_id = &Mysql_connect::get_last_insert_id($dbproc);
+        
+        ## set the cluster link values
+        $query = qq { update cluster_link set cluster_id = $cluster_id where cdna_acc = ? };
+        my $sth = $dbproc->{dbh}->prepare($query);
+        foreach my $acc (@accs) {
+         
+            print "$query ($acc)\n" if $DB_SEE;
+            
+            $sth->execute($acc);
+            
+        }
+        
+        $sth->finish;
+    }
+}
+
+
+####
+sub process_alignment() {
+    my $acc = $data{acc};
+    my $coords_aref = $data{coordset};
+    
+    my $orientation = &get_orientation($coords_aref);
+    
+    unless ($orientation) {
+        die "Error, no orientation for $acc (coords: " . Dumper ($coords_aref) . "\n";
+    }
+    
+
+    my $query = "insert cdna_link (cdna_acc, prog, aligned_orient) values (?,?,?)";
+    &RunMod ($dbproc, $query, $acc, $prog, $orientation);
+    
+    my $query = "select LAST_INSERT_ID()";
+    my $result_aref = &first_result_sql ($dbproc, $query);
+    my $align_id = $result_aref->[0];
+    
+    if ($align_id) {
+        print "\n\n\n// Processing $acc ($orientation) align_id: $align_id\n" if $SEE;
+        
+        foreach my $coordset_href (@$coords_aref) {
+            my $genomic_aref = $coordset_href->{genomic};
+            my $cdna_aref = $coordset_href->{cdna};
+            my $gend5 = $genomic_aref->[0];
+            my $gend3 = $genomic_aref->[1];
+            my $cdnaend5 = $cdna_aref->[0];
+            my $cdnaend3 = $cdna_aref->[1];
+            my $per_id = $coordset_href->{per_id};
+            print "g5: $gend5\tg3: $gend3\tc5: $cdnaend5\tc3: $cdnaend3\n" if $SEE;
+            ($gend5, $gend3) = sort {$a<=>$b} ($gend5, $gend3);
+            my $query = "insert alignment (align_id, lend, rend, mlend, mrend, orient, per_id) values (?,?,?,?,?,?,?)";
+            &RunMod($dbproc, $query, $align_id, $gend5, $gend3, $cdnaend5, $cdnaend3, $orientation, $per_id);
+            
+        }
+        
+    } else {
+        print STDERR "Error: Couldn't get align_id for $acc\n";
+    }
+}
+
+
+## aligned orientation, not necessarily spliced orientation.
+sub get_orientation () {
+    my $coords_aref = shift;
+    foreach my $coordset_href (@$coords_aref) {
+        my $genomic_aref = $coordset_href->{genomic};
+       	my $end5 = $genomic_aref->[0];
+        my $end3 = $genomic_aref->[1];
+        #print "end5: $end5\tend3: $end3\n";
+        if ($end5 < $end3) {
+            return ('+');
+        } elsif ($end5 > $end3) {
+            return ('-');
+        }
+    }
+}
+

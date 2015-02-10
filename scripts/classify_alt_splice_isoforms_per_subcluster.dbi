@@ -1,0 +1,558 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Pasa_conf;
+use Mysql_connect;
+use strict;
+use DBI;
+use Getopt::Std;
+use Ath1_cdnas;
+use CDNA::CDNA_alignment;
+use CDNA::Alternative_splice_comparer;
+use CDNA::PASA_alignment_assembler;
+use Carp;
+use Data::Dumper;
+
+use vars qw ($opt_M $opt_v $opt_s $opt_G $opt_d $opt_h);
+open (STDERR, "&>STDOUT");
+&getopts ('M:G:dhvs:');
+my $usage =  <<_EOH_;
+
+
+############################# Options ###############################
+# -M Mysql database name
+# -s subcluster ID
+
+# -d Debug
+# 
+# -h print this option menu and quit
+# -v verbose
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+our $SEE = $opt_v;
+our $DB_SEE = $opt_v;
+
+my $subcluster_id = $opt_s or die $usage;
+
+if ($opt_h) {die $usage;}
+
+
+our $DEBUG = $opt_d;
+
+my $MYSQLdb = $opt_M or die $usage;
+my $MYSQLserver = &Pasa_conf::getParam("MYSQLSERVER");
+my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+my ($dbproc) = &connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+$|++;
+
+
+main: {
+
+    print "\n\n\n\n\n*****************************************************\n// Processing subcluster: $subcluster_id\n";    
+    ## get the assembly accs for each multi-assembly containing subcluster:
+    my $query = "select al.align_id, al.align_acc from subcluster_link sl, align_link al where al.align_acc = sl.cdna_acc and sl.subcluster_id = ?";
+    my @results = &do_sql_2D($dbproc, $query, $subcluster_id);
+    my @cdna_objs;
+    
+    ## get the alignment objects for each assembly:
+    my $gene_annotation = "NOVEL_GENE_$subcluster_id";
+    foreach my $result (@results) {
+        my ($align_id, $cdna_acc) = @$result;
+        ## get the alignment obj:
+        my $alignment = &Ath1_cdnas::create_alignment_obj($dbproc, $align_id);
+        unless (ref $alignment) {
+            die "Error, no alignment obj for $cdna_acc\n";
+        }
+        print "$cdna_acc " . $alignment->toToken() . "\n";
+        
+        push (@cdna_objs, $alignment);
+        
+
+    }
+    
+    print "All components of subcluster:\n";
+    my $num_cdnas = scalar @cdna_objs;
+    
+    
+    my $assembler = new CDNA::PASA_alignment_assembler; ## just for drawing illustrations of the alignments
+    $assembler->{assemblies} = [];
+    
+    
+    $assembler->{incoming_alignments} = [@cdna_objs];
+    print $assembler->toAlignIllustration();
+    
+    ## Compare all-vs-all to find splicing variations:
+    
+    #$dbproc->{dbh}->{AutoCommit} = 0;
+    $dbproc->{dbh}->{AutoCommit} = 1;
+    
+    for (my $i=0; $i < $#cdna_objs; $i++) {
+        
+        my $align_i = $cdna_objs[$i];
+        
+        my $align_i_acc = $align_i->get_acc();
+        
+        my ($i_lend, $i_rend) = sort {$a<=>$b} $align_i->get_coords();
+        
+        
+        for (my $j = $i+1; $j <= $#cdna_objs; $j++) {
+            my $align_j = $cdna_objs[$j];
+            my $align_j_acc = $align_j->get_acc();
+            
+            my ($j_lend, $j_rend) = sort {$a<=>$b} $align_j->get_coords();
+            
+            print "\n\n\n||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||\n## Alignment Pair Comparison:\n"; 
+            
+            print "($i, $j) of $num_cdnas ^2\n";
+            #$assembler->{incoming_alignments} = [$align_i, $align_j];
+            #print $assembler->toAlignIllustration();
+            
+            if ($i_lend < $j_rend && $i_rend > $j_lend) { #overlapping subcluster elements
+                
+                my $alt_splice_comparer = new CDNA::Alternative_splice_comparer;
+                my $compare_struct = $alt_splice_comparer->compare_isoforms_via_alignmentObjs($align_i, $align_j);
+                my @spliceDiffs;
+                
+                foreach my $type (%$compare_struct) {
+                    if ($compare_struct->{$type}) {
+                        push (@spliceDiffs, $type);
+                    }
+                }
+                if (@spliceDiffs) {
+                    my $diffLine = join ("||", @spliceDiffs);
+                    print "$align_i_acc vs $align_j_acc\tALTSPLICE: $diffLine\n";
+                    &label_alignment( { target => $align_i, other => $align_j } );
+                    &label_alignment( { target => $align_j, other => $align_i } );
+                    
+                    
+                } else {
+                    print "***** Warning, no splicing diffs between alignmments.\n";
+                }
+                
+            } else {
+                print "No overlap !!!!!!!! \n";
+            }
+        }
+      
+        #$dbproc->{dbh}->commit;  # note, transactions deadlock when running this script in parallel
+  
+    }
+
+    #$dbproc->{dbh}->commit;
+    #$dbproc->{dbh}->{AutoCommit} = 1;
+    
+    
+}
+
+$dbproc->disconnect;
+
+exit(0);
+
+
+####
+sub label_alignment {
+    my ($compare_info_href) = @_;
+    
+    my $target_alignment = $compare_info_href->{target};
+    my $other_alignment = $compare_info_href->{other};
+
+    my $target_acc = $target_alignment->get_acc();
+    my $other_acc = $other_alignment->get_acc();
+
+    my $orientation = $target_alignment->get_spliced_orientation();
+
+    my $target_gene_obj = $target_alignment->get_gene_obj_via_alignment();
+    my $other_gene_obj = $other_alignment->get_gene_obj_via_alignment();
+    
+    my @transcripts_A_list = &get_underlying_transcripts($target_acc);
+    my @transcripts_B_list = &get_underlying_transcripts($other_acc);
+    
+    my $transcripts_A_aref = \@transcripts_A_list;
+    my $transcripts_B_aref = \@transcripts_B_list;
+    
+    ## Unspliced Introns:
+    my $alt_splice_comparer = new CDNA::Alternative_splice_comparer;
+    
+    my @unspliced_introns = $alt_splice_comparer->find_unspliced_introns($target_gene_obj, $other_gene_obj);
+    
+    foreach my $unspliced_intron (@unspliced_introns) {
+        my ($intron_lend, $intron_rend) = @$unspliced_intron;
+        my $sv_id = &store_splice_variation( $target_acc, $intron_lend, $intron_rend, $orientation, "retained_intron", 1);
+        &add_splice_variation_support($sv_id, $other_acc);
+        &find_underlying_transcripts_responsible_for_variation("retained_intron", $sv_id, $target_acc, $other_acc, $intron_lend, $intron_rend, $transcripts_A_aref, $transcripts_B_aref);
+
+        my $sv_id_A = $sv_id;
+        
+        ## make this reciprocal:
+        ## for every retained intron, we have a spliced intron as the variant.
+        $sv_id = &store_splice_variation( $other_acc, $intron_lend, $intron_rend, $orientation, "spliced_intron", 1);
+        &add_splice_variation_support($sv_id, $target_acc);
+        &find_underlying_transcripts_responsible_for_variation("spliced_intron", $sv_id, $other_acc, $target_acc, $intron_lend, $intron_rend, $transcripts_B_aref, $transcripts_A_aref);
+        
+        my $sv_id_B = $sv_id;
+
+        &link_alt_splice($sv_id_A, $sv_id_B);
+        
+    }
+    
+    
+    ## Alternative donors and acceptors:
+    $alt_splice_comparer = new CDNA::Alternative_splice_comparer;
+    my %alt_acceptors_and_donors = $alt_splice_comparer->find_conventional_alt_splice_isoforms($target_gene_obj, $other_gene_obj);
+    if (%alt_acceptors_and_donors) {
+        if (my @alt_acceptors = @{$alt_acceptors_and_donors{acceptors}}) {
+            # intron boundaries.  Get coordpair describing full acceptor
+            foreach my $acceptor_href (@alt_acceptors) {
+                my $target_acceptor = $acceptor_href->{gene1};
+                
+                my ($target_acceptor_lend, $target_acceptor_rend) = ($orientation eq "+") 
+                    ? ($target_acceptor-2, $target_acceptor-1) 
+                    : ($target_acceptor+1, $target_acceptor+2);
+                
+
+                my $target_sv_id = &store_splice_variation($target_acc, $target_acceptor_lend, $target_acceptor_rend, $orientation, "alt_acceptor", 1);
+                &add_splice_variation_support($target_sv_id, $other_acc);
+                
+                ## only case here where we're loading the reciprocal results.  This is so we can link the alt acceptors and donors together.
+                my $other_acceptor = $acceptor_href->{gene2};
+                
+                my ($other_acceptor_lend, $other_acceptor_rend) = ($orientation eq "+") 
+                    ? ($other_acceptor-2, $other_acceptor-1) 
+                    : ($other_acceptor+1, $other_acceptor+2);
+                
+                my $other_sv_id = &store_splice_variation($other_acc, $other_acceptor_lend, $other_acceptor_rend, $orientation, "alt_acceptor", 1);
+                &add_splice_variation_support($other_sv_id, $target_acc);
+                
+                &link_alt_splice($target_sv_id, $other_sv_id);
+
+                                
+                ## get span between alt acceptors
+                my @all_acceptor_coords = sort {$a<=>$b} ($target_acceptor_lend, $target_acceptor_rend, $other_acceptor_lend, $other_acceptor_rend);
+                my $acceptor_span_lend = shift @all_acceptor_coords;
+                my $acceptor_span_rend = pop @all_acceptor_coords;
+                
+                &find_underlying_transcripts_responsible_for_variation("alt_acceptor", $target_sv_id, $target_acc, $other_acc, $acceptor_span_lend, $acceptor_span_rend, $transcripts_A_aref, $transcripts_B_aref);
+                
+                
+            }
+        }
+        
+        ## now, repeat it all for the donor site comparison:
+        if (my @alt_donors = @{$alt_acceptors_and_donors{donors}}) {
+            foreach my $donor_href (@alt_donors) {
+                my $target_donor = $donor_href->{gene1};
+                
+                my ($target_donor_lend, $target_donor_rend) = ($orientation eq "+") 
+                    ? ($target_donor+1, $target_donor+2) 
+                    : ($target_donor-2, $target_donor-1);
+                
+                my $target_sv_id = &store_splice_variation($target_acc, $target_donor_lend, $target_donor_rend, $orientation, "alt_donor", 1);
+                &add_splice_variation_support($target_sv_id, $other_acc);
+                
+
+                my $other_donor = $donor_href->{gene2};
+                
+                my ($other_donor_lend, $other_donor_rend) = ($orientation eq "+")
+                    ? ($other_donor+1, $other_donor+2)
+                    : ($other_donor-2, $other_donor-1);
+                
+                my $other_sv_id = &store_splice_variation($other_acc, $other_donor_lend, $other_donor_rend, $orientation, "alt_donor", 1);
+                &add_splice_variation_support($other_sv_id, $target_acc);
+
+                &link_alt_splice($target_sv_id, $other_sv_id);
+                
+                
+                ## get span between alt acceptors
+                my @all_donor_coords = sort {$a<=>$b} ($target_donor_lend, $target_donor_rend, $other_donor_lend, $other_donor_rend);
+                my $donor_span_lend = shift @all_donor_coords;
+                my $donor_span_rend = pop @all_donor_coords;
+                
+                &find_underlying_transcripts_responsible_for_variation("alt_donor", $target_sv_id, $target_acc, $other_acc, $donor_span_lend, $donor_span_rend, $transcripts_A_aref, $transcripts_B_aref);
+                
+            }
+        }
+    }
+    
+    ## Starts or ends in an intron:
+    $alt_splice_comparer = new CDNA::Alternative_splice_comparer;
+    my %starts_or_ends_in_intron = $alt_splice_comparer->find_starts_and_ends_within_introns ($target_gene_obj, $other_gene_obj);
+    if (%starts_or_ends_in_intron) {
+        # storing just the coordinate of the start or end point.
+        if (my $start = $starts_or_ends_in_intron{start}) {
+            my $sv_id = &store_splice_variation($target_acc, $start, $start, $orientation, "starts_in_intron", 1);
+            &add_splice_variation_support($sv_id, $other_acc);
+            &find_underlying_transcripts_responsible_for_variation("starts_in_intron", $sv_id, $target_acc, $other_acc, $start, $start, $transcripts_A_aref, $transcripts_B_aref);
+        }
+        if (my $end = $starts_or_ends_in_intron{end}) {
+            my $sv_id = &store_splice_variation($target_acc, $end, $end, $orientation, "ends_in_intron", 1);
+            &add_splice_variation_support($sv_id, $other_acc);
+            &find_underlying_transcripts_responsible_for_variation("ends_in_intron", $sv_id, $target_acc, $other_acc, $end, $end, $transcripts_A_aref, $transcripts_B_aref);
+        }
+    }
+    
+    
+    ## Exon skipping event:
+    $alt_splice_comparer = new CDNA::Alternative_splice_comparer;
+    my @exon_skips = $alt_splice_comparer->find_exon_skipping_events($target_gene_obj, $other_gene_obj);
+    foreach my $exon_skip_list (@exon_skips) {
+        my $num_exons_skipped = scalar (@$exon_skip_list);
+        my @coords;
+        foreach my $exon (@$exon_skip_list) {
+            push (@coords, @$exon);
+        }
+        @coords = sort {$a<=>$b} @coords;
+        my $exon_lend = shift @coords;
+        my $exon_rend = pop @coords;
+        
+        my $sv_id = &store_splice_variation($target_acc, $exon_lend, $exon_rend, $orientation, "retained_exon", $num_exons_skipped);
+        &add_splice_variation_support($sv_id, $other_acc);
+        &find_underlying_transcripts_responsible_for_variation("retained_exon", $sv_id, $target_acc, $other_acc, $exon_lend, $exon_rend, $transcripts_A_aref, $transcripts_B_aref);
+
+        my $sv_id_A = $sv_id;
+        
+        ## make reciprocal: retained exon and skipped exon
+        
+        my ($intron_bound_left, $intron_bound_right) = &CDNA::Alternative_splice_comparer::extend_coords_to_intron_bounds($other_gene_obj, $exon_lend, $exon_rend);
+        
+        my $sv_id = &store_splice_variation($other_acc, $intron_bound_left, $intron_bound_right, $orientation, "skipped_exon", $num_exons_skipped);
+        &add_splice_variation_support($sv_id, $target_acc);
+        &find_underlying_transcripts_responsible_for_variation("skipped_exon", $sv_id, $other_acc, $target_acc, $exon_lend, $exon_rend, $transcripts_B_aref, $transcripts_A_aref);
+        
+        my $sv_id_B = $sv_id;
+       
+        &link_alt_splice($sv_id_A, $sv_id_B);
+    }
+
+    
+    ## Alternate exons:
+    $alt_splice_comparer = new CDNA::Alternative_splice_comparer;
+    my @alternate_exon_regions = $alt_splice_comparer->find_alternate_exons($target_gene_obj, $other_gene_obj);
+    if (@alternate_exon_regions) {
+        
+        my %forward_comparison_sv_ids;
+        foreach my $alternate_exon_struct (@alternate_exon_regions) {
+            my ($exon_region_lend, $exon_region_rend) = @{$alternate_exon_struct->{coords}};
+            my $num_exons = $alternate_exon_struct->{num_exons};
+            my $type = $alternate_exon_struct->{type};
+
+            my $sv_id = &store_splice_variation($target_acc, $exon_region_lend, $exon_region_rend, $orientation, "alternate_exon", $num_exons);
+            &add_splice_variation_support($sv_id, $other_acc);
+            my ($region_adjust_lend, $region_adjust_rend) = &adjust_alt_exon_region_coords($target_gene_obj, $exon_region_lend, $exon_region_rend);
+            &find_underlying_transcripts_responsible_for_variation("alternate_exon", $sv_id, $target_acc, $other_acc, $region_adjust_lend, $region_adjust_rend, $transcripts_A_aref, $transcripts_B_aref);
+            $forward_comparison_sv_ids{$type} = $sv_id;
+        }
+        
+        ## do the reciprocal comparison:
+        @alternate_exon_regions = $alt_splice_comparer->find_alternate_exons($other_gene_obj, $target_gene_obj);
+        my %recip_comparison_sv_ids;
+        
+        foreach my $alternate_exon_struct (@alternate_exon_regions) {
+            my ($exon_region_lend, $exon_region_rend) = @{$alternate_exon_struct->{coords}};
+            my $num_exons = $alternate_exon_struct->{num_exons};
+            my $type = $alternate_exon_struct->{type};
+            
+            my $sv_id = &store_splice_variation($other_acc, $exon_region_lend, $exon_region_rend, $orientation, "alternate_exon", $num_exons);
+            &add_splice_variation_support($sv_id, $target_acc);
+            my ($region_adjust_lend, $region_adjust_rend) = &adjust_alt_exon_region_coords($other_gene_obj, $exon_region_lend, $exon_region_rend);
+            &find_underlying_transcripts_responsible_for_variation("alternate_exon", $sv_id, $other_acc, $target_acc, $region_adjust_lend, $region_adjust_rend, $transcripts_B_aref, $transcripts_A_aref);
+            $recip_comparison_sv_ids{$type} = $sv_id;
+            
+        }
+        
+        ## link splice variations:
+        foreach my $type (keys %forward_comparison_sv_ids) {
+            my $sv_id_A = $forward_comparison_sv_ids{$type};
+            my $sv_id_B = $recip_comparison_sv_ids{$type} or confess "Error, no sv_id for reciprocal{ $type } under alt exon finding";
+            
+            &link_alt_splice($sv_id_A, $sv_id_B);
+        }
+    }
+
+    return;
+}
+
+
+####
+sub store_splice_variation {
+    my ($cdna_acc, $lend, $rend, $orient, $type, $num_subfeatures_included) = @_;
+    
+    ## see if it already exists:
+    my $query = "select sv_id from splice_variation where cdna_acc = ? and lend = ? and rend = ? and orient = ? and type = ? ";
+    my $existing_entry = &very_first_result_sql($dbproc, $query, $cdna_acc, $lend, $rend, $orient, $type);
+    
+    if ($existing_entry) {
+        return ($existing_entry);
+    } 
+
+    ## insert it:
+    $query = qq { insert splice_variation (cdna_acc, lend, rend, orient, type, num_subfeatures_included) values 
+                      (?,?,?,?,?,?) };
+    &RunMod($dbproc, $query, $cdna_acc, $lend, $rend, $orient, $type, $num_subfeatures_included);
+    
+    my $sv_id = &get_last_insert_id($dbproc);
+
+    return ($sv_id);
+}
+ 
+####
+sub add_splice_variation_support {
+    my ($sv_id, $other_acc) = @_;
+    
+    ## see if exists already
+    my $query = "select count(*) from splice_variation_support where cdna_acc = ? and sv_id = ?";
+    my $count = &very_first_result_sql($dbproc, $query, $other_acc, $sv_id);
+    print "Count: $count\n" if $SEE;
+    
+    unless ($count) {
+        my $query = "insert splice_variation_support (sv_id, cdna_acc) values (?,?)";
+        &RunMod($dbproc, $query, $sv_id, $other_acc);
+    }
+}
+
+
+####
+sub link_alt_splice {
+    my ($sv_id_A, $sv_id_B) = @_;
+    
+    ## see if already exists:
+    my $query = "select count(*) from alt_splice_link where sv_id_A = ? and sv_id_B = ?";
+    my $count = &very_first_result_sql($dbproc, $query, $sv_id_A, $sv_id_B);
+    
+    unless ($count) {
+        my $query = "insert alt_splice_link (sv_id_A, sv_id_B) values (?,?)";
+        &RunMod($dbproc, $query, $sv_id_A, $sv_id_B);
+    }
+}
+
+
+
+####
+sub get_underlying_transcripts {
+    my $asmbl_acc = shift;
+    
+    my $query = "select cdna_acc from asmbl_link where asmbl_acc = ?";
+    my @results = &do_sql_2D($dbproc, $query, $asmbl_acc);
+
+
+    my @structs;
+    foreach my $result (@results) {
+        my $cdna_acc = $result->[0];
+        my ($lend, $rend) = &get_coord_span($cdna_acc);
+        push (@structs, { cdna_acc => $cdna_acc,
+                          lend => $lend,
+                          rend => $rend } 
+              );
+    }
+
+    return (@structs);
+}
+
+####
+sub get_coord_span {
+    my ($align_acc) = @_;
+    my $query = "select lend, rend from align_link where align_acc = ?";
+    
+    my $result = &first_result_sql($dbproc, $query, $align_acc);
+    
+    unless ($result) {
+        confess "Error, no coords returned for $align_acc";
+    }
+    
+    my ($lend, $rend) = @$result;
+
+    unless ($lend && $rend) {
+        die "Error, no coords based on query $query  ($align_acc) \n";
+    }
+
+    return ($lend, $rend);
+}
+
+
+####
+sub find_underlying_transcripts_responsible_for_variation {
+    my ($variation_type, $sv_id, $target_acc, $other_acc, $variation_lend, $variation_rend, $transcripts_A_aref, $transcripts_B_aref) = @_;
+    
+    my %accsA;
+    my %accsB;
+
+    foreach my $comparison ( [ \%accsA, $transcripts_A_aref], [\%accsB, $transcripts_B_aref] ) {
+        my ($names_href, $transcripts_aref) = @$comparison;
+
+        foreach my $cdna_struct (@$transcripts_aref) {
+            my ($cdna_acc, $lend, $rend) = ($cdna_struct->{cdna_acc}, $cdna_struct->{lend}, $cdna_struct->{rend});
+            
+            ## check for overlap 
+            if ($lend <= $variation_rend && $rend >= $variation_lend) {
+                $names_href->{$cdna_acc} = 1;
+            }
+        }
+    }
+
+
+    ## the entries in accsA and accsB should be unique given that they correspond to this variation:
+    my @accs_in_A = sort keys %accsA;
+    my @accs_in_B = sort keys %accsB;
+
+    my %counter;
+    foreach my $acc (@accs_in_A, @accs_in_B) {
+        $counter{$acc}++;
+    }
+    
+    ## because of the fuzz dist in assembly building, it is possible for the same acc to show up twice when diff is at boundary
+    my @replace_accs_A;
+    foreach my $acc (@accs_in_A) {
+        if ($counter{$acc} == 1) {
+            push (@replace_accs_A, $acc);
+        }
+    }
+    @accs_in_A = @replace_accs_A;
+
+
+    my @replace_accs_B;
+    foreach my $acc (@accs_in_B) {
+        if ($counter{$acc} == 1) {
+            push (@replace_accs_B, $acc);
+        }
+    }
+    @accs_in_B = @replace_accs_B;
+    
+    
+    ############  Summarize.
+    my $num_A = scalar (@accs_in_A);
+    my $num_B = scalar (@accs_in_B);
+    
+    if ($num_A == 0 || $num_B == 0) {
+        print Dumper ($transcripts_A_aref);
+        print Dumper ($transcripts_B_aref);
+        
+        print "Error, there must be some underlying transcripts responsible for the variation between both transcripts: (num_A = $num_A, num_B = $num_B, A=$target_acc, B=$other_acc\n";
+    }
+    
+    my $transcripts_A = join (",",@accs_in_A);
+    my $transcripts_B = join (",", @accs_in_B);
+
+    ## store in db:
+    my $query = "update splice_variation_support set num_transcripts_A = ?, transcripts_A = ?, num_transcripts_B = ?, transcripts_B = ? where sv_id = ? and cdna_acc = ?";
+    &RunMod($dbproc, $query, $num_A, $transcripts_A, $num_B, $transcripts_B, $sv_id, $other_acc);
+}
+
+
+####
+sub adjust_alt_exon_region_coords {
+    my ($gene_obj, $region_lend, $region_rend) = @_;
+    
+    my ($adjusted_region_lend, $adjusted_region_rend) = &CDNA::Alternative_splice_comparer::adjust_alternate_exon_region_coords($gene_obj, $region_lend, $region_rend);
+
+    return ($adjusted_region_lend, $adjusted_region_rend);
+}
+
+

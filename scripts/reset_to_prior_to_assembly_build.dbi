@@ -1,0 +1,95 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Mysql_connect;
+use strict;
+use DBI;
+use Storable qw(lock_retrieve);
+use CDNA::CDNA_alignment;
+use Getopt::Std;
+
+our $SEE = 0;
+
+use vars qw ($opt_h $opt_K $opt_D $opt_p $opt_d $DEBUG $opt_M $opt_O);
+
+&getopts ('hD:dp:M:O:K');
+
+open (STDERR, "&>STDOUT");
+
+my $usage =  <<_EOH_;
+
+############################# Options ###############################
+#
+# -M Mysql database/server ie. ("ath1_cdnas:haasbox")
+# 
+# -p password file  (contains "username:password")
+# 
+# -d Debug
+# 
+# -h print this option menu and quit
+#
+# -K keep loaded gene annotations
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+if ($opt_h) {die $usage;}
+my $MYSQLstring = $opt_M or die $usage;
+my ($MYSQLdb, $MYSQLserver) = split (/:/, $MYSQLstring); 
+my $DEBUG = $opt_d;
+my $passwordinfo = $opt_p or die $usage;
+my ($user, $password) = split (/:/, $passwordinfo);
+
+
+my ($dbproc) = &connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+foreach my $table ( qw (alt_splice_FL_compare
+                        alt_splice_FL_to_FL_compare
+                        alt_splice_link
+                        alt_splice_token_assignment
+                        alt_splice_tokens
+                        annotation_compare
+                        annotation_link
+                        annotation_updates
+                        asmbl_gene_objs
+                        asmbl_link
+                        cdna_sequence
+                        splice_variation
+                        splice_variation_support
+                        status_link
+                        subcluster_link
+                        subclusters
+                        )
+                    ) {
+    
+    print "Purging table: ${MYSQLdb}::${table}\n"; 
+    my $query = "delete from $table";
+    &RunMod($dbproc, $query);
+}
+
+## purge assemblies from cdna_link:
+my $query = "delete from cluster_link where is_assembly = 1";
+&RunMod($dbproc, $query);
+
+$query = "delete from cdna_link where cdna_acc like \"asmbl_%\"";
+&RunMod($dbproc, $query);
+
+$query = "select max(align_id) from cdna_link";
+my $max_align_id = &very_first_result_sql($dbproc, $query);
+
+$query = "delete from alignment where align_id > $max_align_id";
+&RunMod($dbproc, $query);
+
+
+
+print "\ndone.\n\n";
+
+$dbproc->disconnect;
+
+exit(0);
+
+    

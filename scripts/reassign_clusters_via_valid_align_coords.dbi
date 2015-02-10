@@ -1,0 +1,261 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Pasa_conf;
+use Mysql_connect;
+use DBI;
+use Getopt::Std;
+use CDNA::Overlap_assembler;
+use Data::Dumper;
+
+use threads;
+use Thread_helper;
+
+use vars qw ($opt_M $opt_p $opt_d $opt_h $opt_v $opt_t);
+
+&getopts ('M:dhvt:');
+
+my $usage =  <<_EOH_;
+
+
+############################# Options ###############################
+#
+# Required:
+#
+# -M Mysql database name
+# 
+# Optional:
+#
+# -t <int>   number of parallel threads (default: 4)
+#
+# -d Debug
+# -h print this option menu and quit
+# -v verbose
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+if ($opt_h) {die $usage;}
+
+my $MYSQLdb = $opt_M or die $usage;
+my $MYSQLserver = &Pasa_conf::getParam("MYSQLSERVER");
+
+my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
+my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
+
+our $DEBUG = $opt_d;
+our $SEE = ($opt_v || $DEBUG);
+our $DB_SEE = $opt_v || $DEBUG;
+
+my $CPU = 4;
+if ($opt_t) {
+    $CPU = $opt_t;
+}
+
+my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+
+my $cluster_reassignment_dir = "__reassign_cluster_via_valid_align_coords";
+unless (-d $cluster_reassignment_dir) {
+    mkdir $cluster_reassignment_dir or die "Error, cannot mkdir $cluster_reassignment_dir";
+}
+else {
+    print STDERR "WARNING: $cluster_reassignment_dir already exists...  resuming where it previously left off.\n";
+    sleep(3);
+}
+
+
+my $query = "select distinct c.annotdb_asmbl_id from clusters c";
+my @results = &do_sql_2D($dbproc, $query);
+
+my $thread_helper = new Thread_helper($CPU);
+
+
+foreach my $result (@results) {
+    my ($asmbl_id) = @$result;
+    
+    $thread_helper->wait_for_open_thread();
+    
+    my $thread = threads->create('reassign_clusters_to_aligns', $asmbl_id);
+    $thread_helper->add_thread($thread);
+    
+    
+}
+$thread_helper->wait_for_all_threads_to_complete();
+
+
+($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+$dbproc->{dbh}->{AutoCommit} = 0;
+
+## load results into db.
+my $counter = 0;
+my $total_asmbl_ids = scalar(@results);
+foreach my $result (@results) {
+    my ($asmbl_id) = @$result;
+    
+    $counter++;
+    
+    print STDERR "\r[$counter/$total_asmbl_ids] - loading cluster reassignments for scaffold: $asmbl_id                               ";
+
+    my $asmbl_id_for_filename = $asmbl_id;
+    $asmbl_id_for_filename =~ s/\W/_/g; 
+    
+    my $clusters_file = "$cluster_reassignment_dir/$asmbl_id_for_filename.clusters";
+    
+    unless (-s $clusters_file) {
+        print STDERR "WARNING - no clusters were defined for scaffold: $asmbl_id.\n";
+        next;
+    }
+    
+    open (my $fh, $clusters_file) or die "Error, cannot open file $clusters_file";
+    
+    my $cluster_id = undef;
+    while (<$fh>) {
+        chomp;
+        unless (/\w/) { next; }
+        
+        if (/^CLUSTER/) {
+            my ($cluster, $asmbl_id, $coords) = split(/\t/);
+            my ($lend, $rend) = split(/-/, $coords);
+            
+            my $query = "insert clusters (annotdb_asmbl_id, lend, rend) values (?, ?, ?)";
+            &RunMod($dbproc, $query, $asmbl_id, $lend, $rend);
+            $query = "select LAST_INSERT_ID()";
+            $cluster_id = &very_first_result_sql($dbproc, $query);
+        }
+        else {
+            my ($align_id, $lend, $rend) = split(/\t/);
+            
+            my $query = "update align_link set lend = ?, rend = ?, cluster_id = ? where align_id = ?";
+            &RunMod($dbproc, $query, $lend, $rend, $cluster_id, $align_id);
+            
+        }
+    }
+
+    $dbproc->{dbh}->commit();
+}
+
+$dbproc->disconnect;
+
+system("rm -rf $cluster_reassignment_dir &");
+
+print STDERR "\nDone.\n\n";
+
+exit(0);
+
+
+####
+sub reassign_clusters_to_aligns {
+    my ($asmbl_id) = @_;
+
+    print STDERR "\r-reassigning clusters on scaffold: $asmbl_id                        ";
+    
+    my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+    
+    my $asmbl_id_for_filename = $asmbl_id;
+    $asmbl_id_for_filename =~ s/\W/_/g;
+    
+
+    my $clusters_output_file = "$cluster_reassignment_dir/$asmbl_id_for_filename.clusters";
+    my $checkpoint = $clusters_output_file . ".ok";
+    
+    if (-e $checkpoint) {
+        print STDERR "WARNING: $asmbl_id cluster coordinates already defined. Skipping.\n\n";
+        return;
+    }
+        
+    # get the list of annot-db asmbl_id and corresponding cdna_accs
+    my $query = "select al.align_id from align_link al, clusters c "
+        . " where c.cluster_id = al.cluster_id and c.annotdb_asmbl_id = ? and al.validate = 1";
+    my @results = &do_sql_2D($dbproc, $query, $asmbl_id);
+    
+    unless (@results) {
+        print STDERR "-no valid alignments reported for scaffold $asmbl_id.\n";
+        
+        return;
+    }
+
+    
+    open (my $ofh, ">$clusters_output_file") or die $!;
+    my %acc_to_coordspan;
+    
+    my $overlap_assembler = new CDNA::Overlap_assembler();
+    
+    foreach my $result (@results) {
+        my ($align_id) = @$result;
+
+        #print STDERR "Got align_id: $align_id\n";
+        
+        my ($lend, $rend) = &get_alignment_span($dbproc, $align_id);
+        $overlap_assembler->add_cDNA($align_id, $lend, $rend);
+        $acc_to_coordspan{$align_id} = [$lend,$rend];
+    }
+                
+    my @clusters = $overlap_assembler->build_clusters();
+    foreach my $cluster_ref (@clusters) {
+        
+        ## update cdna_accs to new cluster_id:
+        my @cdnas = @$cluster_ref;
+        my @coords;
+
+        my @cdnas_n_coords;
+        
+        foreach my $cdna (@cdnas) {
+            my ($lend, $rend) = @{$acc_to_coordspan{$cdna}};
+            #print STDERR "$cdna\t$lend-$rend\n";
+            push (@coords, $lend, $rend);
+            push (@cdnas_n_coords, [$cdna, $lend, $rend]);
+        }
+        
+        @coords = sort {$a<=>$b} @coords;
+                
+        my $lend = shift @coords;
+        my $rend = pop @coords;
+        
+        unless ($lend && $rend) {
+            die "Error, no coord sets set for span " . Dumper(\@cdnas_n_coords) . Dumper($cluster_ref);
+        }
+        
+        print $ofh "CLUSTER\t$asmbl_id\t$lend-$rend\n";
+        foreach my $cdna_info (@cdnas_n_coords) {
+            my ($align_id, $lend, $rend) = @$cdna_info;
+            print $ofh join("\t", $align_id, $lend, $rend) . "\n";
+        }
+        print $ofh "\n"; # add spacer
+    }
+    
+    close $ofh;
+    system("touch \'$checkpoint\'");
+
+    $dbproc->disconnect;
+
+    return;
+}
+    
+
+
+sub get_alignment_span {
+    my ($dbproc, $align_id) = @_;
+    
+    my $query = "select lend, rend from alignment where align_id = $align_id";
+    my @results = &do_sql_2D($dbproc, $query);
+    my @coords;
+    foreach my $result (@results) {
+        push (@coords, @$result);
+    }
+    @coords = sort {$a<=>$b} @coords;
+    my $min = shift @coords;
+    my $max = pop @coords;
+    
+    # print STDERR "$align_id -> ($min, $max) \n";
+    
+    return ($min, $max);
+}
+

@@ -1,0 +1,81 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Mysql_connect;
+use strict;
+use DBI;
+use Storable qw(lock_retrieve);
+use CDNA::CDNA_alignment;
+use Getopt::Std;
+
+our $SEE = 0;
+
+use vars qw ($opt_h $opt_K $opt_D $opt_p $opt_d $DEBUG $opt_M $opt_O);
+
+&getopts ('hD:dp:M:O:K');
+
+open (STDERR, "&>STDOUT");
+
+my $usage =  <<_EOH_;
+
+
+purges tables:
+                           annotation_link
+                           annotation_compare
+                           annotation_store
+                           status_link
+                           annotation_updates
+                           annotation_admin
+
+
+
+############################# Options ###############################
+#
+# -M Mysql database/server ie. ("ath1_cdnas:haasbox")
+# 
+# -p password file  (contains "username:password")
+# 
+# -d Debug
+# 
+# -h print this option menu and quit
+#
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+if ($opt_h) {die $usage;}
+my $MYSQLstring = $opt_M or die $usage;
+my ($MYSQLdb, $MYSQLserver) = split (/:/, $MYSQLstring); 
+my $DEBUG = $opt_d;
+my $passwordinfo = $opt_p or die $usage;
+my ($user, $password) = split (/:/, $passwordinfo);
+
+
+my ($dbproc) = &connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+
+my @tables_to_delete = qw (annotation_link
+                           annotation_compare
+                           annotation_store
+                           status_link
+                           annotation_updates
+                           annotation_admin
+                           );
+
+foreach my $table (@tables_to_delete) {
+    
+    print "Purging table: ${MYSQLdb}::${table}\n"; 
+    my $query = "delete from $table";
+    &RunMod($dbproc, $query);
+}
+print "\ndone.\n\n";
+
+$dbproc->disconnect;
+
+exit(0);
+
+    

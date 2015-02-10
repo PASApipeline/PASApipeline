@@ -1,0 +1,69 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+use Mysql_connect;
+use strict;
+use DBI;
+use Getopt::Std;
+
+our $SEE = 0;
+use vars qw ($opt_h $opt_M $opt_d $opt_p);
+open (STDERR, "&>STDOUT");
+&getopts ('hdp:M:');
+my $usage =  <<_EOH_;
+
+Script updates the coordinates in the clusters table based on the validated alignment data.
+
+############################# Options ###############################
+# -M Mysql database/server ie. ("ath1_cdnas:haasbox")
+# -p passwordinfo  (contains "username:password")
+# 
+# -d Debug
+# 
+# -h print this option menu and quit
+#
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+if ($opt_h) {die $usage;}
+my $MYSQLstring = $opt_M or die $usage;
+my ($MYSQLdb, $MYSQLserver) = split (/:/, $MYSQLstring); 
+my $passwordinfo = $opt_p or die $usage;
+my $DEBUG = $opt_d;
+
+my ($user, $password) = split (/:/, $passwordinfo);
+my ($dbproc) = &connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+my $query = "select cluster_id from clusters";
+my @results = &do_sql_2D ($dbproc, $query);
+my @cluster_ids;
+foreach my $result (@results) {
+    my $cluster_id = $result->[0];
+    push (@cluster_ids, $cluster_id);
+}
+
+foreach my $cluster_id (@cluster_ids) {
+    
+    ## get all the alignment coordinates:
+    my $query = "select a.lend, a.rend from alignment a, cdna_link c, cluster_link l where l.cluster_id = ? and l.cdna_acc = c.cdna_acc and c.align_id = a.align_id";
+    
+    my @results = &do_sql_2D ($dbproc, $query, $cluster_id);
+    my @coords;
+    foreach my $result (@results) {
+	push (@coords, @$result);
+    }
+    @coords = sort {$a<=>$b} @coords;
+    
+    my $lend = shift @coords;
+    my $rend = pop @coords;
+    print "cluster_id: $cluster_id  $lend-$rend\n" if $SEE;
+
+    my $query = "update clusters set lend = ?, rend = ? where cluster_id = ?";
+    &RunMod($dbproc, $query, $lend, $rend, $cluster_id);
+    
+}
