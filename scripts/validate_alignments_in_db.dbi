@@ -276,9 +276,9 @@ sub validate_alignments_on_asmbl_id {
     #my $query = "select cdl.align_id, cl.length from cdna_link cdl, cluster_link cl, clusters c where c.annotdb_asmbl_id = ? and c.cluster_id = cl.cluster_id and cl.cdna_acc = cdl.cdna_acc and cdl.prog = ? and cdl.validate is null";
 	# force query to use indexes since sometimes it doesn't want to for some weird unknown reason.   (Thanks Bing-Bing Wang!)
 	my $query = "select al.align_id, al.prog, ci.length "
-	  . "from align_link al force index(align_acc_idx), "
+	  . "from align_link al, "
 	  . "cdna_info ci, "
-	  . "clusters c force index (asmbl_id_idx) "
+	  . "clusters c "
 	  . "where c.annotdb_asmbl_id = ? and c.cluster_id = al.cluster_id and al.cdna_info_id = ci.id "
       . " and al.validate is null";
 	  
