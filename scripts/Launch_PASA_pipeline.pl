@@ -419,6 +419,18 @@ if ($RUN_PIPELINE) {
     }
     
     
+    ######################################################
+    ## Optimize the database after uploading all that data
+    ######################################################
+
+    push (@cmds, { prog => "$UTILDIR/optimize_tables.dbi",
+                   params => " -c $configfile ",
+                   input => undef,
+                   output => undef,
+          } );
+    
+    
+
 	##############################
 	## done aligning transcripts.
 	##############################
