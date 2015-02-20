@@ -136,7 +136,7 @@ sub do_sql_2D {
                     return (&do_sql_2D($dbproc, $query, @values));
                 }
                 else {
-                    print STDERR "failed query: <$query>\tvalues: @values\nErrors: $DBI::errstr\n";
+                    print STDERR "\n\n====\nFailed query: <$query>\tvalues: @values\nErrors: $DBI::errstr\n====\n";
                     $QUERYFAIL = 1;
                 }
             }
