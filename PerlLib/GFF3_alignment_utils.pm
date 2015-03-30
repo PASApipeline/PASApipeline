@@ -117,7 +117,7 @@ sub index_alignment_objs {
             my $cdna_alignment_obj = new CDNA::CDNA_alignment($max_coord, $segments_aref);
             $cdna_alignment_obj->set_acc($alignment_acc);
             $cdna_alignment_obj->{genome_acc} = $scaff;
-            $cdna_alignment_obj->{gene_id} = $alignment_acc;
+            $cdna_alignment_obj->{gene_id} = $trans_to_gene_id{$alignment_acc};
             
 
             $cdna_alignment_obj->{source} = basename($gff3_alignment_file);
