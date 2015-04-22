@@ -66,7 +66,7 @@ sub index_GFF3_gene_objs {
 
         unless ($feat_type) { die "Error, $_, no feat_type: line\[$_\]"; }
         
-        unless ($feat_type =~ /^(gene|mRNA|CDS|exon)$/) { next;} 
+        unless ($feat_type =~ /^(gene|mRNA|transcript|CDS|exon)$/) { next;} 
 
         $gene_info = uri_unescape($gene_info);
         
@@ -107,7 +107,7 @@ sub index_GFF3_gene_objs {
                 
         # print "id: $id, parent: $parent\n";
         
-        if ($feat_type eq 'mRNA') {
+        if ($feat_type eq 'mRNA' || $feat_type eq 'transcript') {
             ## just get the identifier info
             $transcript_to_gene{$id} = $parent;
             next;
