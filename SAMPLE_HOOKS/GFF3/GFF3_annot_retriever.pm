@@ -24,7 +24,7 @@ sub get_annot_retriever {
         confess "Error, cannot locate gff3 file $gff3_filename";
     }
 
-    my $gene_obj_indexer = new Gene_obj_indexer( { create => "$gff3_filename.inx"} );
+    my $gene_obj_indexer = new Gene_obj_indexer( { create => "$gff3_filename.$$.inx"} );
     &GFF3_utils::index_GFF3_gene_objs($gff3_filename, $gene_obj_indexer);
     
 
