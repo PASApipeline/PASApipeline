@@ -35,8 +35,12 @@ sub index_GTF_gene_objs_from_GTF {
 
         my $gene_id = $gene_obj->{TU_feat_name};
         
+
         if ($seen{$gene_id}) {
-            confess "Error, already processed gene: $gene_id\nearlier: " . $seen{$gene_id}->toString() . " but now as: " . $gene_obj->toString();
+            confess "Error, already processed gene: $gene_id\n"
+                . " here: " . $gene_obj->toString() . "\n"
+                . " and earlier: " . $seen{$gene_id}->toString();
+            
         }
         
         $seen{$gene_id} = $gene_obj;
@@ -71,6 +75,7 @@ sub GTF_to_gene_objs {
     my %gene_id_to_name;
 
     my %gene_id_to_seq_name;
+    my %gene_id_to_gene_name;
     
     open (my $fh, $gtf_filename) or die "Error, cannot open $gtf_filename";
     while (<$fh>) {
@@ -94,24 +99,25 @@ sub GTF_to_gene_objs {
         
         $gene_id_to_source{$gene_id} = $source;
 
-        my $transcript_id;
-        if ($annot =~ /transcript_id \"([^\"]+)\"/) {
-            $transcript_id = $1;
-        }
-        else {
-            #print STDERR "\nWARNING: cannot get transcript_id from $annot of line\n$_\n";
-            next;
-        }
+        $annot =~ /transcript_id \"([^\"]+)\"/  or confess "Error, cannot get transcript_id from $annot of line\n$_";
+        my $transcript_id = $1;
 
         if ($annot =~ /name \"([^\"]+)\"/) {
             my $name = $1;
             $gene_id_to_name{$gene_id} = $name;
         }
+
+        my $gene_name = "";
+        if ($annot =~ /gene_name \"([^\"]+)\"/) {
+            $gene_name = $1;
+            $gene_id_to_gene_name{$gene_id} = $gene_name;
+        }
+        
         
 		# print "gene_id: $gene_id, transcrpt_id: $transcript_id, $type\n";
 
         if ($type eq 'transcript' || $type eq 'gene') { next; } # capture by exon coordinates
-        
+
         
         if ($type eq 'CDS' || $type eq 'stop_codon' || $type eq 'start_codon') {
             push (@{$gene_transcript_data{$seqname}->{$gene_id}->{$transcript_id}->{CDS}}, [$end5, $end3] );
@@ -120,11 +126,11 @@ sub GTF_to_gene_objs {
         elsif ($type eq "exon" || $type =~ /UTR/) {
             push (@{$gene_transcript_data{$seqname}->{$gene_id}->{$transcript_id}->{mRNA}}, [$end5, $end3] );
         }
-        elsif ($type =~ /rna/i) {
+        else {
             ## assuming noncoding feature
             push (@{$noncoding_features{$seqname}->{$type}->{$gene_id}->{$transcript_id}}, [$end5, $end3] );
         }
-        
+
     }
     close $fh;
     
@@ -188,6 +194,9 @@ sub GTF_to_gene_objs {
                     else {
                         $gene_obj->{com_name} = $transcript_id;
                     }
+                    if (my $gene_name = $gene_id_to_gene_name{$gene_id}) {
+                        $gene_obj->{gene_name} = $gene_name;
+                    }
                     $gene_obj->{asmbl_id} = $seqname;
                     $gene_obj->{source} = $source;
                     
@@ -203,7 +212,6 @@ sub GTF_to_gene_objs {
                     foreach my $other_gene_obj (@gene_objs) {
                         $template_gene_obj->add_isoform($other_gene_obj);
                     }
-                    $template_gene_obj->refine_gene_object();
                     push (@top_gene_objs, $template_gene_obj);       
                     
                     # print $template_gene_obj->toString(); 
