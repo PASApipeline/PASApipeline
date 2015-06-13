@@ -84,6 +84,8 @@ foreach my $asmbl_id (sort keys %contig_to_gene_list) {
         foreach my $isoform ($gene_obj_ref, $gene_obj_ref->get_additional_isoforms()) {
             
             my $isoform_id = $isoform->{Model_feat_name};
+            my $gene_id = $isoform->{TU_feat_name};
+            
             
             my $seq = "";
 
@@ -105,7 +107,16 @@ foreach my $asmbl_id (sort keys %contig_to_gene_list) {
             
             my $com_name = $isoform->{com_name} || "";
             
-            print ">$isoform_id\n$seq\n";
+            my $gene_name = $isoform->{gene_name};
+            my $header = ">$isoform_id $gene_id";
+            if ($gene_name) {
+                $header .= " $gene_name ";
+            }
+            if ($com_name) {
+                $gene_name .= " $com_name";
+            }
+            
+            print "$header\n$seq\n";
         }
     }
 }
