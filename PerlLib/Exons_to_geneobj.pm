@@ -27,9 +27,13 @@ sub create_gene_obj {
     ## exons_ref should be end5's keyed to end3's for all exons.
     my ($gene_struct_mod, $cdna_seq)  = &get_cdna_seq ($exons_href, $sequence_ref);
     
+    
+    
     my $cdna_seq_length = length $cdna_seq;
     my $long_orf_obj = new Longest_orf();
     
+    #print STDERR "CDNA_SEQ: [$cdna_seq], length: $cdna_seq_length\n";
+
     # establish long orf finding parameters.
     $long_orf_obj->forward_strand_only();
     if ($partial_info_href->{"5prime"}) {
@@ -43,24 +47,28 @@ sub create_gene_obj {
     $long_orf_obj->get_longest_orf($cdna_seq);
     my ($end5, $end3) = $long_orf_obj->get_end5_end3(); 
     
-    print "CDS: $end5, $end3\n" if $SEE;
+    #print STDERR "***   CDS: $end5, $end3\n";# if $SEE;
     my $gene_obj = &create_gene ($gene_struct_mod, $end5, $end3);
+    
+    #print STDERR $gene_obj->toString();
     
     $gene_obj->create_all_sequence_types($sequence_ref);
     my $protein = $gene_obj->get_protein_sequence();
-    
+    my $recons_cds = $gene_obj->get_CDS_sequence();
+    #print STDERR "reconsCDS: $recons_cds\n";
+
     ## check partiality
     if ($protein) { # it is possible that we won't have any cds structure
         if ($protein !~ /^M/) {
             # this would require that we allowed for 5prime partials
             unless ($partial_info_href->{"5prime"}) {
-                confess "Error, have 5' partial protein when 5prime partials weren't allowed!\n$protein\n";
+                confess "Error, have 5' partial protein when 5prime partials weren't allowed!\n$protein\n$cdna_seq\n";
             }
         }
         if ($protein !~ /\*$/) {
             # this would require that we allowed for 3prime partials
             unless ($partial_info_href->{"3prime"}) {
-                confess "Error, have 3' partial protein when 3prime partials weren't allowed!\n$protein\n";
+                confess "Error, have 3' partial protein when 3prime partials weren't allowed!\n$protein\n$cdna_seq\n";
             }
         }
    
@@ -80,6 +88,9 @@ sub create_gene_obj {
 ####
 sub get_cdna_seq {
     my ($gene_struct, $assembly_seq_ref) = @_;
+    
+    my $seq_length = length($$assembly_seq_ref);
+
     my (@end5s) = sort {$a<=>$b} keys %$gene_struct;
     my $strand = "?";
     foreach my $end5 (@end5s) {
@@ -90,7 +101,7 @@ sub get_cdna_seq {
     }
     if ($strand eq "?") {
         print Dumper ($gene_struct);
-        die "ERROR: I can't determine what orientation the cDNA is in!\n";
+        confess "ERROR: I can't determine what orientation the cDNA is in!\n";
     }
     print NOTES "strand: $strand\n";
     my $cdna_seq;
@@ -99,6 +110,11 @@ sub get_cdna_seq {
     foreach my $end5 (@end5s) {
         #print $end5;
         my $end3 = $gene_struct->{$end5};
+        
+        if ($end5 > $seq_length || $end3 > $seq_length) {
+            confess "Error, coords are out of bounds of sequence length: $seq_length:\n" . Dumper(\$gene_struct);
+        }
+        
         my ($coord1, $coord2) = sort {$a<=>$b} ($end5, $end3);
         my $exon_seq = substr ($$assembly_seq_ref, $coord1 - 1, ($coord2 - $coord1 + 1));
         $cdna_seq .= $exon_seq;
@@ -114,8 +130,12 @@ sub get_cdna_seq {
 ####
 sub create_gene {
     my ($gene_struct_mod, $cds_pointer_lend, $cds_pointer_rend) = @_;
+    
+    #use Data::Dumper;
+    #print STDERR Dumper($gene_struct_mod) . "CDS: $cds_pointer_lend, $cds_pointer_rend\n";
+        
     my $strand = $gene_struct_mod->{strand};
-    my @exons = @{$gene_struct_mod->{exons}};
+    my @exons = sort {$a->[0]<=>$b->[0]} @{$gene_struct_mod->{exons}};
     if ($strand eq '-') {
         @exons = reverse (@exons);
     }
@@ -123,12 +143,13 @@ sub create_gene {
     my $mRNA_pointer_rend = 0;
     my $gene_obj = new Gene_obj();
     foreach my $coordset_ref (@exons) {
-        my ($coord1, $coord2) = @$coordset_ref;
+        my ($coord1, $coord2) = sort {$a<=>$b} @$coordset_ref;
         my ($end5, $end3) = ($strand eq '+') ? ($coord1, $coord2) : ($coord2, $coord1);
         my $exon_obj = new mRNA_exon_obj($end5, $end3);
         my $exon_length = ($coord2 - $coord1 + 1);
         $mRNA_pointer_rend = $mRNA_pointer_lend + $exon_length - 1;
         ## see if cds is within current cDNA range.
+        #print STDERR "mRNA coords: $mRNA_pointer_lend-$mRNA_pointer_rend\n";
         if ( $cds_pointer_rend >= $mRNA_pointer_lend && $cds_pointer_lend <= $mRNA_pointer_rend) { #overlap
             my $diff = $cds_pointer_lend - $mRNA_pointer_lend;
             my $delta_lend = ($diff >0) ? $diff : 0;

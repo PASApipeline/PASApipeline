@@ -16,7 +16,10 @@ Using the backticks instead of single quotes in the db name pattern is mandatory
 ------
 
 create user 'pasa_access' identified by 'pasa_access';
+create user 'pasa_write' identified by '...';
+
 grant select on *.* to 'pasa_access@%';
 grant all on *.* to 'pasa_write@%';
 
+grant select on *.* to 'pasa_access'@'localhost' identified by 'pasa_access';
 grant all on *.* to 'pasa_write'@'localhost' identified by '...';
