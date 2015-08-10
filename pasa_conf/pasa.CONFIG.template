@@ -6,6 +6,7 @@
 
 # server actively running MySQL
 MYSQLSERVER=localhost # or server.com
+# Pass socket connections through Perl DBI syntax e.g. MYSQLSERVER=mysql_socket=/tmp/mysql.sock
 
 # read-write username and password
 MYSQL_RW_USER=xxxxxx
