@@ -73,7 +73,17 @@ if ($mysql_server=~s/:(\d+)$//){
 	# if $mysql_server includes :port then remove and add as port
 	$mysql_options .= " --port=$1";
 }
-$mysql_options .= " -h$mysql_server";
+
+# check if mysql server is configured with host or socket location i.e.
+# the conf.txt contains MYSQLSERVER=mysql_socket=<path to socket file>
+if (index($mysql_server, "mysql_socket") != -1) {
+	#Drop the msyql_socket= from the string
+	#The regex drop everything before and including the '=' character
+	$mysql_server =~ s/^\s*\S+=//;
+	$mysql_options .= " -S$mysql_server";
+} else {
+	$mysql_options .= " -h$mysql_server";
+}
 
 
 ## Populate the database structure and static data.
