@@ -355,6 +355,9 @@ sub get_TDN_component {
         # trinity de novo 2.0.0+ style
         $component = $1;
     }
+    elsif ($cdna_acc =~ /^(TRINITY\S+_c\d+_g\d+)/) {
+        $component = $1;
+    }
     else {
         confess "Error, cannot extract component info from trinity de novo assembly: $cdna_acc";
     }
