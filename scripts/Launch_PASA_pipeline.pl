@@ -133,7 +133,7 @@ my $usage =  <<_EOH_;
 #
 #
 # // Jump-starting or prematurely terminating
-# -x               flag, print cmds only, don\'t process anything. (useful to get indices for -x or -e opts below)
+# -x               flag, print cmds only, don\'t process anything. (useful to get indices for -s or -e opts below)
 # -s <int>         pipeline index to start running at (avoid rerunning searches). 
 # -e <int>         pipeline index where to stop running, and do not execute this entry. 
 #
