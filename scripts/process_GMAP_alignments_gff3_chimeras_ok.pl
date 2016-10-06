@@ -88,7 +88,7 @@ main: {
 
 	my $cmd = "gmap -D $genomeBaseDir -d $genomeDir $transcriptDB -f $format -n $num_gmap_top_hits -x 50 -t $CPU -B 5 ";
 	if ($max_intron) {
-		$cmd .= " --intronlength=$max_intron ";
+		 $cmd .= "--max-intronlength-middle=".$max_intron." --max-intronlength-ends=".$max_intron;
 	}
 	
 	&process_cmd($cmd);
