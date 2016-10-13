@@ -55,7 +55,7 @@ sub index_GFF3_gene_objs {
 
         my @x = split (/\t/);
 
-		unless (scalar @x >= 9) {
+		unless (@x == 9) {
 			print STDERR "-ignoring line $_\n";
 			next;
 		}
