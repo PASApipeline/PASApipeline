@@ -24,7 +24,8 @@ foreach my $asmbl_id (sort keys %$contig_to_gene_list_href) {
     
     foreach my $gene_id (@gene_ids) {
         my $gene_obj_ref = $gene_obj_indexer_href->{$gene_id};
-		
+
+        print "// $asmbl_id, gene: $gene_id\n";
         print $gene_obj_ref->toString();
 
     }

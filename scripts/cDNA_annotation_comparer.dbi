@@ -1444,7 +1444,7 @@ sub get_annotated_gene_models_on_contig {
     my @models;
     
     # get the annotated working models for that chromosome:
-    my $query = "select a.gene_id, min(a.lend), max(a.rend), a.orient from annotation_store a where a.annotdb_asmbl_id = ? and annotation_version = ? group by a.gene_id\n";
+    my $query = "select a.gene_id, min(a.lend), max(a.rend), a.orient from annotation_store a where a.annotdb_asmbl_id = ? and annotation_version = ? group by a.gene_id, a.orient\n";
     my @results = &Mysql_connect::do_sql_2D($dbproc, $query, $asmbl_id, $annot_version);
     
     foreach my $result (@results) {

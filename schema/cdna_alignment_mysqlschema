@@ -110,7 +110,7 @@ CREATE TABLE alt_splice_tokens (
 
 CREATE TABLE annotation_admin (
   version_id int(11) NOT NULL auto_increment,
-  date datetime NOT NULL default '0000-00-00 00:00:00',
+  date datetime NOT NULL,
   PRIMARY KEY  (version_id)
 ) ;
 
@@ -120,7 +120,7 @@ CREATE TABLE annotation_admin (
 
 CREATE TABLE annotation_compare (
   compare_id int(11) NOT NULL auto_increment,
-  date datetime NOT NULL default '0000-00-00 00:00:00',
+  date datetime NOT NULL,
   annotation_version int(10) unsigned NOT NULL default '0',
   PRIMARY KEY  (compare_id)
 ) ;
