@@ -14,7 +14,7 @@ use ConfigFileReader;
 
 use vars qw ($opt_c $opt_p $opt_d $opt_h $opt_S $opt_r);
 
-&getopts ('c:p:S:r');
+&getopts ('c:p:S:rd');
 
 
 $|=1;
@@ -88,6 +88,7 @@ if (index($mysql_server, "mysql_socket") != -1) {
 
 ## Populate the database structure and static data.
 my $cmd = "$mysql_exec $mysql_options -D$mysql_db -e 'source $schemafile'";
+print STDERR "CMD: $cmd\n" if $DEBUG;
 my $result = system ($cmd);
 
 die "CMD: $cmd failed.\n" if $result;
