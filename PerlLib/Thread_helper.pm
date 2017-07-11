@@ -202,7 +202,10 @@ sub wait_for_all_threads_to_complete {
             $self->_add_error_thread($thread);
             $status = "ERROR";
         }
-        $self->report_thread_info($thread_id, $status);
+        $self->{thread_id_timing}->{end}->{$thread_id} = time();
+        if ($THREAD_MONITORING) { 
+            $self->report_thread_info($thread_id, $status);
+        }
     }
     
     @{$self->{current_threads}} = (); # clear them out.

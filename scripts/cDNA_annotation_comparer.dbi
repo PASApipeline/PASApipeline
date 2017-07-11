@@ -34,6 +34,9 @@ use vars qw ($opt_h $opt_p $DEBUG $opt_M $opt_G $MIN_PERCENT_OVERLAP $MIN_PERCEN
              $STOMP_HIGH_PERCENTAGE_OVERLAPPING_GENE $MIN_PERCENT_ALIGN_LENGTH 
              $MIN_PERCENT_LENGTH_FL_COMPARE $TRUST_FL_STATUS $CLUSTER_ID_ONLY);
 
+
+my $RESTRICT_SINGLE_CONTIG = undef;
+
 my $CPU = 2;
 
 &GetOptions ('M=s' => \$opt_M,
@@ -62,6 +65,8 @@ my $CPU = 2;
              ## hidden opts for debugging purposes
              'CLUSTER_ID_ONLY=i' => \$CLUSTER_ID_ONLY,  # the only cluster ID to process.
 
+             'RESTRICT_SINGLE_CONTIG=s' => \$RESTRICT_SINGLE_CONTIG,
+             
 );
 
 
@@ -139,6 +144,12 @@ Script assembles the predefined clusters of cDNAs/ESTs, one annotationdb asmbl_i
 _EOH_
     
     ;
+
+###  Hidden options
+###
+## --RESTRICT_SINGLE_CONTIG <string>        genomic contig to restrict analysis to
+###
+
 
 if ($opt_h) {die $usage;}
 
@@ -291,7 +302,9 @@ main: {
     print "### There are $num_contigs genomic contigs which will be examined.\n";
     foreach my $result (@results) {
         my $asmbl_id = $result->[0];
-        
+
+        if ($RESTRICT_SINGLE_CONTIG && $asmbl_id ne $RESTRICT_SINGLE_CONTIG) { next; }
+                
         $thread_helper->wait_for_open_thread();
         my $thread = threads->create('process_contig', $asmbl_id);
 
@@ -308,7 +321,17 @@ main: {
     if (@failures) {
         ## examine them...   these are the same threads created above, use use the threads api to access info about them
         ## such as error messages
-        die "Error, there were " . scalar(@failures) . " threads (contig jobs) that failed...  See error messages above in order to troubleshoot further";
+        
+        print STDERR "Error, there were " . scalar(@failures) . " threads (contig jobs) that failed...  See error messages above in order to troubleshoot further";
+
+        foreach my $failed_thread (@failures) {
+            my $thread_id = $failed_thread->tid;
+            print STDERR "Failed thread ($thread_id) info:\n"; 
+            $thread_helper->report_thread_info($thread_id, "FAILED");
+        }
+        
+        exit(1);
+        
     }
     else {
         ## all good!
