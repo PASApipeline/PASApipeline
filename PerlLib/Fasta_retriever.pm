@@ -64,7 +64,7 @@ sub get_seq {
     my $self = shift;
     my $acc = shift;
 
-    unless ($acc) {
+    unless (defined $acc) {
         confess "Error, need acc as param";
     }
 

@@ -101,22 +101,27 @@ foreach my $asmbl_id (sort keys %contig_to_gene_list) {
             elsif ($seq_type eq "gene") {
                 $seq = $isoform->get_gene_sequence();
             }
-            
-            $seq =~ s/(\S{60})/$1\n/g; # make fasta format
-            chomp $seq;
-            
-            my $com_name = $isoform->{com_name} || "";
-            
-            my $gene_name = $isoform->{gene_name};
-            my $header = ">$isoform_id $gene_id";
-            if ($gene_name) {
-                $header .= " $gene_name ";
+
+            if ($seq) {
+                $seq =~ s/(\S{60})/$1\n/g; # make fasta format
+                chomp $seq;
+                
+                my $com_name = $isoform->{com_name} || "";
+                
+                my $gene_name = $isoform->{gene_name};
+                my $header = ">$isoform_id $gene_id";
+                if ($gene_name) {
+                    $header .= " $gene_name ";
+                }
+                if ($com_name) {
+                    $gene_name .= " $com_name";
+                }
+                
+                print "$header\n$seq\n";
             }
-            if ($com_name) {
-                $gene_name .= " $com_name";
+            else {
+                print STDERR "sorry, no seq for $isoform_id\n";
             }
-            
-            print "$header\n$seq\n";
         }
     }
 }
