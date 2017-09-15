@@ -15,8 +15,11 @@ sub get_GFF_line {
     my $input_href = shift;
 
     ## field 1: Sequence Identifier
-    my $seq_id = $input_href->{seq_id} or confess "need seq_id " . Dumper($input_href);
-
+    my $seq_id = $input_href->{seq_id};
+    unless (defined $seq_id) {
+        confess "need seq_id " . Dumper($input_href);
+    }
+    
     ## field 2: Source (default '.')
     my $source = $input_href->{source} || '.';
 
