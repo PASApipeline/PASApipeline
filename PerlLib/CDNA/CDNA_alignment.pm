@@ -826,8 +826,14 @@ sub to_GTF_format {
     my %preferences = @_;
     
 
-    my $seq_id = $preferences{seq_id} || $self->{genome_acc} || confess "Need seq_id in preferences, or set genome_acc attribute of obj";
-    
+    my $seq_id = $preferences{seq_id};
+    unless (defined $seq_id) {
+        $seq_id = $self->{genome_acc};
+    }
+    unless (defined $seq_id) {
+        confess "Need seq_id in preferences, or set genome_acc attribute of obj";
+    }
+        
 	my $gene_id = $preferences{gene_id} || confess "Need gene_id in preferences";
 	my $transcript_id = $preferences{transcript_id} || $self->get_acc();
     	
