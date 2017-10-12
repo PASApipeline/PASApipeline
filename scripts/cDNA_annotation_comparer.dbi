@@ -3248,8 +3248,18 @@ sub set_status_to_split_gene { ## Should join this function with the status upda
     my ($dbproc, $gene_id, $annotated_model_feat_name, $cdna_list_aref, $valid_update, $seq_ref) = @_;
     
     my $new_status_id = ($valid_update) ? 40 : 41;
+
+    my $cdna_counter = 0;
+
+    my $original_gene_id = $gene_id;
+    my $original_model_feat_name = $annotated_model_feat_name;
+
+
+    my $is_novel_flag = 0;
     
     foreach my $cdna_acc (@$cdna_list_aref) {
+
+        $cdna_counter++;
         
         my $alignment = &Ath1_cdnas::get_alignment_obj_via_align_acc ($dbproc, $cdna_acc, $seq_ref);
         my $gene_obj = $alignment->get_gene_obj_via_alignment(); ## replace current updated gene version with the FL-cDNA inferred gene, over-write any previous inferred update
@@ -3277,8 +3287,20 @@ sub set_status_to_split_gene { ## Should join this function with the status upda
         $query = "update status_link set status_id = ?, comment = ? where status_link_id = ?";
         &RunMod($dbproc, $query, $new_status_id, $comment, $status_link_id);
         
+        if ($valid_update && $cdna_counter > 1) {
+            
+            lock($NOVEL_GENE_COUNTER);
+            $NOVEL_GENE_COUNTER++;
+            $gene_id = "split_gene_${original_gene_id}-g${NOVEL_GENE_COUNTER}";
+            
+            lock($NOVEL_MODEL_COUNTER);
+            $NOVEL_MODEL_COUNTER++;
+            $annotated_model_feat_name = "split_gene_${original_gene_id}-${original_model_feat_name}-m${NOVEL_MODEL_COUNTER}";
+            $is_novel_flag = 1;
+        }
+        
         ## change annot update to invalid:
-        $query = "update annotation_updates set gene_id = ?, model_id = ?, alt_splice_flag = 0, is_valid = $valid_update, is_novel_flag = 0, have_after = 1, after_gene_obj = ? where update_id = $update_id ";
+        $query = "update annotation_updates set gene_id = ?, model_id = ?, alt_splice_flag = 0, is_valid = $valid_update, is_novel_flag = 1, have_after = 1, after_gene_obj = ? where update_id = $update_id ";
         &RunMod($dbproc, $query, $gene_id, $annotated_model_feat_name, nfreeze($gene_obj));
     }
 }
