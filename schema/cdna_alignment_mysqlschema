@@ -171,7 +171,7 @@ CREATE TABLE annotation_store (
 
 CREATE TABLE annotation_updates (
   update_id int(11) NOT NULL auto_increment,
-  gene_id varchar(200) default NULL,
+  gene_id varchar(1000) default NULL,
   model_id varchar(200) default NULL,
   alt_splice_flag tinyint(1) unsigned NOT NULL default '0',
   before_gene_obj mediumblob,
