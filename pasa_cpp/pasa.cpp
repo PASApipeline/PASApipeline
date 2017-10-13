@@ -34,7 +34,7 @@ int main (int argc, char* argv[]) {
   
   char* inputFile = argv[1];
   ifstream fileReader (inputFile);
-  if (fileReader == 0) { // couldn't open file
+  if (! fileReader.is_open()) {
     cerr << "Could not open " << inputFile << endl;
     exit(1);
   }
