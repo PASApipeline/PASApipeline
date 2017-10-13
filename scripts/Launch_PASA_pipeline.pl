@@ -4,9 +4,8 @@ use strict;
 use warnings;
 use Time::localtime;
 use FindBin;
-use lib ($FindBin::Bin);
+use lib ("$FindBin::Bin/../PerlLib");
 use Pasa_init;
-use Pasa_conf;
 use ConfigFileReader;
 use Getopt::Long qw(:config no_ignore_case bundling pass_through);
 use Cwd;
@@ -20,6 +19,7 @@ my ($opt_c, $opt_C, $opt_r, $opt_R, $opt_A, $opt_g, $opt_t, $opt_f, $opt_T, $opt
     $ALIGNED_IS_TRANSCRIBED_ORIENT,
 	$ANNOTS_GFF3, $opt_L, $STRINGENT_ALIGNMENT_OVERLAP, $GENE_OVERLAP,
     $SIM4_CHASER, $genetic_code, $TRANSDECODER, @PRIMARY_ALIGNERS,
+    $PASACONF,
     );
 
 
@@ -65,6 +65,8 @@ my $CUFFLINKS_GTF;
               
               'cufflinks_gtf=s' => \$CUFFLINKS_GTF,
 
+              'PASACONF=s' => \$PASACONF,
+              
 
 			  ## RNA-Seq options
               'transcribed_is_aligned_orient' => \$ALIGNED_IS_TRANSCRIBED_ORIENT,
@@ -103,7 +105,7 @@ my $usage =  <<_EOH_;
 #   * indicates required
 #
 #
-# -c * <filename>  configuration file
+# -c * <filename>  alignment assembly configuration file
 #
 # // spliced alignment settings
 # --ALIGNERS <string>   aligners (available options include: gmap, blat... can run both using 'gmap,blat')
@@ -141,6 +143,11 @@ my $usage =  <<_EOH_;
 # Misc:
 # --TRANSDECODER   flag, run transdecoder to identify candidate full-length coding transcripts
 # --CPU <int>      multithreading (default: $CPU)
+# --PASACONF <string> path to a user-defined pasa.conf file containing mysql connection info
+#                      (used in place of the \$PASAHOME/pasa_conf/conf.txt file)
+#                      (and allows for users to have their own unique mysql connection info)
+#                      (instead of the pasa role account)
+#
 # -d               flag, Debug 
 # -h               flag, print this option menu and quit
 #
@@ -185,6 +192,14 @@ _EOH_
 
 
 if ($opt_h) {die $usage;}
+
+if ($PASACONF) {
+    $ENV{PASACONF} = $PASACONF;
+}
+
+require "Pasa_conf.pm";
+
+
 my $DEBUG = $opt_d;
 
 my $full_length_cdna_listing = $opt_f || "NULL"; ## NULL filename results in graceful exit, used when nothing exists to load.

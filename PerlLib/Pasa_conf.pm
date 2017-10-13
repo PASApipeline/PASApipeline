@@ -14,6 +14,12 @@ BEGIN {
     }
     
     my $confFile = "$ENV{PASAHOME}/pasa_conf/conf.txt";
+
+    ## allow users to leverage their own conf file:
+    if ($ENV{PASACONF}) {
+        $confFile = $ENV{PASACONF};
+    }
+    
     unless (-s $confFile) {
         die "ERROR, cannot find conf file $confFile\n";
     }
