@@ -97,7 +97,7 @@ main: {
         my $query = "select c.annotdb_asmbl_id, al.lend, al.rend, al.align_acc, al.align_id, al.spliced_orient" 
             . " from align_link al, clusters c, cdna_info ci "
             . " where al.cluster_id = c.cluster_id "
-            #. " and c.annotdb_asmbl_id = \"$scaffold\" "
+            #. " and c.annotdb_asmbl_id = '$scaffold' "
             . " and al.cdna_info_id = ci.id "
             . " and ci.is_assembly = 1 "
             . " and al.validate = 1 "
@@ -419,7 +419,7 @@ sub maps_to_PASA_asm {
             
             ## get subcluster
             my $acc = $pasa_obj->get_acc();
-            my $query = "select subcluster_id from subcluster_link where cdna_acc = \"$acc\"";
+            my $query = "select subcluster_id from subcluster_link where cdna_acc = '$acc'";
             my $subcluster_id = &Mysql_connect::very_first_result_sql($dbproc, $query);
             print STDERR "\tSUBCLUSTER = $subcluster_id\n" if $DEBUG;
             return($subcluster_id);
@@ -444,7 +444,7 @@ sub get_overlapping_pasa_alignments {
     #my $query = "select al.align_id "
 	#    . " from align_link al, clusters c, cdna_info ci "
     #    . " where al.cluster_id = c.cluster_id "
-    #    . " and c.annotdb_asmbl_id = \"$scaffold\" "
+    #    . " and c.annotdb_asmbl_id = '$scaffold' "
     #    . " and al.cdna_info_id = ci.id "
     #    . " and ci.is_assembly = 1 "
     #    . " and al.validate = 1 "

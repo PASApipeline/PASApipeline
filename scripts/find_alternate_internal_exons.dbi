@@ -25,7 +25,7 @@ my $usage =  <<_EOH_;
 Script loads the alignment textual representation for the pasa assemblies.
 
 ############################# Options ###############################
-# -M Mysql database name
+# -M database name
 # -G genome_seq fasta db
 # -d Debug
 # 
@@ -218,7 +218,7 @@ sub link_alt_splice {
         my ($entry_A, $entry_B) = @$pair_aref;
         
         eval {
-            my $query = "insert alt_splice_link (sv_id_A, sv_id_B) values (?,?)";
+            my $query = "insert into alt_splice_link (sv_id_A, sv_id_B) values (?,?)";
             &RunMod($dbproc, $query, $entry_A, $entry_B);
         };
 

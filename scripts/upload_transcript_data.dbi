@@ -22,7 +22,7 @@ my $usage =  <<_EOH_;
 
 ############################# Options ###############################
 #
-# -M Mysql database 
+# -M database 
 # -t cdna_sequence_db
 # -f fl_accs list file
 # -T Trinity Denovo accs list file
@@ -37,7 +37,7 @@ _EOH_
     ;
 
 if ($opt_h) {die $usage;}
-my $MYSQLdb = $opt_M or die "Must indicate MySQL database name.\n\n$usage";
+my $MYSQLdb = $opt_M or die "Must indicate database name.\n\n$usage";
 
 my $DEBUG = $opt_d;
 
@@ -93,7 +93,7 @@ while (my $seqObj = $fasta_reader->next()) {
     my $fl_flag = $FL{$acc} || 0;
     my $TDN_flag = $TDN{$acc} || 0;
 
-    my $query = qq { insert cdna_info (cdna_acc, is_assembly, is_fli, is_TDN, length, header) values (?,?,?,?,?,?) };
+    my $query = qq { insert into cdna_info (cdna_acc, is_assembly, is_fli, is_TDN, length, header) values (?,?,?,?,?,?) };
     &RunMod($dbproc, $query, $acc, 0, $fl_flag, $TDN_flag, $seq_length, $header);
     
     if ($fl_flag) {

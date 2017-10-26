@@ -23,7 +23,7 @@ Script loads a MySQL db with the assemblies in the /assembly directory.
 
 ############################# Options ###############################
 #
-# -M Mysql database name
+# -M database name
 # 
 # -d Debug
 # 
@@ -107,7 +107,7 @@ foreach my $persobjfile (@assembly_files) {
 
     my $all_asmbls_aref = retrieve ($persobjfile);
     
-    my $query = "select max(align_id) from align_link where align_acc like \"asmbl%\"";
+    my $query = "select max(align_id) from align_link where align_acc like 'asmbl%'";
     my $result_ref = &first_result_sql($dbproc, $query);
     my $max_align_id = $result_ref->[0];
     my $asmbl = 0;
@@ -149,13 +149,13 @@ foreach my $persobjfile (@assembly_files) {
         
         ## insert asmbl_link
         foreach my $cdna (@cdnas) {
-            my $query = "insert asmbl_link (asmbl_acc, cdna_acc) values (?,?)";
+            my $query = "insert into asmbl_link (asmbl_acc, cdna_acc) values (?,?)";
             &RunMod($dbproc, $query, $asmbl_identifier, $cdna);
         }
         
         
         ## insert row in cluster_link table
-        my $query = "insert cdna_info (cdna_acc, is_assembly) values (?,?)";
+        my $query = "insert into cdna_info (cdna_acc, is_assembly) values (?,?)";
         &RunMod($dbproc, $query, $asmbl_identifier, 1);
         
         my $cdna_id = &get_last_insert_id($dbproc);
@@ -166,7 +166,7 @@ foreach my $persobjfile (@assembly_files) {
         my ($lend, $rend) = $assembly->get_coords();
         
         ## insert row in cdna_link
-        my $query = "insert align_link (align_acc, cdna_info_id, cluster_id, prog, validate, aligned_orient, spliced_orient, num_segments, lend, rend) values (?,?,?,?,?,?,?,?,?,?)";
+        my $query = "insert into align_link (align_acc, cdna_info_id, cluster_id, prog, validate, aligned_orient, spliced_orient, num_segments, lend, rend) values (?,?,?,?,?,?,?,?,?,?)";
         &RunMod($dbproc, $query, $asmbl_identifier, $cdna_id, $cluster_id, "assembler", 1, $aligned_orient, $spliced_orient, $num_segments, $lend, $rend);
         
         my $align_id = &get_last_insert_id($dbproc);
@@ -174,7 +174,7 @@ foreach my $persobjfile (@assembly_files) {
         foreach my $segment (@segments) {
             my ($lend, $rend) = sort {$a<=>$b} $segment->get_coords();
             my ($mlend, $mrend) = sort {$a<=>$b} $segment->get_mcoords();
-            my $query = "insert alignment (align_id, lend, rend, mlend, mrend, orient) values (?,?,?,?,?,?)";
+            my $query = "insert into alignment (align_id, lend, rend, mlend, mrend, orient) values (?,?,?,?,?,?)";
             &RunMod($dbproc, $query, $align_id, $lend, $rend, $mlend, $mrend, $aligned_orient);
             
         }

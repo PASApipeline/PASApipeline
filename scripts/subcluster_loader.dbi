@@ -45,7 +45,7 @@ my $usage =  <<_EOH_;
     
 ############################# Options ###############################
 #
-# -M Mysql database name
+# -M database name
 # 
 # -d Debug
 # 
@@ -78,12 +78,12 @@ while (<STDIN>) {
     } elsif (/fli-containing:\s(\S+)/) {
         my $acc = $1;
         print "update $acc to fl status.\n" if $SEE;
-        my $query = "update cdna_info set is_fli = 1 where cdna_acc = \"$acc\"\n";
+        my $query = "update cdna_info set is_fli = 1 where cdna_acc = '$acc'\n";
         &RunMod($dbproc, $query);
     } elsif (/sub-cluster:\s(.*)$/) {
         my $acc_list = $1;
         my @accs = split (/\s+/, $acc_list);
-        my $query = "insert subclusters (cluster_id) values ($cluster)";
+        my $query = "insert into subclusters (cluster_id) values ($cluster)";
         &RunMod($dbproc, $query);
         my $query = "select max(subcluster_id) from subclusters where cluster_id = $cluster";
         my $result_aref = &first_result_sql($dbproc, $query);
@@ -95,7 +95,7 @@ while (<STDIN>) {
 
         foreach my $acc (@accs) {
             print "\t$acc\n" if $SEE;
-            my $query = "insert subcluster_link (subcluster_id, cdna_acc) values ($subcluster_id, \"$acc\")";
+            my $query = "insert into subcluster_link (subcluster_id, cdna_acc) values ($subcluster_id, '$acc')";
             &RunMod($dbproc, $query);
         }
         

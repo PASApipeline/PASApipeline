@@ -9,6 +9,7 @@ use strict;
 use DBI;
 use Ath1_cdnas;
 use Getopt::Std;
+use File::Basename qw(fileparse);
 
 use vars qw ($opt_M $opt_f $opt_d $opt_h $opt_v $opt_P);
 
@@ -24,7 +25,7 @@ my $usage =  <<_EOH_;
 
 ############################# Options ###############################
 #
-# -M Mysql database name
+# -M database name
 #
 # -P prefix to output files (default "\${mysql_db}")
 # -d Debug
@@ -58,7 +59,7 @@ my $MYSQLserver = &Pasa_conf::getParam("MYSQLSERVER");
 my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
 my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
 
-my $prefix = $opt_P || $MYSQLdb;
+my $prefix = $opt_P || fileparse($MYSQLdb);
 
 
 my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);

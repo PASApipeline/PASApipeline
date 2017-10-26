@@ -680,7 +680,7 @@ sub nucs_in_common {
 sub insert_alt_splice_FL_compare {
     my ($template_acc, $classification, $lend, $rend, $orient, $type) = @_;
     
-    my $query = qq { insert alt_splice_FL_compare (template_cdna_acc, classification, lend, rend, orient, type) 
+    my $query = qq { insert into alt_splice_FL_compare (template_cdna_acc, classification, lend, rend, orient, type) 
                          values (?,?,?,?,?,?)
                      };
     &RunMod($dbproc, $query, $template_acc, $classification, $lend, $rend, $orient, $type);
@@ -690,7 +690,7 @@ sub insert_alt_splice_FL_compare {
 sub insert_alt_splice_FL_to_FL_compare {
     my ($template_acc, $other_acc, $diff_in_cds, $same_frame_exists, $frame_change, $num_variations, $percent_prot_length) = @_;
 
-    my $query = qq {insert alt_splice_FL_to_FL_compare ( template_acc, other_acc, diff_in_cds, same_frame_exists, frame_change, num_variations, percent_prot_length)
+    my $query = qq {insert into alt_splice_FL_to_FL_compare ( template_acc, other_acc, diff_in_cds, same_frame_exists, frame_change, num_variations, percent_prot_length)
                         values (?,?,?,?,?,?,?)
                     };
 
@@ -704,7 +704,7 @@ sub insert_alt_splice_FL_to_FL_compare {
 ####
 sub clear_tables {
     foreach my $table ("alt_splice_FL_compare", "alt_splice_FL_to_FL_compare") {
-        my $query = "TRUNCATE TABLE $table";
+        my $query = ($dbproc->{dbh}->{Driver}->{Name} eq 'SQLite') ? "DELETE FROM $table" : "TRUNCATE TABLE $table";
         &RunMod($dbproc, $query);
     }
 }

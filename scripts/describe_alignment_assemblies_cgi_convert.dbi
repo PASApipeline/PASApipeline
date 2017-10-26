@@ -23,7 +23,7 @@ my $usage =  <<_EOH_;
 
 ############################# Options ###############################
 #
-# -M Mysql database name
+# -M database name
 # -d Debug
 # 
 # -h print this option menu and quit

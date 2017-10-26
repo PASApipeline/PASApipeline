@@ -498,7 +498,7 @@ sub load_CDNA_alignment_obj {
         
     
     ## insert row in cdna_link
-    my $query = "insert align_link (align_acc, cdna_info_id, prog, validate, aligned_orient, spliced_orient, num_segments) values (?,?,?,?,?,?,?)";
+    my $query = "insert into align_link (align_acc, cdna_info_id, prog, validate, aligned_orient, spliced_orient, num_segments) values (?,?,?,?,?,?,?)";
     &RunMod($dbproc, 
             $query, 
             $alignment->get_acc(),
@@ -515,7 +515,7 @@ sub load_CDNA_alignment_obj {
     foreach my $segment (@segments) {
         my ($lend, $rend) = sort {$a<=>$b} $segment->get_coords();
         my ($mlend, $mrend) = sort {$a<=>$b} $segment->get_mcoords();
-        my $query = "insert alignment (align_id, lend, rend, mlend, mrend, orient, per_id) values (?,?,?,?,?,?,?)";
+        my $query = "insert into alignment (align_id, lend, rend, mlend, mrend, orient, per_id) values (?,?,?,?,?,?,?)";
         &RunMod($dbproc, $query, $align_id, $lend, $rend, $mlend, $mrend, $alignment->get_aligned_orientation(), $segment->get_per_id());
         
     }

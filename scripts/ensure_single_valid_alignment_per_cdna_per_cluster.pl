@@ -20,7 +20,7 @@ my $usage = <<__EOUSAGE__;
 
 ###############################################################################
 #
-# -M <string>     mysql database name
+# -M <string>     database name
 #
 #
 ###############################################################################
@@ -45,8 +45,10 @@ my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
 
 my ($dbproc) = &connect_to_db($mysql_server,$mysql_db,$user,$password);
 
-my $query = "use $mysql_db";
-&RunMod($dbproc, $query);
+if ($dbproc->{dbh}->{Driver}->{Name} ne 'SQLite') {
+    my $query = "use $mysql_db";
+    &RunMod($dbproc, $query);
+}
 
 my $query = "select ci.cdna_acc, a.cluster_id, a.cdna_info_id, a.align_id, a.align_acc, a.prog, a.score "
     . " from cdna_info ci, align_link a "
@@ -74,6 +76,8 @@ foreach my $result (@results) {
     });
     
 }
+
+$dbproc->{dbh}->begin_work;
 
 foreach my $collection_aref (values %cluster_n_cdna_info) {
     
@@ -115,7 +119,7 @@ foreach my $collection_aref (values %cluster_n_cdna_info) {
     
 }
 
-
+$dbproc->{dbh}->commit;
 
 $dbproc->disconnect;
 

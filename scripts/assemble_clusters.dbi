@@ -39,7 +39,7 @@ assembly_db_loader.dbi
 
 ############################# Options ###############################
 #
-# -M Mysql database name
+# -M database name
 # -G genomic_sequence fasta db.
 # 
 # -d Debug

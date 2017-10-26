@@ -40,7 +40,7 @@ our $DEBUG = ($opt_d) ? 1:0;
 
 my $configfile = $opt_c or die $usage;
 my %config = &readConfig($configfile);
-my ($MYSQLdb) = ($config{MYSQLDB});
+my ($MYSQLdb) = ($config{DATABASE});
 my $mysql_server = &Pasa_conf::getParam("MYSQLSERVER");
 my $mysql_rw_user = &Pasa_conf::getParam("MYSQL_RW_USER");
 my $mysql_rw_password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
@@ -48,10 +48,10 @@ my $mysql_rw_password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
 
 my $dbproc = &Mysql_connect::connect_to_db($mysql_server,$MYSQLdb,$mysql_rw_user,$mysql_rw_password);
 
-my $query = "insert annotation_admin (date) values (now())";
+my $query = "insert into annotation_admin (date) values (CURRENT_TIMESTAMP)";
 &Mysql_connect::RunMod($dbproc, $query);
 
-$query = "select LAST_INSERT_ID()";
+my $query = ($dbproc->{dbh}->{Driver}->{Name} eq 'SQLite') ? 'select last_insert_rowid()' : "select LAST_INSERT_ID()";
 my $annot_version = &Mysql_connect::very_first_result_sql($dbproc, $query);
 
 print "\n\nNow ready to load annotation version: $annot_version\n\n";

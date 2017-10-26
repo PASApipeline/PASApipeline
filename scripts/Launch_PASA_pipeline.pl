@@ -9,7 +9,7 @@ use Pasa_init;
 use ConfigFileReader;
 use Getopt::Long qw(:config no_ignore_case bundling pass_through);
 use Cwd;
-use File::Basename;
+use File::Basename qw(fileparse);
 
 
 $ENV{PATH} = "$FindBin::Bin/../bin:$ENV{PATH}";
@@ -117,8 +117,8 @@ my $usage =  <<_EOH_;
 #
 #
 # // actions
-# -C               flag, create MYSQL database
-# -r               flag, drop MYSQL database if -C is also given. This will DELETE all your data and it is irreversible.
+# -C               flag, create database
+# -r               flag, drop database if -C is also given. This will DELETE all your data and it is irreversible.
 # -R               flag, run alignment/assembly pipeline.
 # -A               (see section below; can use with opts -L and --annots_gff3)  compare to annotated genes.
 # --ALT_SPLICE     flag, run alternative splicing analysis
@@ -207,13 +207,13 @@ my $full_length_cdna_listing = $opt_f || "NULL"; ## NULL filename results in gra
 my $RUN_PIPELINE = $opt_R;
 #$ALT_SPLICE = $RUN_PIPELINE;  ## always run alt-splice analysis in alignment-assembly pipeline.
 my $COMPARE_TO_ANNOT = $opt_A;
-my $CREATE_MYSQL_DB = $opt_C;
+my $CREATE_DB = $opt_C;
 my $STARTING_INDEX = (defined($opt_s)) ? $opt_s : undef;
 my $ENDING_INDEX = (defined($opt_e)) ? $opt_e : undef;
 
-if ($STARTING_INDEX && $CREATE_MYSQL_DB) {
-    print STDERR "WARNING, not creating mysql database since in resume mode, as per -s parameter specified.\n";
-    $CREATE_MYSQL_DB = 0;
+if ($STARTING_INDEX && $CREATE_DB) {
+    print STDERR "WARNING, not creating database since in resume mode, as per -s parameter specified.\n";
+    $CREATE_DB = 0;
 }
 
 my $PRINT_CMDS_ONLY = $opt_x;
@@ -230,12 +230,12 @@ else {
 ## Read configuration file.
 my %config = &readConfig($configfile);
 
-my $mysql_db = $config{MYSQLDB} or die "Error, couldn't extract mysql_db name from config file " . cwd() . "/$configfile\n";
+my $database = $config{DATABASE} or die "Error, couldn't extract DATABASE from config file " . cwd() . "/$configfile\n";
 my $mysql_server = &Pasa_conf::getParam("MYSQLSERVER");
 my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
 my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
 
-my $MYSQLstring = $mysql_db; #"$mysql_db:$mysql_server";
+my $DBname = fileparse($database); # just the filename if SQLite
 
 my %advanced_prog_opts = &parse_advanced_prog_opts();
 
@@ -245,23 +245,31 @@ my $UTILDIR = "$ENV{PASAHOME}/scripts";
 my $PLUGINS_DIR = "$ENV{PASAHOME}/pasa-plugins";
 
 
-unless ($RUN_PIPELINE || $COMPARE_TO_ANNOT || $ALT_SPLICE || $CREATE_MYSQL_DB) {
+unless ($RUN_PIPELINE || $COMPARE_TO_ANNOT || $ALT_SPLICE || $CREATE_DB) {
     print STDERR "Sorry, nothing to do here.\n";
     exit(1);
 }
 
-if ($CREATE_MYSQL_DB) {
+if ($CREATE_DB) {
     
     if (&Pasa_conf::getParam("USE_PASA_DB_SETUP_HOOK") =~ /true/i) {
         &execute_custom_PASA_DB_setup_hook();
     }
     else {
         ## going the old fashioned way
-	my $params = "-c $opt_c -S $ENV{PASAHOME}/schema/cdna_alignment_mysqlschema";
+        my ($schema_file, $prog);
+        if (exists($ENV{DBI_DRIVER}) and $ENV{DBI_DRIVER} eq 'mysql') {
+            $schema_file = "$ENV{PASAHOME}/schema/cdna_alignment_mysqlschema";
+            $prog = "$UTILDIR/create_mysql_cdnaassembly_db.dbi";
+        } else { # default to SQLite
+            $schema_file = "$ENV{PASAHOME}/schema/cdna_alignment_sqliteschema";
+            $prog = "$UTILDIR/create_sqlite_cdnaassembly_db.dbi";
+        }
+	my $params = "-c $opt_c -S '$schema_file'";
 	$params .= ' -r' if $opt_r;
         &process_cmd(
                      {
-                         prog => "$UTILDIR/create_mysql_cdnaassembly_db.dbi",
+                         prog => $prog,
                          params => $params,
                          input => undef,
                          output => undef
@@ -343,7 +351,7 @@ if ($RUN_PIPELINE) {
     }
     
 	my @cmds = ( { prog => "$UTILDIR/upload_transcript_data.dbi",
-				   params => "-M $mysql_db -t $transcript_db $TDN_param -f $full_length_cdna_listing ",
+				   params => "-M '$database' -t $transcript_db $TDN_param -f $full_length_cdna_listing ",
 				   input => undef,
 				   output => undef,
                  }
@@ -360,7 +368,7 @@ if ($RUN_PIPELINE) {
         foreach my $aligner (@PRIMARY_ALIGNERS) {
             
             push (@cmds, { prog => "$UTILDIR/import_spliced_alignments.dbi",
-                           params => "-M $mysql_db  -A $aligner -g $aligner.spliced_alignments.gff3",
+                           params => "-M '$database'  -A $aligner -g $aligner.spliced_alignments.gff3",
                            input => undef,
                            output => undef,
                   },
@@ -371,7 +379,7 @@ if ($RUN_PIPELINE) {
     if ($IMPORT_CUSTOM_ALIGNMENTS_GFF3) {
 		
         push (@cmds, { prog => "$UTILDIR/import_spliced_alignments.dbi",
-                       params => "-M $mysql_db -A custom -g $IMPORT_CUSTOM_ALIGNMENTS_GFF3",
+                       params => "-M '$database' -A custom -g $IMPORT_CUSTOM_ALIGNMENTS_GFF3",
                        input => undef,
                        output => undef,
               },
@@ -401,10 +409,10 @@ if ($RUN_PIPELINE) {
                   output => "$CUFFLINKS_GTF.fasta",
               },
               
-              # upload fasta entries into mysqldb
+              # upload fasta entries into DB
               {
                   prog => "$UTILDIR/upload_transcript_data.dbi",
-                  params => "-M $mysql_db -t $CUFFLINKS_GTF.fasta",
+                  params => "-M '$database' -t $CUFFLINKS_GTF.fasta",
                   input => undef,
                   output => undef,
               },
@@ -412,7 +420,7 @@ if ($RUN_PIPELINE) {
               # upload the cufflinks transcript structures
               {
                   prog => "$UTILDIR/import_spliced_alignments.dbi",
-                  params => "-M $mysql_db -A cufflinks -g $CUFFLINKS_GTF.gff3",
+                  params => "-M '$database' -A cufflinks -g $CUFFLINKS_GTF.gff3",
                   input => undef,
                   output => undef,
               },
@@ -474,7 +482,7 @@ if ($RUN_PIPELINE) {
 
               ## update the full-length status
               { prog => "$UTILDIR/update_fli_status.dbi",
-                params => "-M $mysql_db -f $td_full_length_file",
+                params => "-M '$database' -f $td_full_length_file",
                 input => undef,
                 output => undef,
               },
@@ -490,7 +498,7 @@ if ($RUN_PIPELINE) {
 		  # validate the alignment data:
 		  {
 			  prog => "$UTILDIR/validate_alignments_in_db.dbi",
-			  params => "-M $mysql_db -g $genome_db -t $transcript_db --MAX_INTRON_LENGTH $MAX_INTRON_LENGTH --CPU $CPU ", # creates output file: $mysql_db.${map_program}_validations that is read in below.
+			  params => "-M '$database' -g $genome_db -t $transcript_db --MAX_INTRON_LENGTH $MAX_INTRON_LENGTH --CPU $CPU ", # creates output file: $mysql_db.${map_program}_validations that is read in below.
 			  input => undef,
 			  output => "alignment.validations.output",
 		  },
@@ -498,7 +506,7 @@ if ($RUN_PIPELINE) {
 		  # update the alignment validation results.
 		  {
 			  prog => "$UTILDIR/update_alignment_status.dbi",
-			  params => "-M $mysql_db",
+			  params => "-M '$database'",
 			  input => "alignment.validations.output",
 			  output => "$PASA_LOG_DIR/alignment.validation_loading.output",
 		  },
@@ -512,50 +520,50 @@ if ($RUN_PIPELINE) {
               # write the gff3 file describing the valid alignments:
               { 
                   prog => "$UTILDIR/PASA_transcripts_and_assemblies_to_GFF3.dbi",
-                  params => "-M $mysql_db -v -A -P ${map_program}",
+                  params => "-M '$database' -v -A -P ${map_program}",
                   input => undef,
-                  output => "$mysql_db.valid_${map_program}_alignments.gff3"
+                  output => "$DBname.valid_${map_program}_alignments.gff3"
               },
               
               # do again, but write in BED format
               { 
                   prog => "$UTILDIR/PASA_transcripts_and_assemblies_to_GFF3.dbi",
-                  params => "-M $mysql_db -v -A -P ${map_program} -B ",
+                  params => "-M '$database' -v -A -P ${map_program} -B ",
                   input => undef,
-                  output => "$mysql_db.valid_${map_program}_alignments.bed"
+                  output => "$DBname.valid_${map_program}_alignments.bed"
               },
 
               # do again, but write in GTF format
               { 
                   prog => "$UTILDIR/PASA_transcripts_and_assemblies_to_GFF3.dbi",
-                  params => "-M $mysql_db -v -A -P ${map_program} -T ",
+                  params => "-M '$database' -v -A -P ${map_program} -T ",
                   input => undef,
-                  output => "$mysql_db.valid_${map_program}_alignments.gtf"
+                  output => "$DBname.valid_${map_program}_alignments.gtf"
               },
               
               
               # write the gff3 file describing the failures:
               { 
                   prog => "$UTILDIR/PASA_transcripts_and_assemblies_to_GFF3.dbi",
-                  params => "-M $mysql_db -f -A -P ${map_program}",
+                  params => "-M '$database' -f -A -P ${map_program}",
                   input => undef,
-                  output => "$mysql_db.failed_${map_program}_alignments.gff3"
+                  output => "$DBname.failed_${map_program}_alignments.gff3"
               },
               
               # do again, but write in BED format
               { 
                   prog => "$UTILDIR/PASA_transcripts_and_assemblies_to_GFF3.dbi",
-                  params => "-M $mysql_db -f -A -P ${map_program} -B ",
+                  params => "-M '$database' -f -A -P ${map_program} -B ",
                   input => undef,
-                  output => "$mysql_db.failed_${map_program}_alignments.bed"
+                  output => "$DBname.failed_${map_program}_alignments.bed"
               },
               
               # do again, but write in BED format
               { 
                   prog => "$UTILDIR/PASA_transcripts_and_assemblies_to_GFF3.dbi",
-                  params => "-M $mysql_db -f -A -P ${map_program} -T ",
+                  params => "-M '$database' -f -A -P ${map_program} -T ",
                   input => undef,
-                  output => "$mysql_db.failed_${map_program}_alignments.gtf"
+                  output => "$DBname.failed_${map_program}_alignments.gtf"
               },
               
               
@@ -568,7 +576,7 @@ if ($RUN_PIPELINE) {
 		push (@cmds, 
 			  {
 				  prog => "$UTILDIR/invalidate_single_exon_ESTs.dbi",
-				  params => "-M $mysql_db",
+				  params => "-M '$database'",
 				  input => undef,
 				  output => "$PASA_LOG_DIR/invalidating_single_exon_alignments.output",
 				  },
@@ -582,7 +590,7 @@ if ($RUN_PIPELINE) {
 					  ## Analyze polyA site-inferring transcripts
 					  {
 						  prog => "$UTILDIR/polyA_site_transcript_mapper.dbi",
-						  params => "-M $mysql_db -c $untrimmed_transcript_db.cln "
+						  params => "-M '$database' -c $untrimmed_transcript_db.cln "
 							  . "-g $genome_db -t $untrimmed_transcript_db",
 							  
 							  input => undef,
@@ -592,9 +600,9 @@ if ($RUN_PIPELINE) {
 					  ## Summarize PolyA site findings:
 					  { 
 						  prog => "$UTILDIR/polyA_site_summarizer.dbi",
-						  params => "-M $mysql_db -g $genome_db ",
+						  params => "-M '$database' -g $genome_db ",
 						  input => undef,
-						  output => "$mysql_db.polyAsites.fasta",
+						  output => "$DBname.polyAsites.fasta",
 					  },
 					  
 					  )
@@ -608,7 +616,7 @@ if ($RUN_PIPELINE) {
               
               {
                   prog => "$UTILDIR/set_spliced_orient_transcribed_orient.dbi",
-                  params => "-M $mysql_db",
+                  params => "-M '$database'",
                   input => undef,
                   output => "$PASA_LOG_DIR/setting_aligned_as_transcribed_orientation.output",
               },
@@ -629,7 +637,7 @@ if ($RUN_PIPELINE) {
 			  
 			  { 
 				  prog => "$UTILDIR/assign_clusters_by_stringent_alignment_overlap.dbi",
-				  params => "-M $mysql_db -L $STRINGENT_ALIGNMENT_OVERLAP", # require all alignments are valid here.
+				  params => "-M $database -L $STRINGENT_ALIGNMENT_OVERLAP", # require all alignments are valid here.
 				  input => undef,
 				  output => "$PASA_LOG_DIR/cluster_reassignment_by_stringent_overlap.out"
 				  },
@@ -649,7 +657,7 @@ if ($RUN_PIPELINE) {
 		push (@cmds, 
 			  { 
 				  prog => "$UTILDIR/assign_clusters_by_gene_intergene_overlap.dbi",
-				  params => "-M $mysql_db -G $ANNOTS_GFF3 -L $GENE_OVERLAP", # require all alignments are valid here.
+				  params => "-M '$database' -G $ANNOTS_GFF3 -L $GENE_OVERLAP", # require all alignments are valid here.
 				  input => undef,
 				  output => "$PASA_LOG_DIR/alignment_cluster_reassignment.out"
 				  },
@@ -662,7 +670,7 @@ if ($RUN_PIPELINE) {
 			  
 			  { 
 				  prog => "$UTILDIR/reassign_clusters_via_valid_align_coords.dbi",
-				  params => "-M $mysql_db ", 
+				  params => "-M '$database' ", 
 				  input => undef,
 				  output => "$PASA_LOG_DIR/cluster_reassignment_by_valid_alignment_coords.default.out"
 				  },
@@ -679,7 +687,7 @@ if ($RUN_PIPELINE) {
         push (@cmds, 
               { 
                   prog => "$UTILDIR/ensure_single_valid_alignment_per_cdna_per_cluster.pl",
-                  params => "-M $mysql_db",
+                  params => "-M '$database'",
                   input => undef,
                   output => "$PASA_LOG_DIR/ensuring_single_valid_alignment_per_cdna_per_cluster.log",
               },
@@ -697,16 +705,16 @@ if ($RUN_PIPELINE) {
 		  # build the assemblies:
 		  {
 			  prog => "$UTILDIR/assemble_clusters.dbi",
-			  params => "-G $genome_db  -M $mysql_db $splice_graph_assembler_flag -T $CPU ",
+			  params => "-G $genome_db  -M '$database' $splice_graph_assembler_flag -T $CPU ",
 			  input => undef,
-			  output => "$mysql_db.pasa_alignment_assembly_building.ascii_illustrations.out"
+			  output => "$DBname.pasa_alignment_assembly_building.ascii_illustrations.out"
 		  },
 		  
 		  
 		  # load the assemblies:
 		  {
 			  prog => "$UTILDIR/assembly_db_loader.dbi",
-			  params => "-M $mysql_db",
+			  params => "-M '$database'",
 			  input => undef,
 			  output => "$PASA_LOG_DIR/alignment_assembly_loading.out"
 		  },
@@ -715,7 +723,7 @@ if ($RUN_PIPELINE) {
 		  # build the subclusters:
 		  {
 			  prog => "$UTILDIR/subcluster_builder.dbi",
-			  params => "-G $genome_db -M $mysql_db ",
+			  params => "-G $genome_db -M '$database' ",
 			  input => undef,
 			  output => "$PASA_LOG_DIR/alignment_assembly_subclustering.out"
 		  },
@@ -724,7 +732,7 @@ if ($RUN_PIPELINE) {
 		  # populate the alignment field for assemblies:
 		  {
 			  prog => "$UTILDIR/populate_mysql_assembly_alignment_field.dbi",
-			  params => "-M $mysql_db -G $genome_db",
+			  params => "-M '$database' -G $genome_db",
 			  input => undef,
 			  output => undef
 			  },
@@ -732,7 +740,7 @@ if ($RUN_PIPELINE) {
 		  # populate pasa assembly sequences:
 		  {
 			  prog => "$UTILDIR/populate_mysql_assembly_sequence_field.dbi",
-			  params => "-M $mysql_db -G $genome_db",
+			  params => "-M '$database' -G $genome_db",
 			  input => undef,
 			  output => undef
 			  },
@@ -742,7 +750,7 @@ if ($RUN_PIPELINE) {
 		  
 		  {
 			  prog => "$UTILDIR/subcluster_loader.dbi",
-			  params => "-M $mysql_db ",
+			  params => "-M '$database' ",
 			  input => "$PASA_LOG_DIR/alignment_assembly_subclustering.out",
 			  output => undef
 			  },
@@ -751,7 +759,7 @@ if ($RUN_PIPELINE) {
 		  
 		  { 
 			  prog => "$UTILDIR/alignment_assembly_to_gene_models.dbi",
-			  params => "-M $mysql_db -G $genome_db",
+			  params => "-M '$database' -G $genome_db",
 			  input => undef,
 			  output => undef,
 		  },
@@ -765,23 +773,23 @@ if ($RUN_PIPELINE) {
 
           { # gff3 format
 			  prog => "$UTILDIR/PASA_transcripts_and_assemblies_to_GFF3.dbi",
-			  params => "-M $mysql_db -a ",
+			  params => "-M '$database' -a ",
 			  input => undef,
-			  output => "$mysql_db.pasa_assemblies.gff3"
+			  output => "$DBname.pasa_assemblies.gff3"
 			  },
           
           { # bed format
 			  prog => "$UTILDIR/PASA_transcripts_and_assemblies_to_GFF3.dbi",
-			  params => "-M $mysql_db -a -B ",
+			  params => "-M '$database' -a -B ",
 			  input => undef,
-			  output => "$mysql_db.pasa_assemblies.bed"
+			  output => "$DBname.pasa_assemblies.bed"
 			  },
           
           { # gtf format
 			  prog => "$UTILDIR/PASA_transcripts_and_assemblies_to_GFF3.dbi",
-			  params => "-M $mysql_db -a -T ",
+			  params => "-M '$database' -a -T ",
 			  input => undef,
-			  output => "$mysql_db.pasa_assemblies.gtf"
+			  output => "$DBname.pasa_assemblies.gtf"
 			  },
 		  
           
@@ -789,9 +797,9 @@ if ($RUN_PIPELINE) {
 		  # describe assemblies in the pasa alignment format, which can be used with accessory scripts.
 		  { 
 			  prog => "$UTILDIR/describe_alignment_assemblies_cgi_convert.dbi",
-			  params => "-M $mysql_db ",
+			  params => "-M '$database' ",
 			  input => undef,
-			  output => "$mysql_db.pasa_assemblies_described.txt",
+			  output => "$DBname.pasa_assemblies_described.txt",
 			  
 		  },
 		  		  		  
@@ -804,7 +812,7 @@ if ($RUN_PIPELINE) {
 
     ## write them all to a log file for safe keeping:
     {
-        open (my $ofh, ">$mysql_db.run.$$.cmds") or die $!;
+        open (my $ofh, ">$DBname.run.$$.cmds") or die $!;
         print $ofh "PASA Pipeline CMD:\t$PASA_PIPELINE_CMD\n\n";
 
         my $counter = 0;
@@ -864,18 +872,18 @@ if ($COMPARE_TO_ANNOT) {
     my $genetic_code_opt = ($genetic_code) ? "--GENETIC_CODE $genetic_code" : "";
     my $cmd = {
         prog => "$UTILDIR/cDNA_annotation_comparer.dbi",
-        params => "-G $genome_db --CPU $CPU -M $MYSQLstring $genetic_code_opt",
+        params => "-G $genome_db --CPU $CPU -M '$database' $genetic_code_opt",
         input => undef,
-        output => "$PASA_LOG_DIR/$mysql_db.annotation_compare.$$.out"  ## TODO: use compare_id and annot_version values for file naming. Ditto for below and other relevant places.
+        output => "$PASA_LOG_DIR/$DBname.annotation_compare.$$.out"  ## TODO: use compare_id and annot_version values for file naming. Ditto for below and other relevant places.
         };
     
     &process_cmd($cmd);
 	
 	$cmd = { 
         prog => "$UTILDIR/dump_valid_annot_updates.dbi",
-        params => "-M $MYSQLstring -V -R -g $genome_db",
+        params => "-M '$database' -V -R -g $genome_db",
         input => undef,
-        output => "$mysql_db.gene_structures_post_PASA_updates.$$.gff3",
+        output => "$DBname.gene_structures_post_PASA_updates.$$.gff3",
     };
     
     &process_cmd($cmd);
@@ -883,9 +891,9 @@ if ($COMPARE_TO_ANNOT) {
 	## write it in BED format:
 	$cmd = {
 		prog => "$UTILDIR/../misc_utilities/gff3_file_to_bed.pl",
-		params => "$mysql_db.gene_structures_post_PASA_updates.$$.gff3",
+		params => "$DBname.gene_structures_post_PASA_updates.$$.gff3",
 		input => undef,
-		output => "$mysql_db.gene_structures_post_PASA_updates.$$.bed",
+		output => "$DBname.gene_structures_post_PASA_updates.$$.bed",
 	};
 	
 	&process_cmd($cmd);
@@ -902,7 +910,7 @@ if ($ALT_SPLICE && !$COMPARE_TO_ANNOT) { #this has bitten me before. do alt-spli
     
     my $cmd = { 
         prog => "$UTILDIR/classify_alt_splice_isoforms.dbi",
-        params => "-M $MYSQLstring -G $genome_db -T $CPU ",
+        params => "-M '$database' -G $genome_db -T $CPU ",
         input => undef,
         output => "$PASA_LOG_DIR/alt_splicing_analysis.out",
     };
@@ -911,7 +919,7 @@ if ($ALT_SPLICE && !$COMPARE_TO_ANNOT) { #this has bitten me before. do alt-spli
     
     $cmd = {
         prog => "$UTILDIR/find_alternate_internal_exons.dbi",
-        params => "-M $MYSQLstring -G $genome_db",
+        params => "-M '$database' -G $genome_db",
         input => undef,
         output => "$PASA_LOG_DIR/alt_internal_exon_finding.out",
     };
@@ -920,7 +928,7 @@ if ($ALT_SPLICE && !$COMPARE_TO_ANNOT) { #this has bitten me before. do alt-spli
 
     $cmd = { 
         prog => "$UTILDIR/classify_alt_splice_as_UTR_or_protein.dbi",
-        params => "-M $MYSQLstring -G $genome_db",
+        params => "-M '$database' -G $genome_db",
         input => undef,
         output => "$PASA_LOG_DIR/alt_splice_FL_FL_compare",
     };
@@ -930,7 +938,7 @@ if ($ALT_SPLICE && !$COMPARE_TO_ANNOT) { #this has bitten me before. do alt-spli
 
     $cmd = {
         prog => "$UTILDIR/report_alt_splicing_findings.dbi",
-        params => "-M $MYSQLstring ", 
+        params => "-M '$database' ", 
         input => undef,
         output => undef,  ## actually writes the files:  indiv_splice_labels_and_coords.dat and alt_splice_label_combinations.dat
     };
@@ -940,9 +948,9 @@ if ($ALT_SPLICE && !$COMPARE_TO_ANNOT) { #this has bitten me before. do alt-spli
 
     $cmd = {
         prog => "$UTILDIR/splicing_variation_to_splicing_event.dbi",
-        params => "-M $MYSQLstring ",
+        params => "-M '$database' ",
         input => undef,
-        output => "$mysql_db.alt_splicing_events_described.txt",
+        output => "$DBname.alt_splicing_events_described.txt",
     };
 
     &process_cmd($cmd);
@@ -950,9 +958,9 @@ if ($ALT_SPLICE && !$COMPARE_TO_ANNOT) { #this has bitten me before. do alt-spli
 	
 	$cmd = {
 		prog => "$UTILDIR/comprehensive_alt_splice_report.dbi",
-		params => "-M $MYSQLstring ",
+		params => "-M '$database' ",
 		input => undef,
-		output => "$mysql_db.alt_splicing_supporting_evidence.txt",
+		output => "$DBname.alt_splicing_supporting_evidence.txt",
 	};
 	
 	&process_cmd($cmd);
@@ -964,7 +972,7 @@ if ($ALT_SPLICE && !$COMPARE_TO_ANNOT) { #this has bitten me before. do alt-spli
 print "\n\n\n";
 print "##########################################################################\n";
 print "Finished.  Please visit the Assembly and Annotation Comparison results at:\n" 
-    . &Pasa_conf::getParam("BASE_PASA_URL") . "/status_report.cgi?db=$config{MYSQLDB}\n";
+    . &Pasa_conf::getParam("BASE_PASA_URL") . "/status_report.cgi?db=$DBname\n";
 print "##########################################################################\n\n\n";
 
 
@@ -1046,7 +1054,7 @@ sub parse_advanced_prog_opts {
 ####
 sub execute_custom_PASA_DB_setup_hook {
     
-    &Pasa_conf::call_hook("HOOK_PASA_DB_SETUP", $mysql_db);
+    &Pasa_conf::call_hook("HOOK_PASA_DB_SETUP", $database);
     
     return;
 }

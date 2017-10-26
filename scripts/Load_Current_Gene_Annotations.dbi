@@ -54,7 +54,7 @@ my $adapter_params = $opt_P or die $usage;
 
 unless (-s $genomeDB) { die "Can't locate fasta file $genomeDB\n\n";}
 
-my ($MYSQLdb) = ($config{MYSQLDB});
+my ($MYSQLdb) = ($config{DATABASE});
 my $mysql_server = &Pasa_conf::getParam("MYSQLSERVER");
 my $mysql_rw_user = &Pasa_conf::getParam("MYSQL_RW_USER");
 my $mysql_rw_password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
@@ -126,7 +126,7 @@ while (my $seqobj = $fasta_reader->next() ) {
             
             my $blob = nfreeze($gene);
             
-            my $query = "insert annotation_store (gene_id, model_id, annotdb_asmbl_id, lend, rend, orient, annotation_version, gene_obj) values (?,?,?,?,?,?,?,?)";
+            my $query = "insert into annotation_store (gene_id, model_id, annotdb_asmbl_id, lend, rend, orient, annotation_version, gene_obj) values (?,?,?,?,?,?,?,?)";
             &Mysql_connect::RunMod($dbproc, $query, $gene_id, $model_id, $asmbl_id, $lend, $rend, $orient, $annot_version, $blob);
         }
     }

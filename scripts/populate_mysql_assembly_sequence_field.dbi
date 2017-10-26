@@ -11,7 +11,7 @@ use Data::Dumper;
 use Getopt::Std;
 use Ath1_cdnas;
 use CDNA::CDNA_alignment;
-
+use File::Basename qw(fileparse);
 
 use vars qw ($opt_G $opt_h $opt_M $opt_b $opt_d $opt_S $opt_X);
 open (STDERR, "&>STDOUT");
@@ -19,7 +19,7 @@ open (STDERR, "&>STDOUT");
 my $usage =  <<_EOH_;
 
 ############################# Options ###############################
-# -M Mysql database name
+# -M database name
 # -G genomic_seq.db
 # -X don't load database, just write fasta file
 # -d Debug
@@ -47,7 +47,7 @@ my $DEBUG = $opt_d;
 my ($dbproc) = &connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
 my $genomic_seq_db = $opt_G or die $usage;
 
-open (FASTA, ">$MYSQLdb.assemblies.fasta") or die "Cannot open fasta file for assembly output.\n";
+open (FASTA, ">" . fileparse($MYSQLdb) . ".assemblies.fasta") or die "Cannot open fasta file for assembly output.\n";
 
 
 ## clean out in case of resume mode
@@ -74,7 +74,7 @@ foreach my $result (@results) {
     my $assembly_seq = uc $cdna_alignment->extractSplicedSequence();
     
     unless ($opt_X) {
-        my $query = "insert cdna_sequence (accession, sequence) values (?,?)";
+        my $query = "insert into cdna_sequence (accession, sequence) values (?,?)";
         &RunMod($dbproc, $query, $cdna_acc, $assembly_seq);
     }
     

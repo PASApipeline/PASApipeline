@@ -24,7 +24,7 @@ my $usage =  <<_EOH_;
 
 ############################# Options ###############################
 #
-# -M Mysql database name
+# -M database name
 # 
 # -L min percent of shorter length for linking pairs. (default: 30%)
 # -G gene annotations in gff3 format.
@@ -255,9 +255,9 @@ sub insert_cluster {
 	if ($DEBUG) {
 		$cluster_id = "DEBUG_cluster_id";
 	} else {
-		my $query = "insert clusters (annotdb_asmbl_id) values (\"$asmbl_id\")";
+		my $query = "insert into clusters (annotdb_asmbl_id) values ('$asmbl_id')";
 		&RunMod($dbproc, $query);
-		$query = "select LAST_INSERT_ID()";
+        $query = ($dbproc->{dbh}->{Driver}->{Name} eq 'SQLite') ? 'select last_insert_rowid()' : "select LAST_INSERT_ID()";
 		$cluster_id = &very_first_result_sql($dbproc, $query);
 	}
 	

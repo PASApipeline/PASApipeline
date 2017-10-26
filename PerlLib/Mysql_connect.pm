@@ -24,13 +24,16 @@ my $QUERYFAIL;
 sub connect_to_db {
     my ($server, $db, $username, $password) = @_;
     
-    unless (defined ($server) && defined($db) && defined($username) && defined($password)) {
-        confess "Error, need all method parameters (server, db, username, password) ";
+    $ENV{DBI_DRIVER} //= 'SQLite';
+
+    if ($ENV{DBI_DRIVER} eq 'mysql'
+        and not (defined ($server) && defined($db) && defined($username) && defined($password))) {
+        confess "Error, need all method parameters (server, db, username, password) for mysql ";
     }
-    
-    my $dbh = DBI->connect("DBI:mysql:$db:$server", $username, $password);
+
+    my $dbh = DBI->connect("dbi::database=$db;host=$server", $username, $password);
     unless (ref $dbh) {
-        croak "Cannot connect to $server: $DBI::errstr";
+        croak "Cannot connect to $db: $DBI::errstr";
     }
     $dbh->{RaiseError} = 1; #turn on raise error.  Must use exception handling now.
     
@@ -41,10 +44,12 @@ sub connect_to_db {
     my $dbproc = new Mysql_connect(); ## temporary fix to deal with lost connections
     $dbproc->{dbh} = $dbh;
     
-    $dbproc->{__server} = $server;
-    $dbproc->{__db} = $db;
-    $dbproc->{__username} = $username;
-    $dbproc->{__password} = $password;
+    if ($dbh->{Driver}->{Name} ne 'SQLite') {
+        $dbproc->{__server} = $server;
+        $dbproc->{__db} = $db;
+        $dbproc->{__username} = $username;
+        $dbproc->{__password} = $password;
+    }
     
     return($dbproc);
 }
@@ -75,6 +80,8 @@ sub get_dbh {
 ####
 sub reconnect_to_server {
     my ($dbproc) = @_;
+
+    return $dbproc if $dbproc->{dbh}->{Driver}->{Name} eq 'SQLite'; # shouldn't be needed for SQLite
 
     my $new_dbh;
     
@@ -197,7 +204,7 @@ sub very_first_result_sql {
 
 sub get_last_insert_id {
     my ($dbproc) = @_;
-    my $query = "select LAST_INSERT_ID()";
+    my $query = ($dbproc->{dbh}->{Driver}->{Name} eq 'SQLite') ? 'select last_insert_rowid()' : "select LAST_INSERT_ID()";
     return (&very_first_result_sql($dbproc, $query));
 }
 

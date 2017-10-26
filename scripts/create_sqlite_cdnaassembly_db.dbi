@@ -1,0 +1,65 @@
+#!/usr/bin/env perl
+
+use FindBin;
+use lib ("$FindBin::Bin/../PerlLib");
+use Pasa_init;
+use strict;
+use warnings;
+use DBI;
+use Ath1_cdnas;
+use Getopt::Std;
+use ConfigFileReader;
+use DBD::SQLite;
+
+use vars qw ($opt_c $opt_p $opt_d $opt_h $opt_S $opt_r);
+
+&getopts ('c:p:S:rd');
+
+
+$|=1;
+our $SEE = 0;
+
+open (STDERR, "&>STDOUT");
+
+my $usage =  <<_EOH_;
+
+############################# Options ###############################
+#
+# -c config file
+# -S Schema file path
+# -d Debug
+# -r Drop and rebuild database 
+# -h print this option menu and quit
+#
+###################### Process Args and Options #####################
+
+_EOH_
+
+    ;
+
+if ($opt_h) {die $usage;}
+my $schemafile = $opt_S or die "Require schema file path\n\n$usage";
+my $DEBUG = $opt_d;
+
+my $configfile = $opt_c or die $usage;
+my %config = &readConfig($configfile);
+my $sqlite_db = ($config{DATABASE});
+
+## Create the database if needed
+eval {
+    truncate($sqlite_db, 0) if $opt_r;
+};
+
+## Populate the database structure and static data.
+my ($fh, $schema);
+open($fh, '<', $schemafile) or die "Error, cannot open $schemafile: $!";
+read($fh, $schema, -s $fh);
+if ($DBD::SQLite::sqlite_version_number < 3008002) {
+    $schema =~ s/\bWITHOUT ROWID\b//g; # not supported before SQLite 3.8.2
+}
+my $dbh = DBI->connect("dbi:SQLite:dbname=$sqlite_db","","");
+$dbh->{sqlite_allow_multiple_statements} = 1;
+$dbh->do($schema) or die "Error, invalid SQLite schema";
+$dbh->disconnect();
+
+exit(0);
