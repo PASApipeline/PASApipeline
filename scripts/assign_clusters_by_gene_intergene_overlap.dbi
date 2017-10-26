@@ -255,7 +255,7 @@ sub insert_cluster {
 	if ($DEBUG) {
 		$cluster_id = "DEBUG_cluster_id";
 	} else {
-		my $query = "insert clusters (annotdb_asmbl_id) values (\"$asmbl_id\")";
+		my $query = "insert into clusters (annotdb_asmbl_id) values ('$asmbl_id')";
 		&RunMod($dbproc, $query);
 		$query = "select LAST_INSERT_ID()";
 		$cluster_id = &very_first_result_sql($dbproc, $query);

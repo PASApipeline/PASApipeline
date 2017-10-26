@@ -48,7 +48,7 @@ my $mysql_rw_password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
 
 my $dbproc = &Mysql_connect::connect_to_db($mysql_server,$MYSQLdb,$mysql_rw_user,$mysql_rw_password);
 
-my $query = "insert annotation_admin (date) values (now())";
+my $query = "insert into annotation_admin (date) values (CURRENT_TIMESTAMP)";
 &Mysql_connect::RunMod($dbproc, $query);
 
 $query = "select LAST_INSERT_ID()";

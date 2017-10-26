@@ -126,7 +126,7 @@ while (my $seqobj = $fasta_reader->next() ) {
             
             my $blob = nfreeze($gene);
             
-            my $query = "insert annotation_store (gene_id, model_id, annotdb_asmbl_id, lend, rend, orient, annotation_version, gene_obj) values (?,?,?,?,?,?,?,?)";
+            my $query = "insert into annotation_store (gene_id, model_id, annotdb_asmbl_id, lend, rend, orient, annotation_version, gene_obj) values (?,?,?,?,?,?,?,?)";
             &Mysql_connect::RunMod($dbproc, $query, $gene_id, $model_id, $asmbl_id, $lend, $rend, $orient, $annot_version, $blob);
         }
     }

@@ -238,7 +238,7 @@ unless ($annot_version) {
 }
 
 ## get new compare_id
-$query = "insert annotation_compare (date, annotation_version) values (now(), $annot_version)";
+$query = "insert into annotation_compare (date, annotation_version) values (CURRENT_TIMESTAMP, $annot_version)";
 &Mysql_connect::RunMod($dbproc, $query);
 
 $query = "select LAST_INSERT_ID()";
@@ -1112,7 +1112,7 @@ sub summarize_asmbl_status {
             $values .= ",?";
             push (@params, $comment);
         }
-        my $query = "insert status_link ($fields) values ($values)";
+        my $query = "insert into status_link ($fields) values ($values)";
         &Mysql_connect::RunMod($dbproc, $query, @params);
         
         
@@ -1128,7 +1128,7 @@ sub summarize_asmbl_status {
         if ($#TUs > 0) { #multiple genes matched:
             foreach my $tu (@TUs) {
                 my $model = $Gene_to_model_list{$tu}->[0];
-                my $query = "insert annotation_link (cdna_acc, gene_id, model_id, compare_id) values (?,?,?,?)";
+                my $query = "insert into annotation_link (cdna_acc, gene_id, model_id, compare_id) values (?,?,?,?)";
                 &Mysql_connect::RunMod($dbproc, $query, $acc, $tu, $model, $compare_id);
             }
         } else { #only one gene, load gene and model:
@@ -1138,7 +1138,7 @@ sub summarize_asmbl_status {
                 $matching_gene_model_feat_name = $Gene_to_model_list{$overlapping_gene_text}->[0];
             }
             
-            my $query = "insert annotation_link (cdna_acc, gene_id, model_id, compare_id) values (?,?,?,?)";
+            my $query = "insert into annotation_link (cdna_acc, gene_id, model_id, compare_id) values (?,?,?,?)";
             &Mysql_connect::RunMod($dbproc, $query, $acc, $overlapping_gene_text, $matching_gene_model_feat_name, $compare_id);
         }
         
@@ -1267,7 +1267,7 @@ sub get_update_id {
     
     ## Insert new entry
     print "Inserting new entry in annotation_updates; getting an update_id for it.\n";
-    my $query = "insert annotation_updates (gene_id, model_id, alt_splice_flag, before_gene_obj, after_gene_obj, compare_id, is_valid, have_before, have_after, is_novel_flag) values (?,?,?,?,?,?,?,?,?,?)";
+    my $query = "insert into annotation_updates (gene_id, model_id, alt_splice_flag, before_gene_obj, after_gene_obj, compare_id, is_valid, have_before, have_after, is_novel_flag) values (?,?,?,?,?,?,?,?,?,?)";
     print "BLOB Length: after_gene_obj: " . length ($after_gene_obj);
     &Mysql_connect::RunMod($dbproc, $query, $gene_id, $model_id, $alt_splice_flag, undef, $after_gene_obj, $compare_id, $is_valid_flag, 0, 1, $is_novel_flag);
     
@@ -3345,7 +3345,7 @@ sub classify_antisense_transcripts {
     
     my $query = "select sl.cdna_acc "
         . " from status_link sl, align_link al, clusters c "
-        . " where c.annotdb_asmbl_id = \"$contig_id\" "
+        . " where c.annotdb_asmbl_id = '$contig_id' "
         . " and c.cluster_id = al.cluster_id "
         . " and al.align_acc = sl.cdna_acc "
         . " and sl.compare_id = $compare_id "
@@ -3426,7 +3426,7 @@ sub set_status_to_antisense {
     ## Insert new annotation link entries:
     foreach my $gene_id (@$overlapping_genes_aref) {
         my $model_id = $Gene_to_model_list{$gene_id}->[0];
-        my $query = "insert annotation_link (cdna_acc, gene_id, model_id, compare_id) values (?,?,?,?)";
+        my $query = "insert into annotation_link (cdna_acc, gene_id, model_id, compare_id) values (?,?,?,?)";
         &RunMod($dbproc, $query, $cdna_acc, $gene_id, $model_id, $compare_id);
     }
     

@@ -125,7 +125,7 @@ foreach my $result (@results) {
             my ($cluster, $asmbl_id, $coords) = split(/\t/);
             my ($lend, $rend) = split(/-/, $coords);
             
-            my $query = "insert clusters (annotdb_asmbl_id, lend, rend) values (?, ?, ?)";
+            my $query = "insert into clusters (annotdb_asmbl_id, lend, rend) values (?, ?, ?)";
             &RunMod($dbproc, $query, $asmbl_id, $lend, $rend);
             $query = "select LAST_INSERT_ID()";
             $cluster_id = &very_first_result_sql($dbproc, $query);

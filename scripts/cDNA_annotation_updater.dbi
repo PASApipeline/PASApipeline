@@ -298,8 +298,8 @@ if ($TARGETED_UPDATES{novel}) {
                 
                 ## this part is non-critical, and write access back to the mysql db may not be enabled.
                 eval {
-                	my $query = "update annotation_updates set gene_id = \"$new_gene_id\" "
-                    	. "where gene_id = \"$temp_gene_id\" and compare_id = $compare_id ";
+                	my $query = "update annotation_updates set gene_id = '$new_gene_id' "
+                    	. "where gene_id = '$temp_gene_id' and compare_id = $compare_id ";
                 	&Mysql_connect::RunMod($dbproc, $query);
                 };
                 if ($@) {

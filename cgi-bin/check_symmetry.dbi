@@ -62,11 +62,11 @@ foreach my $result (@results) {
         
         ## compare num_transcripts_A and num_transcripts_B for forward and reciprocal comparisons:
         
-        $query = "select num_transcripts_A, num_transcripts_B from splice_variation_support where sv_id = $sv_id and cdna_acc = \"$other_cdna_acc\"";
+        $query = "select num_transcripts_A, num_transcripts_B from splice_variation_support where sv_id = $sv_id and cdna_acc = '$other_cdna_acc'";
         my $result1 = &first_result_sql($dbproc, $query);
         my ($countA, $countB) = @$result1;
 
-        $query = "select num_transcripts_A, num_transcripts_B from splice_variation_support where sv_id = $sv_id_B and cdna_acc = \"$cdna_acc\"";
+        $query = "select num_transcripts_A, num_transcripts_B from splice_variation_support where sv_id = $sv_id_B and cdna_acc = '$cdna_acc'";
         my $result2 = &first_result_sql($dbproc, $query);
         my ($countA2, $countB2) = @$result2;
         
