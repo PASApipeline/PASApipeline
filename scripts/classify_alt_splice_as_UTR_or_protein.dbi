@@ -704,7 +704,7 @@ sub insert_alt_splice_FL_to_FL_compare {
 ####
 sub clear_tables {
     foreach my $table ("alt_splice_FL_compare", "alt_splice_FL_to_FL_compare") {
-        my $query = "TRUNCATE TABLE $table";
+        my $query = ($dbproc->{__server} eq 'SQLite') ? "DELETE FROM $table" : "TRUNCATE TABLE $table";
         &RunMod($dbproc, $query);
     }
 }

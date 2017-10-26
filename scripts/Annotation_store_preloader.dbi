@@ -51,7 +51,7 @@ my $dbproc = &Mysql_connect::connect_to_db($mysql_server,$MYSQLdb,$mysql_rw_user
 my $query = "insert into annotation_admin (date) values (CURRENT_TIMESTAMP)";
 &Mysql_connect::RunMod($dbproc, $query);
 
-$query = "select LAST_INSERT_ID()";
+my $query = ($dbproc->{__server} eq 'SQLite') ? 'select last_insert_rowid()' : "select LAST_INSERT_ID()";
 my $annot_version = &Mysql_connect::very_first_result_sql($dbproc, $query);
 
 print "\n\nNow ready to load annotation version: $annot_version\n\n";

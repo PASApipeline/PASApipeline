@@ -257,7 +257,7 @@ sub insert_cluster {
 	} else {
 		my $query = "insert into clusters (annotdb_asmbl_id) values ('$asmbl_id')";
 		&RunMod($dbproc, $query);
-		$query = "select LAST_INSERT_ID()";
+        $query = ($dbproc->{__server} eq 'SQLite') ? 'select last_insert_rowid()' : "select LAST_INSERT_ID()";
 		$cluster_id = &very_first_result_sql($dbproc, $query);
 	}
 	

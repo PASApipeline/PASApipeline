@@ -194,7 +194,7 @@ sub init_alt_splice_tables {
                      );
     
     foreach my $table (@tables) {
-        my $query = "TRUNCATE TABLE $table";
+        my $query = ($dbproc->{__server} eq 'SQLite') ? "DELETE FROM $table" : "TRUNCATE TABLE $table";
         &RunMod($dbproc, $query);
     }
     

@@ -241,7 +241,7 @@ unless ($annot_version) {
 $query = "insert into annotation_compare (date, annotation_version) values (CURRENT_TIMESTAMP, $annot_version)";
 &Mysql_connect::RunMod($dbproc, $query);
 
-$query = "select LAST_INSERT_ID()";
+$query = ($dbproc->{__server} eq 'SQLite') ? 'select last_insert_rowid()' : "select LAST_INSERT_ID()";
 my $result = &Mysql_connect::first_result_sql($dbproc, $query);
 my $compare_id = $result->[0];
 
@@ -1271,7 +1271,7 @@ sub get_update_id {
     print "BLOB Length: after_gene_obj: " . length ($after_gene_obj);
     &Mysql_connect::RunMod($dbproc, $query, $gene_id, $model_id, $alt_splice_flag, undef, $after_gene_obj, $compare_id, $is_valid_flag, 0, 1, $is_novel_flag);
     
-    $query = "select LAST_INSERT_ID()";
+    $query = ($dbproc->{__server} eq 'SQLite') ? 'select last_insert_rowid()' : "select LAST_INSERT_ID()";
     my $result = &Mysql_connect::first_result_sql($dbproc, $query);
     $update_id = $result->[0];
     print ", UPDATE_ID: $update_id\n";

@@ -85,8 +85,10 @@ my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
 
 my ($dbproc) = &connect_to_db($mysql_server,$mysql_db,$user,$password);
 
-my $query = "use $mysql_db";
-&RunMod($dbproc, $query);
+if ($dbproc->{__server} ne 'SQLite') {
+    my $query = "use $mysql_db";
+    &RunMod($dbproc, $query);
+}
 
 main: {
     

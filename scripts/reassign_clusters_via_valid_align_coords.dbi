@@ -127,7 +127,7 @@ foreach my $result (@results) {
             
             my $query = "insert into clusters (annotdb_asmbl_id, lend, rend) values (?, ?, ?)";
             &RunMod($dbproc, $query, $asmbl_id, $lend, $rend);
-            $query = "select LAST_INSERT_ID()";
+            $query = ($dbproc->{__server} eq 'SQLite') ? 'select last_insert_rowid()' : "select LAST_INSERT_ID()";
             $cluster_id = &very_first_result_sql($dbproc, $query);
         }
         else {

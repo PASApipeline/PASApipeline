@@ -254,8 +254,16 @@ if ($CREATE_MYSQL_DB) {
     
     if (&Pasa_conf::getParam("USE_PASA_DB_SETUP_HOOK") =~ /true/i) {
         &execute_custom_PASA_DB_setup_hook();
-    }
-    else {
+    } elsif ($mysql_server eq 'SQLite') {
+        &process_cmd(
+                     {
+                         prog => "sqlite3",
+                         params => $mysql_db,
+                         input => "$ENV{PASAHOME}/schema/cdna_alignment_sqliteschema",
+                         output => undef
+                         }
+                     );
+    } else {
         ## going the old fashioned way
 	my $params = "-c $opt_c -S $ENV{PASAHOME}/schema/cdna_alignment_mysqlschema";
 	$params .= ' -r' if $opt_r;

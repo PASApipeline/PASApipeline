@@ -137,7 +137,7 @@ sub process_alignment() {
     my $query = "insert into cdna_link (cdna_acc, prog, aligned_orient) values (?,?,?)";
     &RunMod ($dbproc, $query, $acc, $prog, $orientation);
     
-    my $query = "select LAST_INSERT_ID()";
+    my $query = ($dbproc->{__server} eq 'SQLite') ? 'select last_insert_rowid()' : "select LAST_INSERT_ID()";
     my $result_aref = &first_result_sql ($dbproc, $query);
     my $align_id = $result_aref->[0];
     
