@@ -1,123 +1,80 @@
 CREATE TABLE URL_templates (
-  url_name varchar(20) NOT NULL default '',
-  url_template varchar(255) default NULL,
-  url_var_name varchar(20) NOT NULL default '',
-  PRIMARY KEY  (url_name)
-) ;
-
---
--- Table structure for table 'URL_var_names'
---
+  url_name TEXT PRIMARY KEY,
+  url_template TEXT DEFAULT NULL,
+  url_var_name TEXT NOT NULL DEFAULT ''
+) WITHOUT ROWID;
 
 CREATE TABLE URL_var_names (
-  url_var_name varchar(20) NOT NULL default '',
-  PRIMARY KEY  (url_var_name)
-) ;
-
---
--- Table structure for table 'alignment'
---
+  url_var_name TEXT PRIMARY KEY
+) WITHOUT ROWID;
 
 CREATE TABLE alignment (
-  feat_id integer PRIMARY KEY AUTOINCREMENT,
-  align_id int(11) NOT NULL default '0',
-  lend int(11) NOT NULL default '0',
-  rend int(11) NOT NULL default '0',
-  mlend int(11) NOT NULL default '0',
-  mrend int(11) NOT NULL default '0',
-  orient char(1) default NULL,
-  per_id float default NULL
+  feat_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  align_id INTEGER NOT NULL DEFAULT 0,
+  lend INTEGER NOT NULL DEFAULT 0,
+  rend INTEGER NOT NULL DEFAULT 0,
+  mlend INTEGER NOT NULL DEFAULT 0,
+  mrend INTEGER NOT NULL DEFAULT 0,
+  orient TEXT DEFAULT NULL CHECK(orient IN ('', '+','-')),
+  per_id NUMERIC DEFAULT NULL
 ) ;
 CREATE INDEX align_idx ON alignment(align_id);
 
---
--- Table structure for table 'alt_splice_FL_compare'
---
-
 CREATE TABLE alt_splice_FL_compare (
-  row_id integer PRIMARY KEY AUTOINCREMENT,
-  template_cdna_acc varchar(50) default NULL,
-  classification varchar(250) NOT NULL default '',
-  lend int(11) NOT NULL default '0',
-  rend int(11) NOT NULL default '0',
-  orient char(1) NOT NULL default '',
-  type varchar(50) NOT NULL default ''
+  row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  template_cdna_acc TEXT DEFAULT NULL,
+  classification TEXT NOT NULL DEFAULT '',
+  lend INTEGER NOT NULL DEFAULT 0,
+  rend INTEGER NOT NULL DEFAULT 0,
+  orient TEXT DEFAULT '' CHECK(orient IN ('', '+','-')),
+  type TEXT NOT NULL DEFAULT ''
 ) ;
-
---
--- Table structure for table 'alt_splice_FL_to_FL_compare'
---
 
 CREATE TABLE alt_splice_FL_to_FL_compare (
-  row_id integer PRIMARY KEY AUTOINCREMENT,
-  template_acc varchar(50) NOT NULL default '',
-  other_acc varchar(50) NOT NULL default '',
-  diff_in_cds int(1) NOT NULL default '0',
-  frame_change int(1) NOT NULL default '0',
-  percent_prot_length float NOT NULL default '0',
-  num_variations int(11) NOT NULL default '0',
-  same_frame_exists int(1) NOT NULL default '0'
+  row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  template_acc TEXT NOT NULL DEFAULT '',
+  other_acc TEXT NOT NULL DEFAULT '',
+  diff_in_cds BOOLEAN NOT NULL CHECK(diff_in_cds IN(0,1)),
+  frame_change BOOLEAN NOT NULL DEFAULT 0 CHECK(frame_change IN(0,1)),
+  percent_prot_length NUMERIC NOT NULL DEFAULT 0,
+  num_variations INTEGER NOT NULL DEFAULT 0,
+  same_frame_exists BOOLEAN NOT NULL DEFAULT 0 CHECK(frame_change IN(0,1))
 ) ;
-
---
--- Table structure for table 'alt_splice_link'
---
 
 CREATE TABLE alt_splice_link (
-  sv_id_A int(11) NOT NULL default '0',
-  sv_id_B int(11) NOT NULL default '0',
-  UNIQUE (sv_id_A,sv_id_B)
-) ;
+  sv_id_A INTEGER,
+  sv_id_B INTEGER,
+  PRIMARY KEY (sv_id_A,sv_id_B)
+) WITHOUT ROWID;
 CREATE INDEX sv_idx_B ON alt_splice_link(sv_id_B);
 
---
--- Table structure for table 'alt_splice_token_assignment'
---
-
 CREATE TABLE alt_splice_token_assignment (
-  cdna_acc varchar(250) NOT NULL default '',
-  token_id int(11) NOT NULL default '0'
+  cdna_acc TEXT NOT NULL DEFAULT '',
+  token_id INTEGER NOT NULL DEFAULT 0
 ) ;
-
---
--- Table structure for table 'alt_splice_tokens'
---
 
 CREATE TABLE alt_splice_tokens (
-  token_id integer PRIMARY KEY AUTOINCREMENT,
-  alt_splice_token varchar(250) NOT NULL default ''
+  token_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  alt_splice_token TEXT NOT NULL DEFAULT ''
 ) ;
-
---
--- Table structure for table 'annotation_admin'
---
 
 CREATE TABLE annotation_admin (
-  version_id integer PRIMARY KEY AUTOINCREMENT,
-  date datetime NOT NULL
+  version_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date DATETIME NOT NULL CHECK(date IS datetime(date))
 ) ;
-
---
--- Table structure for table 'annotation_compare'
---
 
 CREATE TABLE annotation_compare (
-  compare_id integer PRIMARY KEY AUTOINCREMENT,
-  date datetime NOT NULL,
-  annotation_version integer NOT NULL default '0',
-  CHECK(annotation_version >= 0)
+  compare_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date DATETIME NOT NULL CHECK(date IS datetime(date)),
+  annotation_version INTEGER NOT NULL DEFAULT 0 CHECK(annotation_version >= 0)
 ) ;
 
---
--- Table structure for table 'annotation_link'
---
-
 CREATE TABLE annotation_link (
-  annotation_link_id integer PRIMARY KEY AUTOINCREMENT,
-  cdna_acc varchar(250) default NULL,
-  gene_id varchar(200) default NULL,
-  model_id varchar(200) default NULL,
-  compare_id int(11) NOT NULL default '0'
+  annotation_link_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cdna_acc TEXT DEFAULT NULL,
+  gene_id TEXT DEFAULT NULL,
+  model_id TEXT DEFAULT NULL,
+  compare_id INTEGER NOT NULL DEFAULT 0
 ) ;
 CREATE INDEX cdna_acc_idx ON annotation_link(cdna_acc);
 CREATE INDEX gene_id_idx ON annotation_link(gene_id);
@@ -125,23 +82,16 @@ CREATE INDEX mod_idx ON annotation_link(model_id);
 CREATE INDEX compare_idx ON annotation_link(compare_id);
 CREATE INDEX comp_id_acc_idx ON annotation_link(compare_id,cdna_acc);
 
---
--- Table structure for table 'annotation_store'
---
-
 CREATE TABLE annotation_store (
   annot_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  gene_id varchar(200) NOT NULL default '',
-  model_id varchar(200) NOT NULL default '',
-  annotdb_asmbl_id varchar(200) NOT NULL default '',
-  lend integer NOT NULL default '0',
-  rend integer NOT NULL default '0',
-  orient char(1) NOT NULL default '',
-  gene_obj mediumblob NOT NULL,
-  annotation_version integer NOT NULL default '0',
-  CHECK(annotation_version >= 0),
-  CHECK(lend >= 0),
-  CHECK(rend >= 0)
+  gene_id TEXT NOT NULL DEFAULT '',
+  model_id TEXT NOT NULL DEFAULT '',
+  annotdb_asmbl_id TEXT NOT NULL DEFAULT '',
+  lend INTEGER NOT NULL DEFAULT 0 CHECK(lend >= 0),
+  rend INTEGER NOT NULL DEFAULT 0 CHECK(rend >= 0),
+  orient TEXT NOT NULL DEFAULT '' CHECK(orient IN ('', '+','-')),
+  gene_obj BLOB NOT NULL,
+  annotation_version INTEGER NOT NULL DEFAULT 0 CHECK(annotation_version >= 0)
 ) ;
 CREATE INDEX gene_index_coords ON annotation_store(annotdb_asmbl_id,lend,rend);
 CREATE INDEX geneid_idx ON annotation_store(gene_id);
@@ -149,85 +99,64 @@ CREATE INDEX modelid_idx ON annotation_store(model_id);
 CREATE INDEX annot_version_idx ON annotation_store(annotation_version);
 CREATE INDEX gene_idx ON annotation_store(annotation_version,gene_id);
 
---
--- Table structure for table 'annotation_updates'
---
-
 CREATE TABLE annotation_updates (
-  update_id integer PRIMARY KEY AUTOINCREMENT,
-  gene_id varchar(1000) default NULL,
-  model_id varchar(200) default NULL,
-  alt_splice_flag boolean NOT NULL default '0',
-  before_gene_obj mediumblob,
-  after_gene_obj mediumblob,
-  compare_id int(11) NOT NULL default '0',
-  is_valid boolean NOT NULL default '0',
-  have_before boolean NOT NULL default '0',
-  have_after boolean NOT NULL default '0',
-  is_novel_flag boolean default '0'
+  update_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  gene_id TEXT DEFAULT NULL,
+  model_id TEXT DEFAULT NULL,
+  alt_splice_flag BOOLEAN NOT NULL DEFAULT 0 CHECK(alt_splice_flag IN (0,1)),
+  before_gene_obj BLOB,
+  after_gene_obj BLOB,
+  compare_id INTEGER NOT NULL DEFAULT 0,
+  is_valid BOOLEAN NOT NULL DEFAULT 0 CHECK(is_valid IN (0,1)),
+  have_before BOOLEAN NOT NULL DEFAULT 0 CHECK(have_before IN (0,1)),
+  have_after BOOLEAN NOT NULL DEFAULT 0 CHECK(have_after IN (0,1)),
+  is_novel_flag BOOLEAN DEFAULT 0 CHECK(is_novel_flag IN (0,1))
 ) ;
 CREATE INDEX is_valid_idx ON annotation_updates(is_valid);
 CREATE INDEX alt_splice_idx ON annotation_updates(alt_splice_flag);
 CREATE INDEX lotsastuff_idx ON annotation_updates(gene_id,model_id,is_valid,alt_splice_flag);
 CREATE INDEX modelidx ON annotation_updates(model_id);
 
---
--- Table structure for table 'asmblPolyA'
---
-
 CREATE TABLE asmblPolyA (
-  asmbl_acc varchar(250) NOT NULL default '',
-  genomicCoord int(11) NOT NULL default '0',
-  asmblCoord int(11) NOT NULL default '0',
-  numSupportTranscripts int(11) NOT NULL default '0',
-  PRIMARY KEY  (asmbl_acc)
-) ;
-
---
--- Table structure for table 'asmbl_gene_objs'
---
+  asmbl_acc TEXT PRIMARY KEY,
+  genomicCoord INTEGER NOT NULL DEFAULT 0,
+  asmblCoord INTEGER NOT NULL DEFAULT 0,
+  numSupportTranscripts INTEGER NOT NULL DEFAULT 0
+) WITHOUT ROWID;
 
 CREATE TABLE asmbl_gene_objs (
-  id integer PRIMARY KEY AUTOINCREMENT,
-  cdna_acc varchar(50) NOT NULL default '',
-  allow_5prime_partial boolean NOT NULL default '0',
-  allow_3prime_partial boolean NOT NULL default '0',
-  gene_obj mediumblob NOT NULL,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cdna_acc TEXT NOT NULL DEFAULT '',
+  allow_5prime_partial BOOLEAN NOT NULL DEFAULT 0 CHECK(allow_5prime_partial IN (0,1)),
+  allow_3prime_partial BOOLEAN NOT NULL DEFAULT 0 CHECK(allow_3prime_partial IN (0,1)),
+  gene_obj BLOB NOT NULL,
   UNIQUE (cdna_acc,allow_5prime_partial,allow_3prime_partial)
 ) ;
 
---
--- Table structure for table 'asmbl_link'
---
-
 CREATE TABLE asmbl_link (
-  asmbl_acc varchar(100) NOT NULL default '',
-  cdna_acc varchar(100) NOT NULL default '',
-  PRIMARY KEY  (asmbl_acc,cdna_acc)
-) ;
+  asmbl_acc TEXT,
+  cdna_acc TEXT,
+  PRIMARY KEY (asmbl_acc,cdna_acc)
+) WITHOUT ROWID;
 CREATE INDEX cdna_idx ON asmbl_link(cdna_acc);
 
---
--- Table structure for table 'align_link'
---
-
 CREATE TABLE align_link (
-  align_id integer PRIMARY KEY AUTOINCREMENT,
-  cdna_info_id int(11) default  NULL,
-  align_acc varchar(100) default NULL,
-  cluster_id int(11) default NULL,
-  prog varchar(15) NOT NULL default '',
-  validate boolean default NULL,
-  spliced_orient char(1) default NULL,
-  num_segments smallint unsigned default NULL,
-  comment text,
-  alignment text,
-  avg_per_id double default NULL,
-  percent_aligned double default NULL,
-  score double default 0,
-  aligned_orient char(1) default NULL,
-  lend int(11) default 0,
-  rend int(11) default 0,
+  align_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cdna_info_id INTEGER DEFAULT NULL,
+  align_acc TEXT DEFAULT NULL,
+  cluster_id INTEGER DEFAULT NULL,
+  prog TEXT NOT NULL DEFAULT '',
+  validate BOOLEAN DEFAULT NULL CHECK(validate IN (0,1)),
+  spliced_orient TEXT DEFAULT NULL CHECK(spliced_orient IN ('', '+','-', '?')),
+  num_segments INTEGER DEFAULT NULL CHECK(num_segments >= 0),
+  comment TEXT,
+  alignment TEXT,
+  avg_per_id NUMERIC DEFAULT NULL,
+  percent_aligned REAL DEFAULT NULL,
+  score NUMERIC DEFAULT 0,
+  aligned_orient TEXT DEFAULT NULL CHECK(aligned_orient IN ('', '+','-')),
+  lend INTEGER DEFAULT 0,
+  rend INTEGER DEFAULT 0,
   UNIQUE (prog,align_acc)
 ) ;
 CREATE INDEX align_acc_idx ON align_link(align_acc);
@@ -236,142 +165,96 @@ CREATE INDEX cdna_info_id_idx ON align_link(cdna_info_id);
 CREATE INDEX cluster_id_idx ON align_link(cluster_id);
 CREATE INDEX progvalididx ON align_link(prog,validate);
 
---
--- Table structure for table 'cdna_sequence'
---
-
 CREATE TABLE cdna_sequence (
-  accession varchar(250) NOT NULL default '',
-  sequence MEDIUMTEXT,
-  PRIMARY KEY  (accession)
-) ;
-
---
--- Table structure for table 'cdna_info'
---
+  accession TEXT PRIMARY KEY,
+  sequence TEXT
+) WITHOUT ROWID;
 
 CREATE TABLE cdna_info (
-  cdna_acc varchar(100) default NULL,
-  id integer PRIMARY KEY AUTOINCREMENT,
-  is_assembly boolean NOT NULL default '0',
-  is_fli boolean NOT NULL default '0',
-  is_TDN boolean NOT NULL default '0',
-  length integer default NULL,
-  header text,
-  is_EST boolean default '0',
-  UNIQUE (cdna_acc),
-  CHECK(length >= 0)
+  cdna_acc TEXT UNIQUE DEFAULT NULL,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  is_assembly BOOLEAN NOT NULL DEFAULT 0 CHECK(is_assembly IN (0,1)),
+  is_fli BOOLEAN NOT NULL DEFAULT 0 CHECK(is_fli IN (0,1)),
+  is_TDN BOOLEAN NOT NULL DEFAULT 0 CHECK(is_TDN IN (0,1)),
+  length INTEGER DEFAULT NULL CHECK(length >= 0),
+  header TEXT,
+  is_EST BOOLEAN DEFAULT 0 CHECK(is_EST IN (0,1))
 ) ;
 CREATE INDEX is_fli_idx ON cdna_info(is_fli);
 CREATE INDEX is_assembly_idx ON cdna_info(is_assembly);
 
---
--- Table structure for table 'clusters'
---
-
 CREATE TABLE clusters (
-  cluster_id integer PRIMARY KEY AUTOINCREMENT,
-  lend integer default NULL,
-  rend integer default NULL,
-  annotdb_asmbl_id varchar(200) default NULL,
-  CHECK(lend >= 0),
-  CHECK(rend >= 0)
+  cluster_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  lend INTEGER DEFAULT NULL CHECK(lend >= 0),
+  rend INTEGER DEFAULT NULL CHECK(rend >= 0),
+  annotdb_asmbl_id TEXT DEFAULT NULL
 ) ;
 CREATE INDEX asmbl_id_idx ON clusters(annotdb_asmbl_id);
 
---
--- Table structure for table 'splice_variation'
---
-
 CREATE TABLE splice_variation (
-  sv_id integer PRIMARY KEY AUTOINCREMENT,
-  cdna_acc varchar(250) NOT NULL default '',
-  lend int(11) NOT NULL default '0',
-  rend int(11) NOT NULL default '0',
-  orient char(1) NOT NULL default '',
-  type varchar(50) NOT NULL default '',
-  num_subfeatures_included int(11) default '0',
-  subtype varchar(50) default NULL,
+  sv_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cdna_acc TEXT NOT NULL DEFAULT '',
+  lend INTEGER NOT NULL DEFAULT 0,
+  rend INTEGER NOT NULL DEFAULT 0,
+  orient TEXT NOT NULL DEFAULT '' CHECK(orient IN ('', '+','-')),
+  type TEXT NOT NULL DEFAULT '',
+  num_subfeatures_included INTEGER DEFAULT 0,
+  subtype TEXT DEFAULT NULL,
   UNIQUE (cdna_acc,lend,rend,orient,type)
 ) ;
 
---
--- Table structure for table 'splice_variation_support'
---
-
 CREATE TABLE splice_variation_support (
-  sv_id int(11) NOT NULL default '0',
-  cdna_acc varchar(250) NOT NULL default '',
-  transcripts_A text,
-  transcripts_B text,
-  num_transcripts_A int(11) default NULL,
-  num_transcripts_B int(11) default NULL,
+  sv_id INTEGER,
+  cdna_acc TEXT,
+  transcripts_A TEXT,
+  transcripts_B TEXT,
+  num_transcripts_A INTEGER DEFAULT NULL,
+  num_transcripts_B INTEGER DEFAULT NULL,
   PRIMARY KEY (cdna_acc,sv_id)
-) ;
-
---
--- Table structure for table 'status'
---
+) WITHOUT ROWID;
 
 CREATE TABLE status (
-  status_id integer PRIMARY KEY AUTOINCREMENT,
-  status_descr varchar(255) default NULL,
-  requires_update boolean default '0',
-  fails_incorporation boolean default '0',
-  rank float default '0'
+  status_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  status_descr TEXT DEFAULT NULL,
+  requires_update BOOLEAN DEFAULT 0 CHECK(requires_update IN (0,1)),
+  fails_incorporation BOOLEAN DEFAULT 0 CHECK(fails_incorporation IN (0,1)),
+  rank NUMERIC DEFAULT 0.0
 ) ;
 
---
--- Table structure for table 'status_link'
---
-
 CREATE TABLE status_link (
-  status_link_id integer PRIMARY KEY AUTOINCREMENT,
-  cdna_acc varchar(100) NOT NULL default '',
-  status_id int(11) NOT NULL default '0',
-  is_chromo boolean NOT NULL default '0',
-  comment text,
-  curated_exception boolean NOT NULL default '0',
-  curator_comment text,
-  compare_id int(11) NOT NULL default '0',
-  annot_update_id int(11) default NULL
+  status_link_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cdna_acc TEXT NOT NULL DEFAULT '',
+  status_id INTEGER NOT NULL DEFAULT 0,
+  is_chromo BOOLEAN NOT NULL DEFAULT 0 CHECK(is_chromo IN (0,1)),
+  comment TEXT,
+  curated_exception BOOLEAN NOT NULL DEFAULT 0 CHECK(curated_exception IN (0,1)),
+  curator_comment TEXT,
+  compare_id INTEGER NOT NULL DEFAULT 0,
+  annot_update_id INTEGER DEFAULT NULL
 ) ;
 CREATE INDEX status_link_acc_idx ON status_link(cdna_acc);
 CREATE INDEX updateididx ON status_link(annot_update_id);
 CREATE INDEX status_link_compare_idx ON status_link(compare_id);
 
---
--- Table structure for table 'subcluster_link'
---
-
 CREATE TABLE subcluster_link (
-  subcluster_id int(11) NOT NULL default '0',
-  cdna_acc varchar(100) NOT NULL default '',
-  PRIMARY KEY  (subcluster_id,cdna_acc)
-) ;
+  subcluster_id INTEGER,
+  cdna_acc TEXT,
+  PRIMARY KEY (subcluster_id,cdna_acc)
+) WITHOUT ROWID;
 CREATE INDEX subcl_link_acc_idx ON subcluster_link(cdna_acc);
 
---
--- Table structure for table 'subclusters'
---
-
 CREATE TABLE subclusters (
-  subcluster_id integer PRIMARY KEY AUTOINCREMENT,
-  cluster_id int(11) NOT NULL default '0'
+  subcluster_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cluster_id INTEGER NOT NULL DEFAULT 0
 ) ;
 CREATE INDEX subcluster_cluster_id_idx ON subclusters(cluster_id);
 
---
--- Table structure for table 'transcriptPolyA'
---
-
 CREATE TABLE transcriptPolyA (
-  align_id int(11) NOT NULL,
-  genomicCoord int(11) NOT NULL default '0',
-  transcribedOrient char(1) NOT NULL default '',
-  trimType varchar(20) NOT NULL default '',
-  alignEndOffset int(11) NOT NULL default '0',
-  PRIMARY KEY  (align_id)
+  align_id INTEGER PRIMARY KEY,
+  genomicCoord INTEGER NOT NULL DEFAULT 0,
+  transcribedOrient TEXT NOT NULL DEFAULT '' CHECK(transcribedOrient IN ('', '+', '-')),
+  trimType TEXT NOT NULL DEFAULT '',
+  alignEndOffset INTEGER NOT NULL DEFAULT 0
 ) ;
 
 -- MySQL dump 8.22
