@@ -7,6 +7,7 @@ use strict;
 use Longest_orf;
 use Gene_obj;
 use Carp;
+use Data::Dumper;
 
 ## No reason to instantiate.  Use methods, fully qualified.
 ## allow for partial ORFS (missing start or stop codon in longest ORF)
