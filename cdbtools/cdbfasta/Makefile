@@ -1,12 +1,8 @@
 # Useful directories
 
-THISCODEDIR := .
 TGICLASSDIR := ../tgi_cl
-# Directory where libz.a can be found
-# (please build that first before making this package) 
-ZDIR := ../zlib
 # Directories to search for header files
-SEARCHDIRS := -I- -I${ZDIR} -I${THISCODEDIR} -I${TGICLASSDIR}
+SEARCHDIRS := -I${TGICLASSDIR}
 
 
 SYSTYPE :=     $(shell uname)
@@ -35,7 +31,7 @@ CFLAGS  = -Wall ${SEARCHDIRS} -O2 -D_FILE_OFFSET_BITS=64 \
 # C/C++ linker
 
 LINKER    := g++
-LDFLAGS    = -L${ZDIR} -lz
+LDFLAGS    = -lz
 
 .PHONY : all
 all:    cdbfasta cdbyank 

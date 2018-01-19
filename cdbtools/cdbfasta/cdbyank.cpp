@@ -130,7 +130,7 @@ int fetch_record(char* key, char* dbname, int many, int r_start=0, int r_end=0) 
    if (len>8) { //64 bit file offset was used
     fpos=gcvt_offt(bytes);
     if (rec_pos_only) {
-      fprintf(fout, "%lld\n", fpos);
+      fprintf(fout, "%lld\n", (long long)fpos);
       return 1;
       }
     reclen=gcvt_uint(&bytes[sizeof(uint32)<<1]);
@@ -138,7 +138,7 @@ int fetch_record(char* key, char* dbname, int many, int r_start=0, int r_end=0) 
     else { //32bit offset used
     fpos=gcvt_uint(bytes);
     if (rec_pos_only) {
-      fprintf(fout, "%lld\n", fpos);
+      fprintf(fout, "%lld\n", (long long)fpos);
       return 1;
       }
     reclen=gcvt_uint(&bytes[sizeof(uint32)]);
@@ -634,7 +634,7 @@ int main(int argc, char **argv) {
                else if (dbstat.idxflags & CDBMSK_OPT_CADD)
                 printf("The index was built with full keys and \"shortcut keys\".\n");
             printf("Database file: %s\n", info_dbname);
-            printf("Database size: %lld bytes\n", dbstat.dbsize);
+            printf("Database size: %lld bytes\n", (long long)dbstat.dbsize);
             }
        }
     }

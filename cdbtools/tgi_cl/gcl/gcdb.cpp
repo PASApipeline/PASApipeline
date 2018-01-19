@@ -706,7 +706,7 @@ GCdbRead::GCdbRead(int afd) {
 
   findstart();
   fd = afd;
-  if (fstat(fd,&st) == 0)
+  if (fstat(fd,&st) == 0) {
 
     if (st.st_size <= MAX_UINT) {
       x = (char *) mmap(0,st.st_size,PROT_READ,MAP_SHARED,fd,0);
@@ -722,6 +722,7 @@ GCdbRead::GCdbRead(int afd) {
        GError("Error mapping the file (size %ld > MAX_UINT)\n",
            st.st_size);
        }
+  }
 }
 
 GCdbRead::GCdbRead(char* afname) {
@@ -742,7 +743,7 @@ GCdbRead::GCdbRead(char* afname) {
   if (fd == -1)
      GError("Error: cannot open file %s\n", afname);
   strcpy(fname, afname);
-  if (fstat(fd,&st) == 0)
+  if (fstat(fd,&st) == 0) {
     if (st.st_size <= MAX_UINT) {
       x = (char *) mmap(0,st.st_size,PROT_READ,MAP_SHARED,fd,0);
       if (x + 1) {
@@ -757,6 +758,7 @@ GCdbRead::GCdbRead(char* afname) {
        GError("GCdbRead: Error mapping the file (size %ld > MAX_UINT)\n",
            st.st_size);
        }
+  }
 }
 
 

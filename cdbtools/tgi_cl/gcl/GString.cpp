@@ -383,7 +383,7 @@ GString& GString::trim(char c) {
  return *this;
  }
 
-GString& GString::trim(char* c) {
+GString& GString::trim(const char* c) {
  register int istart;
  register int iend;
  for (istart=0; istart<length() && strchr(c, chars()[istart])!=NULL ;istart++);
@@ -422,7 +422,7 @@ GString& GString::trimR(char c) {
  return *this;
  }
 
-GString& GString::trimR(char* c) {
+GString& GString::trimR(const char* c) {
  register int iend;
  for (iend=length()-1; iend>=0 && strchr(c,chars()[iend])!=NULL;iend--);
  if (iend==-1) {
@@ -456,7 +456,7 @@ GString& GString::trimL(char c) {
  return *this;
  }
 
-GString& GString::trimL(char* c) {
+GString& GString::trimL(const char* c) {
  register int istart;
  for (istart=0; istart<length() && strchr(c,chars()[istart])!=NULL;istart++);
  if (istart==length()) {
@@ -1092,7 +1092,7 @@ bool GString::nextToken(GString& token) {
  //return true;
 }
 
-size_t GString::read(FILE* stream, char* delimiter, size_t bufsize) {
+size_t GString::read(FILE* stream, const char* delimiter, size_t bufsize) {
 //read up to (and including) the given delimiter string
  if (readbuf==NULL) {
     GMALLOC(readbuf, bufsize);

@@ -125,15 +125,15 @@ class GString {
         int peelIntR() const; //same as above, but starts from the right side
         //e.g. 'T2HC1234b'=> 1234
         GString& trim(char c);
-        GString& trim(char* c=" \t\n\r");
-        GString& trimR(char* c=" \t\n\r"); //trim only right end
+        GString& trim(const char* c=" \t\n\r");
+        GString& trimR(const char* c=" \t\n\r"); //trim only right end
         GString& trimR(char c=' ');
-        GString& trimL(char* c=" \t\n\r"); //trim only left end
+        GString& trimL(const char* c=" \t\n\r"); //trim only left end
         GString& trimL(char c=' ');
         GString& padR(int len, char c=' '); //align it in len spaces to the right
         GString& padL(int len, char c=' '); //align it in len spaces to the left
         GString& padC(int len, char c=' '); //center it
-        size_t read(FILE* stream, char* delimiter="\n", size_t bufsize=4096);
+        size_t read(FILE* stream, const char* delimiter="\n", size_t bufsize=4096);
           //read next token from stream, using the given string as
           //a marker where the block should stop
 

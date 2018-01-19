@@ -113,40 +113,6 @@ inline int Gintcmp(int a, int b) {
  return (a>b)? 1 : ((a==b)?0:-1);
 }
 
-inline void swap(int &arg1, int &arg2){
- arg1 ^= arg2 ^= arg1 ^= arg2;
- }
-
-inline void swap(char* &arg1, char* &arg2){
- register char* swp=arg1;
- arg1=arg2; arg2=swp; 
- }
- 
-inline void swap(unsigned int &arg1, unsigned int &arg2)
-{ arg1 ^= arg2 ^= arg1 ^= arg2; }
-
-inline void swap(short &arg1, short &arg2)
-{ arg1 ^= arg2 ^= arg1 ^= arg2; }
-
-inline void swap(unsigned short &arg1, unsigned short &arg2)
-{ arg1 ^= arg2 ^= arg1 ^= arg2; }
-
-inline void swap(long &arg1, long &arg2)
-{ arg1 ^= arg2 ^= arg1 ^= arg2; }
-
-inline void swap(unsigned long &arg1, unsigned long &arg2)
-{ arg1 ^= arg2 ^= arg1 ^= arg2; }
-
-inline void swap(char &arg1, char &arg2)
-{ arg1 ^= arg2 ^= arg1 ^= arg2; }
-
-inline void swap(unsigned char &arg1, unsigned char &arg2)
-{ arg1 ^= arg2 ^= arg1 ^= arg2; }
-
-inline void swap(bool &arg1, bool &arg2)
-{ arg1 ^= arg2 ^= arg1 ^= arg2; }
-
-
 /**************** Memory management ***************************/
 
 bool GMalloc(pointer* ptr, unsigned long size); // Allocate memory
@@ -176,8 +142,8 @@ char* loCase(const char* str);
 
 //strstr but for memory zones: scans a memory region
 //for a substring:
-void* Gmemscan(void *mem, unsigned int len,
-                   void *part, unsigned int partlen);
+void* Gmemscan(const void *mem, unsigned int len,
+                   const void *part, unsigned int partlen);
 
 // test if a char is in a string:
 bool chrInStr(char c, char* str);

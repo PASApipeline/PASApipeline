@@ -9,7 +9,7 @@
 //GArgs::is_opt="1"; //just to have a non-NULL value for switch testing
 
 
-GArgs::GArgs(int argc, char* const argv[], char* format) {
+GArgs::GArgs(int argc, char* const argv[], const char* format) {
    /* format is:
        <letter>[:]    for e.g. p:hT    <-  -p testing -ptesting -h -T
        <string>=      for e.g. PID=S=  <-  PID=50 S=3.5
@@ -19,7 +19,7 @@ GArgs::GArgs(int argc, char* const argv[], char* format) {
    
 
 //parse format string first:
-char* fstr=format;
+const char* fstr=format;
 fmtcount=0;
 count=0;
 nonOptCount=0;

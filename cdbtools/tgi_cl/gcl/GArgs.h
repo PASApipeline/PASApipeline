@@ -38,7 +38,7 @@ class GArgs {
    int validOpt(char* o);
  public:
  
-   GArgs(int argc, char* const argv[], char* format);
+   GArgs(int argc, char* const argv[], const char* format);
    /* format is:
        <letter>[:]    for e.g. p:hT    <=  -p testing -ptesting -h -T
        <string>=      for e.g. PID=S=  <=  PID=50 S=3.5

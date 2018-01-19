@@ -146,11 +146,11 @@ char* replaceStr(char* &str, char* newvalue) {
  return str;
  }
 
-void* Gmemscan(void *mem, unsigned int len,
-                   void *part, unsigned int partlen) {
+void* Gmemscan(const void *mem, unsigned int len,
+                   const void *part, unsigned int partlen) {
 char* p;
 unsigned int restlen=len-partlen+1;
-void* oldp=mem;
+const void* oldp=mem;
 while ( (p=(char*)memchr(oldp, ((char*)part)[0], restlen))!=NULL) {
   //located first char, try to match the rest:
   p++;

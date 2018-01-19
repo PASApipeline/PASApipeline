@@ -3,7 +3,7 @@
 map<string,bool> argSet;
 map<string,string> argVal;
 
-bool processArgs (int argc, char* argv[]) {
+void processArgs (int argc, char* argv[]) {
   for (int i=1; i < argc; i++) {
     char* arg = argv[i];
     string myArg (arg);

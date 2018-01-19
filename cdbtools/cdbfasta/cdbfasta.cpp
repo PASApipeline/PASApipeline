@@ -95,7 +95,7 @@ static bool do_compress=false; // compression used
 FILE* zf=NULL; //compressed file handle
 
 //store just offset and record length
-char* defWordJunk="'\",`.(){}/[]!:;~|><+-";
+static char defWordJunk[]="'\",`.(){}/[]!:;~|><+-";
 static char* wordJunk;
 static bool caseInsensitive=false; //case insensitive storage
 static bool useStopWords=false;
@@ -115,7 +115,7 @@ addFuncType addKeyFunc;
 #define ERR_W_DBSTAT "Error writing the database statististics!\n"
 
 
-void die_write(char* fname) {
+void die_write(const char* fname) {
   GError("Error: cdbhash was unable to write into file %s\n",
       fname);
 
@@ -503,7 +503,7 @@ int main(int argc, char **argv) {
       GError("Error: the specified record delimiter is too long. "
         "Maximum accepted is 126\n");
    //special case: hex (0xXX) and octal codes (\XXX) are accepted, only if by themselves
-   if (strlen(marker)==4 && marker[0]=='\\' || (marker[0]=='0' && (toupper(marker[1])=='X'))) {
+   if ((strlen(marker)==4 && marker[0]=='\\') || (marker[0]=='0' && (toupper(marker[1])=='X'))) {
        if (marker[0]=='\\') {
            marker++;
            v=strtol(marker, NULL, 8);

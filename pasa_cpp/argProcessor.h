@@ -8,7 +8,7 @@ using namespace std;
 extern map<string,bool> argSet;
 extern map<string,string> argVal;
 
-bool processArgs(int argc, char* argv[]);
+void processArgs(int argc, char* argv[]);
 
 
 #endif
