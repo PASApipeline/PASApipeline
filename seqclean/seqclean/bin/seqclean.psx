@@ -1,0 +1,340 @@
+#!/usr/bin/env perl
+use strict;
+use FindBin;
+umask 0002;
+
+chdir($ENV{PVMSX_WD}) if ($ENV{PVMSX_WD});
+
+my ($file, $numpass, $sliceno, $last, $skipped, $total, $userparams)=@ARGV;
+
+$ENV{'PATH'}=$FindBin::Bin.':'.$ENV{'PATH'};
+$userparams =~ s/\~\+/ /g;
+my ($dbfile, $flags, $vec_db, $screen_db, $minvlen, $minpid)=split(/:/, $userparams);
+my ($dbname)=($dbfile =~ m/([^\/]+)$/);
+$dbname=$dbfile unless $dbname;
+
+#minimum theoretical length of a terminal vector/linker residue
+$minvlen=11 unless $minvlen;
+
+my $cmd;
+my $wrkfile = $file.'.wrk';
+my $repfile=sprintf('%06d_%s.cln', $sliceno, $dbname);
+
+#my $outfile= sprintf('%06d_%s.outfasta', $sliceno, $dbname) if ($flags =~ m/O/);
+my $log_file='log_std';
+my $err_file='err_log';
+my %seqs; # this is the hash with all sequence data
+my @seqlist; #this is the list with all the sequences in this file
+my ($tooshort) = ($flags =~ m/S(\d+)/);
+my $lowqualcheck = ($flags =~ m/M/);
+my $minseqlen = $tooshort || 50;
+open(STDERR, '>>'.$err_file);
+open(STDOUT, '>>'.$log_file);
+&writeCLRfile($wrkfile, 1); #create sequence hash and work file (length filtered)
+my $polyA = ($flags =~ m/A/);
+my $endN = ($flags =~ m/N/);
+my $dust = ($flags =~ m/L/);
+#run trimpoly unless disabled
+if ($polyA || $endN) {
+ my $trimcmd = ($polyA)? 'trimpoly -R -s10 -r8 -ex -l20 ':'trimpoly -R ';
+ if ($endN) {
+   $trimcmd.=' -n1 -m15 ';
+   $trimcmd.=' -N ' unless $polyA;
+   }
+ open (TRIMPOLY, $trimcmd." < $wrkfile |") || die "Error opening '$trimcmd pipe\n";
+ while (<TRIMPOLY>) {
+   chomp;
+   my ($seqname, $percN, $sh5, $sh3, $ilen)=split(/\t/);
+   my $d=$seqs{$seqname} || die "Error: seq '$seqname' not found in hash!\n";
+   $$d[1]+=$sh5;
+   $$d[2]-=$sh3;
+   $$d[4]=$percN;
+   $$d[5]='low_qual' if ($lowqualcheck && $percN>3.00 && $endN); #trash
+   $$d[5]='shortq' if ($tooshort && $$d[2]-$$d[1]+1<$tooshort);
+   $$d[6].="trimpoly[+$sh5, -$sh3]; " if $sh5 || $sh3;
+   }
+ close(TRIMPOLY);
+ writeCLRfile($wrkfile);
+ } #trimpoly part
+
+#== trash low complexity (unless disabled)
+if ($dust) {
+  $cmd="mdust $wrkfile -c |";
+  open (INCOMING, $cmd) || &MErrExit("Error running $cmd !\n");
+  my $lastseq;
+  my $lastlen;
+  my $trashcount=0;
+  while (<INCOMING>) {
+    my ($seq_name, $len, $c5,$c3)=split(/\s+/);
+    my $d=$seqs{$seq_name} || die "Error at dust: $seq_name not in hash!\n";
+    my $rlen = ($seq_name eq $lastseq) ? $lastlen-($c3-$c5) : $len-($c3-$c5); #remaining non-lc
+    if ($rlen<40) {
+       $$d[5]='dust' unless ($$d[5]);
+       $$d[6].='low complexity; ';
+       $trashcount++;
+      }
+    $lastseq=$seq_name;
+    $lastlen=$rlen;  
+    }
+ close(INCOMING);   
+ writeCLRfile($wrkfile) if $trashcount;
+ }
+
+#===  the vector search; assumes the vector database is already 
+#     formatted with formatdb
+
+my $minperc = ($minpid>0) ? $minpid : 93;
+
+foreach my $vdb (split(/,/,$vec_db)) {
+ my $changed;
+ my $noflt;
+ { local $/='^';  $noflt=chomp($vdb); }
+ die "Error locating contaminant database $vdb\n" unless -e $vdb;
+ my ($fvdb)=($vdb =~ m/([^\/]+)$/);
+ $fvdb=$vdb unless $fvdb;
+ my $tabout=$wrkfile.'.vtab';
+ $cmd="blastall -p blastn -d $vdb -i $wrkfile ";
+ $cmd.=$noflt?' -F F ':' -F "m D" ';
+ my $blout=$wrkfile.'.blout'; 
+ $cmd.=' -q -4 -G 3 -E 3  -v 10000 -b 10000 -e 700 -Y 1.75e10 -m 8 > '.$blout; 
+ sysrun($cmd);
+ $cmd= 'grep -v "^#" '.$blout.' | sort -k1,1 -k12,12 -nr '." > $tabout"; 
+ sysrun($cmd);
+
+ if (-s $tabout) {
+   local $_;
+   open (TABOUT, $tabout) || die "Error opening '$tabout' at $vdb search\n";
+   while (<TABOUT>) {
+    next if m/^\s*#/;
+    my @t=split(/\t/);
+    die "Error: invalid line format in $tabout:\n$_\n" unless @t>=12;
+    my $d=$seqs{$t[0]} || 
+       die "Error: query '$t[0]' from $tabout not found in sequence hash!\n";
+    next if $$d[5];
+    #distance of hit from either end:
+    my ($d5, $d3)=($t[6]-1, ($$d[8]-$$d[7]+1)-$t[7]);
+    #hit should start within 30% distance of either (original) end 
+    my $maxdist=0.30*$$d[3];
+    my $hitlen=$t[7]-$t[6];
+    my $mindist=$d5>$d3?$d3:$d5;
+    my $minhitlen=$minvlen+$mindist/2>35 ? 35 : $minvlen+$mindist/2;
+    #validate the hit: the further it is, the longer it should be
+    
+    if ($t[2]>=$minperc && $mindist<$maxdist && $hitlen>=$minhitlen) {
+      my $adjusted;
+      if ($mindist == $d5) { 
+        #trim 5' end
+        if ($$d[7]+$t[7]>$$d[1]) {
+           $$d[1]=$$d[7]+$t[7]; #set the new end5 after the 3' end of the vector hit
+           $adjusted=1;
+           }
+        }
+      else { 
+        #trim 3' end
+         if ($$d[7]+$t[6]-2<$$d[2]) {
+          $$d[2]=$$d[7]+$t[6]-2; #set the new end3 before the 5' end of the vector hit
+          $adjusted=1;
+          }
+        }
+      if ($adjusted) {
+        $changed=1;
+        if ($$d[2]-$$d[1]<$minseqlen) {
+           $$d[5]=$fvdb; #trash
+           $$d[1]=$$d[2] if $$d[1]>$$d[2];
+           }
+        $$d[6].=" $t[1]".':<'.($$d[7]+$t[6]-1).'-'.($$d[7]+$t[7]-1).'>;' if $adjusted;
+        }
+      }
+    }
+   close(TABOUT);
+   }
+ unlink($tabout);unlink($blout);
+ writeCLRfile($wrkfile) if $changed;
+ } # vector search loop
+ 
+# -- screening searches: large contaminant hit expected; that is, 
+#    at least 60% of the query should get a hit of at least 96% identity
+$minperc = ($minpid>10) ? $minpid : 96;
+foreach my $sdb (split(/,/,$screen_db)) {
+ die "Error locating contaminant database $sdb\n" unless -e $sdb;
+ my ($fsdb)=($sdb =~ m/([^\/]+)$/);
+ $fsdb=$sdb unless $fsdb;
+ my $tabout=$wrkfile.'.stab';
+ my $changed;
+ $cmd="megablast -d $sdb -i $wrkfile -p$minperc".
+   ' -W18 -JF -F "m D" -X30 -D3 | '.
+    ' grep -v "^#" | sort -k1,1 -k12,12 -nr '.
+    " > $tabout";
+ sysrun($cmd);
+ if (-s $tabout) {
+   local $_;
+   open (TABOUT, $tabout) || die "Error opening '$tabout' at $sdb search\n";
+   while (<TABOUT>) {
+    next if m/^\s*#/;
+    my @t=split(/\t/);
+    die "Error: invalid line format in $tabout:\n$_\n" unless @t>=12;
+    my $d=$seqs{$t[0]} || 
+       die "Error: query '$t[0]' from $tabout not found in sequence hash!\n";
+    next if $$d[5];
+    #distance of hit from either [original] end:
+    my ($d5, $d3)=($t[6]-1, ($$d[8]-$$d[7]+1)-$t[7]);
+    my $hitlen=$t[7]-$t[6];
+    #my $minhitlen= (0.75 * ($$d[8]-$$d[7]+1) < $minseqlen) ?  $minseqlen: 0.75 * ($$d[8]-$$d[7]+1);
+    my $minhitlen = 60; #at least 60 base pairs overlap!
+    my $mindist=$d5>$d3?$d3:$d5;
+    if ($hitlen>=$minhitlen) {
+      my $adjusted;
+      if ($mindist == $d5) { 
+        #trim 5' end
+        if ($$d[7]+$t[7]>$$d[1]) {
+           $$d[1]=$$d[7]+$t[7]; #set the new end5 after the 3' end of the vector hit
+           $adjusted=1;
+           }
+        }
+      else {
+        #trim 3' end
+         if ($$d[7]+$t[6]-2<$$d[2]) {
+          $$d[2]=$$d[7]+$t[6]-2; #set the new end3 before the 5' end of the vector hit
+          $adjusted=1;
+          }
+        }
+      if ($adjusted) {
+        $changed=1;
+        if ($$d[2]-$$d[1]<$minseqlen) {
+           $$d[5]=$fsdb ; #trash
+           $$d[1]=$$d[2] if $$d[1]>$$d[2];
+           }
+        $$d[6].=" $t[1]".':<'.($$d[7]+$t[6]-1).'-'.($$d[7]+$t[7]-1).'>;' if $adjusted;
+        }
+      }
+    } #while
+   close(TABOUT);
+   }
+ unlink($tabout);
+ writeCLRfile($wrkfile) if $changed;
+ } # larger contaminant screening 
+
+# run trimpoly mostly for computing the percentage of undetermined bases
+my $trimcmd = ($polyA)? 'trimpoly -R -s10 -r8 -ex -l20 ':'trimpoly -R ';
+$trimcmd.= ($endN ? ' -n1 -m15 '  : ' -n90 -m1 ');
+$trimcmd.=' -N ' unless $polyA;
+open (TRIMPOLY, $trimcmd." < $wrkfile |") || die "Error opening final '$trimcmd' pipe\n";
+while (<TRIMPOLY>) {
+   chomp;
+   my ($seqname, $percN, $sh5, $sh3, $ilen)=split(/\t/);
+   my $d=$seqs{$seqname} || die "Error: seq '$seqname' not found in hash!\n";
+   $$d[1]+=$sh5;
+   $$d[2]-=$sh3;
+   $$d[4]= $percN;
+   $$d[5]='low_qual' if ($lowqualcheck && $percN>3.00 && $endN); #trash
+   $$d[5]='shortq' if ($tooshort && $$d[2]-$$d[1]+1<$tooshort);
+   $$d[6].="trimpoly[+$sh5, -$sh3]; " if $sh5 || $sh3;
+   }
+close(TRIMPOLY);
+
+#------- write cleaning report file for this slice
+open(CLNFILE, '>'.$repfile) || die "Error creating file '$repfile'\n";
+foreach my $seqname (@seqlist) {
+  my $d=$seqs{$seqname} || die "Error writing cleaning report: sequence $seqname not found!\n";
+  printf(CLNFILE "%-16s\t%5.2f\t%5s\t%5s\t%5s\t%12s\t%s\n",$seqname,
+                       $$d[4],$$d[1],$$d[2],$$d[3],$$d[5], $$d[6]);
+  }
+close(CLNFILE);
+
+#------ cleaning up
+$file.='*';
+unlink(<${file}>);
+print "<< finished $sliceno\n";
+
+#==================
+sub sysrun {
+ local $_ = `($_[0]) 2>&1`;
+ my $code=$?; 
+ print STDERR $_;
+ my @cores = <core.*>;
+ if ($code && @cores>0) {
+   print STDERR "ERROR: command \n$cmd\n  exited with code $code\n";
+   exit(1);
+   }
+ if ($code ||  m/error|failure|fatal|segmentation|core/i) {
+   if (($_[0] =~ m/^\s*blastall/i)) {
+     my @olines=split(/\n/);
+     @olines=grep(m/error/i && !m/couldn't uncache/i && !m/No valid letters to be indexed/i, 
+                   @olines);
+     die "blastall unexpected error at\n$_[0]\n" if (@olines>0);
+     #my @e = (m/(error)/igs);
+     #my @r = (m/(couldn't uncache)/igs);
+     #if (scalar(@e) == scalar(@r)) {
+     #  print STDERR "Please ignore (code $code) 'uncache' errors above.\n";
+     #  return;
+     #  }
+     #print STDERR "Warning: error code $code with not just uncaching errors at\n$_[0]\n";
+     }
+    else {
+     die "Error code: $code, message:\n$_) at command:\n$_[0]\n";
+     }
+   }
+  
+}
+#----------------------------------------------------------------------------
+#printing fasta sequence (60 chars per line), uppercase
+# $seq is just a reference to an actual nucleotide string
+# if e5,e3 are specified and e3>e5 only CLEAR range will be returned
+#----------------------------------------------------------------------------
+sub print_fasta { 
+ my ($seq_name, $seq, $e5, $e3) = @_;
+ my $pos=$e5-1;
+ print '>'.$seq_name."\n" if $seq_name;
+ if ($e5 && $e3 && $e3>$e5)  { #assumes e3 and e5 make sense  
+    while ($e3-$pos>=60) {
+           print uc(substr($$seq,$pos,60))."\n";
+           $pos+=60;
+           }
+    print uc(substr($$seq,$pos,$e3-$pos))."\n" 
+              if ($e3-$pos>0);
+    }
+ else { #no valid clear range provided, print whole sequence
+    my $len=length($$seq);
+    my $pos=0;
+    while ($pos<$len) {
+       print uc(substr($$seq,$pos,60))."\n";
+       $pos+=60;
+       }       
+    }
+}
+
+sub writeCLRfile {
+ my ($outfile, $create)=@_;
+ local *SLICEFILE;
+ local *OUTFILE;
+ open(SLICEFILE, $file) || die "Error opening slice file '$file'\n";
+ local $/="\n>";
+ open (OUTFILE, ">$outfile") || die "Error creating work file '$outfile'\n";
+ my $oldsel=select(OUTFILE); # outfile, only containing clear range, non-trashed sequences
+ while (<SLICEFILE>) {
+   s/^>//;
+   chomp;
+   my ($defline, $seq)=(m/^(.+?)\n(.+)/s); 
+   my ($seqname, $seqdescr) = ($defline =~ m/^(\S+)\s*(.*)/);
+   $seq =~ s/\s+//g;
+   my $trash;
+   my ($e5, $e3);
+   if ($create) {     #descr,   end5, end3,   oldlength, percent N, trash code, cleaning comments, f5, f3 
+     #already trash sequences shorter than 100 with code 'i'
+     my $seqlen=length($seq);
+     $trash='short' if ($tooshort && $seqlen<$tooshort);
+                      # 0        1      2       3           4            5           6     7     8
+     $seqs{$seqname}=[$seqdescr, 1, $seqlen, $seqlen,       0 ,       $trash,          '', 1, $seqlen];
+     push(@seqlist, $seqname);
+     }
+    else { #extract clear range
+     my $d=$seqs{$seqname} || die "Error: seq '$seqname' not found in hash!\n";
+     ($e5,$e3, $trash)=($$d[1], $$d[2], $$d[5]);
+     ($$d[7], $$d[8])=($e5, $e3); #coordinates of the sequence written in this working file
+     }
+   &print_fasta($seqname,\$seq, $e5, $e3) unless $trash;
+   }
+ select($oldsel);
+ close OUTFILE;
+ close SLICEFILE; 
+}

@@ -1,0 +1,68 @@
+#!/usr/bin/env perl
+use strict;
+my $usage = q/Usage:
+ 
+ cln2qual <cln_report> <qual_file>
+ 
+ It writes a trimmed version of the <qual_file> into the output file 
+ <qual_file>.clean based on the coordinates found in cln_report
+ Trashed sequences will be omitted from the output.
+/;
+
+
+die $usage."\n" if @ARGV!=2;
+my $clnreport=shift(@ARGV);
+open(CLNFILE, $clnreport) || die "Cannot open cleaning report $clnreport\n";
+my $qualfile=shift(@ARGV);
+open(INQUAL, $qualfile) || die "Cannot open quality values file $qualfile\n";
+open(QUAL, '>'.$qualfile.'.clean') || 
+   die "Cannot create output file $qualfile\n";
+my $numseqs;
+my %cln; #seqname=>[trash, end5, end3, oldlen]
+while(<CLNFILE>) {
+ next if m/^\s*#/; 
+ chomp;
+ $numseqs++;        #  0       1   2    3     4     5     6
+ my @t=split(/\t/); # seqname %N end5 end3 oldlen trash  info
+ foreach (@t) { s/^\s+//; s/\s+$//; }
+ $cln{$t[0]}=[$t[5], $t[2], $t[3], $t[4]];
+ }
+close(CLNFILE);
+#trimming data loaded, now process the quality records:
+my @qualval;
+my ($id, $trash, $clipl, $clipr, $oldlen);
+while (<INQUAL>) {
+   chomp;
+   if (m/^>(\S+)/) { #defline
+     my $newid=$1;
+     &printQual() if ($#qualval>=0 && !$trash);
+     $id = $newid;
+     my $d=$cln{$id};
+     die "Error: sequence $id not found in cleaning report!\n"
+       unless $d;
+     ($trash, $clipl, $clipr, $oldlen)=@$d;
+     @qualval = ();
+     }
+    else { 
+     push(@qualval, split(' ', $_)); 
+     }
+  } #while lines
+ #last sequence processing:
+ &printQual() if ($#qualval>=0 && !$trash);; 
+ close(QUAL);
+ close(INQUAL);
+
+#--------------------------
+sub printQual {
+ die "Error: old length does not check for $id\n"
+   if (@qualval ne $oldlen);
+ print QUAL ">$id\n";
+ @qualval = @qualval[($clipl - 1) .. ($clipr - 1)];
+ for (my $j = 0; $j <= $#qualval; $j += 18){
+   if ($j + 18 > $#qualval) {
+       print QUAL join(" ", @qualval[$j .. $#qualval]), "\n";
+       } else {
+       print QUAL join(" ", @qualval[$j .. $j + 17]), "\n";
+       }
+   }#for
+}

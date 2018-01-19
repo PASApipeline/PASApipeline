@@ -1,0 +1,358 @@
+#!/usr/bin/env perl
+use strict;
+use Getopt::Std;
+use FindBin;
+use lib "$FindBin::Bin"; #just add the current script directory to the lib directory
+
+my $usage = q/
+ seqclean <seqfile> [-v <vecdbs>] [-s <screendbs>] [-r <reportfile>] 
+    [-o <outfasta>] [-n slicesize] [-c {<num_CPUs>|<PVM_nodefile>}] 
+    [-l <minlen>] [-N] [-A] [-L] [-x <min_pid>] [-y <min_vechitlen>] 
+
+Parameters
+
+<seqfile>: sequence file to be analyzed (multi-FASTA) 
+  
+       -c use the specified number of CPUs on local machine
+         (default 1) or a list of PVM nodes in <PVM_nodefile>
+       -n number of sequences taken at once in each 
+          search slice (default 2000)
+       -v comma delimited list of sequence files
+          to use for end-trimming of <seqfile> sequences 
+          (usually vector sequences)
+       -l during cleaning, consider invalid the sequences sorter 
+          than <minlen> (default 100)
+       -s comma delimited list of sequence files to use for 
+          screening <seqfile> sequences for contamination
+          (mito\/ribo or different species contamination)
+       -r write the cleaning report into file <reportfile>
+          (default: <seqfile>.cln)
+       -o output the "cleaned" sequences to file <outfasta>
+          (default: <seqfile>.clean)
+       -x minimum percent identity for an alignemnt with 
+          a contaminant (default 96)
+       -y minimum length of a terminal vector hit to be considered
+          (>11, default 11)
+       -N disable trimming of ends rich in Ns (undetermined bases)
+       -M disable trashing of low quality sequences
+       -A disable trimming of polyA\/T tails  
+       -L disable low-complexity screening (dust)
+       -I do not rebuild the cdb index file
+/;
+
+
+my @start_params=@ARGV;
+my $no_error=1;
+my $err_log;
+my $exit_msg='';
+die $usage."\n" if (@ARGV<1 || $ARGV[0] =~ /^\-/);
+
+my $wrkdir=$ENV{'PWD'};
+
+$ENV{'PATH'}=$FindBin::Bin.':'.$FindBin::Bin.'/bin:'.$ENV{'PATH'};
+
+my $dbfile=shift(@ARGV);
+
+umask 0002;
+
+getopts('MNALIl:n:v:s:o:r:x:y:c:z:') 
+   || die "$usage\nError getting options!\n";
+   
+$dbfile=~s{^\./}{};
+
+die "Error: input file '$dbfile' not found\n" unless -e $dbfile;
+my $dbfullpath=($dbfile=~m/^\//) ? $dbfile : ($wrkdir.'/'.$dbfile);
+my ($dbname)=( $dbfullpath =~ m/([^\/]+)$/ );
+my $cpus = $Getopt::Std::opt_c || 1;
+
+my $outfile=$Getopt::Std::opt_o || $dbname.'.clean';
+undef $outfile if ($outfile eq '.' || lc($outfile) eq 'none');
+my $cln_report=$Getopt::Std::opt_r || $dbname.'.cln';
+
+#=- logging system initialization:
+my $log_file="seqcl_$dbname.log";
+$err_log="err_seqcl_$dbname.log";
+unlink($log_file, $err_log);
+open(OLDSTDERR, ">&STDERR");
+
+open(STDOUT, ">$log_file") || &MErrExit("Failed to redirect STDOUT to $log_file");
+open(STDERR, ">$err_log") || &MErrExit("Failed to redirect STDERR to $err_log");
+
+my @vecdbs=split(/[\,:\|]/, $Getopt::Std::opt_v);
+foreach my $vdb (@vecdbs) {
+  my $noflt;
+  {local $/='^'; $noflt=(chomp($vdb)?'^':''); }
+  die "$usage Error: vector file '$vdb' not found.\n" unless -e $vdb;
+  $vdb=~s{^\./}{};
+  $vdb=$wrkdir.'/'.$vdb unless $vdb=~m{^/};
+  $vdb.=$noflt;
+  }
+&flog("* Using trimming files:\n ",join("\n ",@vecdbs)) if @vecdbs;
+
+my @screendbs=split(/[\,:\|]/, $Getopt::Std::opt_s);
+foreach my $sdb (@screendbs) {
+  die "$usage Error: contaminant file '$sdb' not found.\n" unless -e $sdb;
+  $sdb=~s{^\./}{};
+  $sdb=$wrkdir.'/'.$sdb unless $sdb=~m{^/};
+  }
+&flog("* Using screening files:\n ",join("\n ",@screendbs)) if @screendbs;
+
+my $startdate=getDate();
+my $psx_clean=$Getopt::Std::opt_z || 'seqclean.psx';
+my $r=`which $psx_clean`;chomp($r);
+die "Error: cannot find the slice cleaning script '$psx_clean' in the shell's path!\n" 
+   unless $r;
+
+$psx_clean=$r;
+
+&flog("$FindBin::Script running options: \n".$FindBin::Script.' '.join(" ", @start_params));
+&flog(" Standard log file: $log_file");
+&flog(" Error log file:    $err_log");
+&flog(" Using $cpus CPUs for cleaning");
+
+$no_error=0;
+
+my $numseqs = $Getopt::Std::opt_n || 1000;
+my $minlen = $Getopt::Std::opt_l || 100;
+
+my ($cmd, $psxparam);
+#
+goto SKIPINDEX if ($Getopt::Std::opt_I || !$outfile);
+&flog("-= Rebuilding $dbname cdb index =-");
+system("cdbfasta $dbfile -o $dbname.cidx") && 
+   &MErrExit("Error at cdbfasta $dbfile -o $dbname.cidx");
+   
+SKIPINDEX:   
+#================  Actual work starts here   ==============
+system("/bin/rm -rf cleaning_[1-9]*"); #remove previous cleaning directories!
+my $flags=(($Getopt::Std::opt_A)?'':'A').(($Getopt::Std::opt_N)?'':'N').
+    (($Getopt::Std::opt_L)?'':'L').(($Getopt::Std::opt_M)?'':'M');
+
+$flags.='S'.$minlen;
+my $minvechit=$Getopt::Std::opt_y || 11 ;
+my $minpid= $Getopt::Std::opt_x || '0' ;
+$psxparam=join(':', ($dbfullpath,$flags,join(',', @vecdbs), 
+           join(',',@screendbs), $minvechit, $minpid));
+$psxparam =~ s/ /\~\+/g;
+
+#my $psxcmd=($usepvm)? "pvmsx -L -m $cpus " : "psx -p $cpus ";
+my $useCondor= lc($cpus) eq 'condor';
+my $usepvm = (-e $cpus) ? 1:0;
+
+my $psxcmd;
+if ($useCondor) {
+  $psxcmd="condorsx ";
+  }
+ else { 
+   if ($usepvm) {
+    $psxcmd="pvmsx -L -m $cpus ";
+    }
+   else {
+    die $usage."Invalid number of CPUs" unless ($cpus > 0 && $cpus <= 50);
+    $psxcmd="psx -p $cpus ";
+    }
+ }
+
+$cmd=$psxcmd." -n $numseqs  -i $dbfile -d cleaning -C '$psxparam' -c '$psx_clean'";
+&flog(" Launching actual cleaning process:\n $cmd");
+system($cmd)
+  && &MErrExit("Error at '$cmd'\n");
+
+#==== merge the cleaning reports for all slices:
+
+
+&flog("Collecting cleaning reports\n");
+my $sortfile='outparts_cln.sort';
+&sortParts('cleaning',$dbname.'.cln', $sortfile);
+#collect all parts listed in $sortfile
+# into the file $mskfile
+&catParts($sortfile, $cln_report);
+
+open(CLNREPORT, $cln_report) || &MErrExit("Error opening $cln_report");
+
+if ($outfile) { #the only way to disable the output fasta 
+  $cmd="| cdbyank $dbname.cidx -d $dbfile -R -o $outfile";
+  open(TOFETCH, $cmd) || &MErrExit("Error opening pipe to cdbyank ($cmd)");
+  }
+my ($total, $trashed, $trimmed);
+my %trash;
+while(<CLNREPORT>) {
+ next if m/^\s*#/;
+ chomp;
+ my @t=split(/\t/);
+ &MErrExit("Invalid input line in $cln_report:\n$_") unless @t>4;
+ foreach (@t) { s/^\s+//; s/\s+$//; }
+ $total++;
+ if ($t[5]) {
+    $trash{$t[5]}++;
+    $trashed++;
+    }
+  else { #not trashed, fetch it
+    print TOFETCH join(' ',@t[0,2,3])."\n" if $outfile;
+    $trimmed++ if ($t[2]>1 || $t[3]<$t[4]);
+    }
+ }
+close(CLNREPORT);
+close(TOFETCH) if ($outfile ne '.');
+&flog('*'x50);
+&flog("Sequences analyzed: ".sprintf('%9d',$total));
+&flog('-' x 35);
+&flog("                   valid: ".
+     sprintf('%9d  (%d trimmed)',$total-$trashed,$trimmed));
+&flog("                 trashed: ".sprintf('%9d',$trashed));
+&flog('*'x50);
+if ($trashed>0) {
+ my ($k,$v);
+ &flog("----= Trashing summary =------") ;
+ while (($k, $v)=each(%trash)) {
+  &flog(sprintf(" %24s:%9d", 'by '."'$k'",$v));
+  }
+ &flog('-' x 30);
+ }
+&flog("Output file containing only valid and trimmed sequences: $outfile")
+ if ($outfile);
+&flog("For trimming and trashing details see cleaning report  : $cln_report");
+&flog('-' x 50);
+$no_error=1;
+
+#===================== SUBROUTINES ===================
+
+END { #to be executed on exit
+if ($err_log) {
+   my $step_log=`cat $err_log cleaning_*/err_log`;
+   $step_log =~ s/\s+$//;
+   $exit_msg.="\nThis is the content of the error log file:\n$step_log"
+      if $step_log;
+   my $host=$ENV{'HOST'} || $ENV{'HOSTNAME'};
+   my $msg = $no_error ? "$FindBin::Script ($dbfile) finished on machine $host\n".
+          " in $wrkdir, without a detectable error.\n" :
+          "$FindBin::Script ($dbfile) encountered an error.\n".
+                 "Working directory was $wrkdir";
+   unless ($no_error) { #an abnormal termination
+     &flog("\nProcess terminated with an error!");
+     &flog($msg);
+     }
+   print OLDSTDERR $msg;
+   }
+}
+
+sub flog {
+ print STDOUT join("\n",@_),"\n";
+ print STDERR join("\n",@_),"\n";
+ print OLDSTDERR join("\n",@_),"\n" if $err_log;
+}
+
+sub MErrExit {
+ #print STDERR $_[0]."\n";
+ $exit_msg.=$_[0].$_[1];
+ &flog($exit_msg);
+ $no_error=0;
+ exit(1) unless defined($_[1]);
+ die $_[1];
+ }
+
+#a basic date function :
+sub getDate {
+ my $date=localtime();
+ #get rid of the day so Sybase will accept it
+ (my $wday,$date)=split(/\s+/,$date,2);
+ return $date;
+}
+
+
+#--------------------------------------------
+# sortParts(dirbase, filesuffix, sortfile)
+#--------------------------------------------
+# sort all the file names by slice# and write
+# their names in the file <sortfile>
+# sorted accordingly
+# the sliceno is surrounded by tab
+#--------------------------------------------
+sub sortParts {
+ my ($dirbase, $suffix, $sortfile)=@_;
+ local *SORTFILE;
+ open(SORTFILE, '>'.$sortfile) || 
+     die "Error creating slice-gathering file '$sortfile'\n";
+ my @dirs = <${dirbase}_[0-9]*>;
+ die "Error: no ${dirbase}_[0-9]* directories found!\n" 
+     unless @dirs>0;
+ my $numfiles;
+ my @dbg;
+ foreach my $d (@dirs) {
+  next unless -d $d && ($d=~m/\Q$dirbase\E_\d+$/);
+  opendir(DIRH, $d) || die "Error at opendir $d\n";  
+  while (my $fentry=readdir(DIRH)) {
+   push(@dbg, $fentry);
+   next unless $fentry=~s/^(\d+)(_\Q$suffix\E)$/\t$1\t$2/;
+   my $toprint='./'.$d.'/'.$fentry;
+   print(SORTFILE $toprint."\n") ||
+     die ("Error at printing '$toprint' to $sortfile!\n");
+   $numfiles++;  
+   }
+  closedir(DIRH);
+  }
+ close(SORTFILE);
+ #die "Error: no files found matching /^(\\d+)(_\\Q$suffix\\E)\$/\n".
+ # "files:\n".join("\n",@dbg)."\n"
+ # unless $numfiles>0;
+ my $cmd="sort -k2,2 -n -o $sortfile $sortfile";
+ system($cmd) && die("Error at: $cmd\n");
+}
+#--------------------------------------------
+#catParts(sortfile, outfile [, fnameproc, flineproc] )
+#---------------------------
+# Cautious concatenation of the parts in sortfile
+# into the outfile
+# -if fnameproc is given, the result of fnameproc($fname) 
+# is opened as a source file
+# -if flineproc is given, the result of it flineproc($fline)
+# if written to outfile
+#--------------------------------------------
+sub catParts {
+ my ($sortfile, $outfile, $fnameproc, $flineproc)=@_;
+ local *FHANDLE;
+ local *SORTFILE;
+ local *SFILE;
+ 
+ #my ($outlock, $fhout) = &createExclusive($outfile)
+ #    || die "catParts Error at exclusive creating of file $outfile\n";
+ open(FHANDLE, '>'.$outfile) || die "Error creating $outfile\n";
+ open(SORTFILE, $sortfile) || 
+    die("Error opening $sortfile\n");
+ close(FHANDLE) unless ($flineproc);
+ my @acc; #accumulates file names for the faster cat operation
+ while (my $fname=<SORTFILE>) {
+   $fname=~tr/\t//d;
+   chomp($fname);
+   $fname=&$fnameproc($fname) if $fnameproc;
+   if ($flineproc) {
+     open(SFILE, $fname) || die "Error opening slice file '$fname'\n";
+     local $_;
+     while (<SFILE>) {
+       if (my $wline=&$flineproc($_)) {
+         print(FHANDLE $wline) || 
+            die "Error printing $wline to $outfile\n";
+         }
+       }
+     close(SFILE);   
+     } #flineproc line filter provided
+    else { # simple cat
+     die "Error -- file '$fname' cannot be located!\n" unless -f $fname;
+     push(@acc, $fname);
+     if (@acc>20) { #20 files at a time
+       my $cmd="cat '".join("' '",@acc)."' >> $outfile";
+       system($cmd) && die("Error at: $cmd\n");
+       @acc=();
+       }
+     }
+   } #while filename
+ close(SORTFILE);  
+ if ($flineproc) {
+   close(FHANDLE) 
+   }
+ elsif (@acc>0) {
+  my $cmd="cat '".join("' '",@acc)."' >> $outfile";
+  system($cmd) && die("Error at: $cmd\n");
+  @acc=();
+  }
+}

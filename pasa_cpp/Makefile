@@ -23,7 +23,7 @@ CFLAGS = -O3
 
 
 DEPEND_FILES = *.cpp *.c *.h
-CLEANABLE_FILES = *.o *~ *\#
+CLEANABLE_FILES = *.o *~ *\# pasa
 
 ALL = pasa 
 OBJECTS = alignment_segment.o cdna_alignment.o common_subs.o  cdna_alignment_assembler.o Lobject.o stringFuncts.o pasa.o argProcessor.o

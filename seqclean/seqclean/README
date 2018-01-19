@@ -1,0 +1,259 @@
+TIGR Gene Indices Sequence Cleaning and Validation script (SeqClean)
+
+           0.Introduction
+           1.Requirements
+           2.Installation
+           3.Usage and methods
+           4.Copyright
+           5.Contact information
+
+0.Introduction
+==============
+SeqClean is a tool for validation and trimming of DNA sequences from a flat 
+file database (FASTA format). SeqClean was designed primarily for "cleaning"
+of EST databases, when specific vector and splice site data are not 
+available, or when screening for various contaminating sequences is desired.
+The program works by processing the input sequence file and filtering its 
+content according to a few criteria: 
+  * percentage of undetermined bases
+  * polyA tail removal 
+  * overall low complexity analysis
+  * short terminal matches with various sequences used 
+    during the sequencing process (vectors, adapters)
+  * strong matches with other contaminants or unwanted sequences
+    (mitochondrial, ribosomal, bacterial, other species than the 
+    target organism etc.)
+    
+The user is expected to provide the contaminant databases, 
+they are not included in this package.
+
+1.Requirements
+==============
+ * perl version >= 5.6
+ * a working installation of recent versions of NCBI's 
+   blastall and megablast programs (
+ * one or more databases of potential contaminants (e.g. a vector 
+   database like NCBI's UniVec) properly formatted to work with 
+   NCBI's blastall (using formatdb)
+
+A binary distribution for this package is provided for Linux ix86 systems
+with glibc >=2.1.  NCBI's blastall and megablast are not included, 
+they should instead be obtained directly from NCBI.
+The source code of the various other tools included in the package 
+is provided so they can be compiled on other Unix platforms 
+where NCBI's tools work. 
+
+2.Installation
+==============
+Create a directory where you plan the package to reside. 
+Copy the compiled archive into that directory and unpack the archive 
+in there:
+
+tar xvfz seqclean.tar.gz
+
+This will unpack a few files in the current directory
+and will create a bin subdirectory with several files. 
+The program to run is seqclean script from the main directory.
+When launched, this program will prefix the local ./bin 
+subdirectory to the shell's path. Optionally, you may move/copy 
+all binaries and scripts from ./bin subdirectory somewhere 
+in your working shell PATH. You can also copy the main script
+(seqclean) to your preferred script location (which should be in the 
+shell's PATH), in which case the module Mailer.pm should go in the 
+same directory with the tgicl script or into a one of the PERLLIB 
+(%INC) directories.
+
+There are 2 perl scripts in this package:
+
+seqclean
+bin/seqclean.psx
+
+3.Usage and methods
+===================
+A short usage message is displayed when seqclean script is launched without
+any parameters.
+
+The seqclean script takes an input sequence file (fasta formatted) as the only 
+required parameter:
+
+seqclean your_est_file
+
+seqclean creates two output files of interest: 
+ 1. the filtered FASTA file (your_est_file.clean for the example above) 
+    containing only valid (non-trashed) and trimmed ("clear range") sequences
+ 2. a "cleaning report" (your_est_file.cln) providing details about 
+   sequence trimming and trashing (coordinates, reasons for trashing, 
+   contaminant names etc. - see below for a detailed description).
+
+However, the simple usage example above will not perform any searches 
+against contaminant databases (as there are none specified) but it will 
+only provide basic analysis, removing the polyA/polyT tail, possibly 
+clipping low-quality ends (the ends rich in undetermined bases) 
+and trashing the ones which are too short (shorter than 100 or 
+the -l parameter value) or which appear to be mostly low-complexity
+sequence.
+
+As suggested in the "Introduction", the contaminant databases provided 
+by the user can be considered to be of two types:
+  1. vector/adapter databases, which can determine the trimming 
+    of the analyzed sequences even when only very short terminal matches 
+    (down to 12 base pairs) are found. These database files should 
+    be provided with the -v option (vector detection)
+  2. extensive contaminants databases: the alignments between these 
+    contaminants and the analyzed sequences are only considered if 
+    they are longer than 60 base pairs with at least 94% identity; these 
+    are provided with the -s option (screening for contamination)
+
+In both cases the analyzed sequences will be searched against the provided 
+files and the overlaps are analyzed. The contaminant databases should be 
+all formatted as required for blastall (using NCBI's formatdb program).
+
+In the first case (vector/linker scan), the overlaps are only considered 
+if they are above 92% identity, they have very short gaps and they are 
+located in the 30% distance from either end. Also, the shorter these 
+overlaps are, the closer to either end of the analyzed sequence they 
+should be, in order to be considered for trimming of the target sequence. 
+Multiple vector/adapter databases can be provided at the -v option, separated 
+by comma (do not use spaces around the comma). Example:
+
+seqclean your_est_file -v /usr/db/UniVec,/usr/db/adaptors,/usr/db/linkers
+
+In this example three database files are checked for short terminal 
+matches with the analyzed sequences from "your_est_file".
+
+The -s option case 2. above) works in a similar way, as more than one file can
+be provided, but in that case only larger, statistically more significant 
+hits are considered. Example:
+
+seqclean your_est_file -v /usr/db/UniVec,/usr/db/linkers \
+ -s /usr/db/ecoli_genome,/usr/db/mito_ribo_seqs
+
+In both cases, the contaminant database files should be provided with 
+their full path unless they can be found in the current working directory.
+The searches against "-v" files are performed using blastall (blastn) with 
+low stringency, while for "-s" provided files, megablast is used, for 
+very fast screening. By default, the "smart" low-complexity filter is used 
+during both type of searches (the -F "m D" option of blastall/megablast).
+However, in some cases, short vector/adaptor terminal overlaps might 
+be expected in regions of low-complexity, so the dust filter can be 
+disabled completely for any database file given at the "-v" option, 
+by appending the "^" character at the end of the file name:
+
+seqclean your_est_file -v /usr/db/adapters^,/usr/db/UniVec,/usr/db/linkers^ \
+ -s /usr/db/ecoli_genome,/usr/db/mito_ribo_seqs
+
+In the example above, the "dust" filter is totally disabled for blastn 
+searches against /usr/db/adapters and /usr/db/linkers, while for the 
+other files (/usr/db/UniVec) it will still be set to work in "smart" 
+mode as mentioned above.
+
+The cleaning scripts keep track of iterative trimming of the input 
+sequences through multiple matches with various contaminants, 
+if that's the case.The 5' end (end5) coordinate of each input sequence 
+is initially set to 1, and the 3' end (end3) coordinate is considered 
+to be the length of the initial sequences. During the above mentioned 
+trimming procedures, end5 can be increased and/or end3 can be decreased.
+The final end3-end5+1 range is considered to be the "clear range" of the 
+sequence after going through the cleaning procedure. No matter if trimming 
+was applied or not, if the "clear range" length is shorter than a minimum
+value (default 100nt, can be set by -l option), the sequence will 
+be considered invalid and it will be trashed. Also, at the end of 
+the cleaning procedure, the percentage of undetermined bases from the 
+clear range is computed and the sequence is also trashed if this 
+percentage is larger than 3%.
+
+Cleaning report format
+----------------------
+Each line in the cleaning report file (*.cln) has 7 tab-delimited fields 
+as follows:
+
+1. the name of the input sequence
+2. the percentage of undetermined bases in the clear range 
+3. 5' coordinate after cleaning
+4. 3' coordinate after cleaning
+5. initial length of the sequence
+6. trash code
+7. trimming comments (contaminant names, reasons for trimming/trashing)
+
+The trash code field (6) should be empty if (part of) a sequence is 
+considered valid - so it can be found in the final filtered file (*.clean)
+
+The trash code field will be set to the file name of the last contaminant 
+database, if that determined the clear range to fall below the minimum value 
+(-l parameter, default 100). There are three reserved values of 
+the trash code:
+
+  "shortq" - assigned when the sequence length decreases 
+             below the minimum accepted length (-l) after polyA            
+             or low quality ends trimming;
+"low_qual" - assigned when the percentage of undetermined bases
+             is greater than 3% in the clear range;
+    "dust" - assigned when less than 40nt of the sequence 
+             is left unmasked by the "dust" low-complexity filter;
+
+
+The reasons and the coordinates for trimming are mentioned in the 7th
+field. When trimming was due to a contaminant match, the contaminant 
+name and the overlap coordinates are mentioned. When trimming was due 
+to polyA tail or low quality ends removal, the "trimpoly" program name is 
+mentioned along with the trimming coordinates.
+
+Besides the -s and -v parameters mentioned above, here is a brief summary
+of the other parameters:
+
+-c  : enables parallel processing by specifying the number of local CPUs 
+      to use (for a SMP machine) or a filename containing a list of PVM node 
+      names (one host name per line, per CPU). In the PVM case, if a node 
+      is also a SMP machine and you want to use more than one CPU on that 
+      node, you should list that same node name as many times as many CPUs 
+      you want to use on that node. If this option is not provided, 
+      only one CPU is used on the local machine.
+-n  : the input file is not usually processed as one single query file. 
+      Instead, it is sliced up into little parts and each part 
+      is processed separately; this option is useful to tweak when 
+      you also make use of the multi-CPU option (-c), as each slice can 
+      be processed by one CPU.
+-l  : the minimum accepted length of the clear range in order 
+      to be considered valid. If the length of the clear range falls
+      below this value, a trash code is assigned to the input sequence 
+      and it will be exclued from the output filtered file (*.clean)
+-r  : custom name of the cleaning report file (default: add the ".cln"
+      suffix to the input file name)
+-o  : custom name of the final "clear range"-only FASTA file containing only 
+      the valid sequences (default: append ".clean" suffix to the 
+      input file name)
+-x  : set the minimum percent identity to be considered for an 
+      alignment with a contaminant (default 96)
+-y  : minimum length of a terminal vector hit to be considered
+      (>11, default 11)           
+-N  : disable any attempt of trimming of low quality ends (ends rich in 
+      N = undetermined bases)
+-M  : completely disable trashing of low quality (N-rich) sequences     
+-A  : disable trimming of polyA tails from 3' end or polyT from 5' end of
+      the input sequences
+-L  : disable low-complexity analysis and the trashing of input sequences 
+      by this criterion
+-I  : do not rebuild the .cidx file (if already there)
+
+
+
+If after seqclean one needs to trim the corresponding quality values too, 
+according to the new coordinates or trash codes found by seqclean, the 
+utility script "cln2qual" is included (see the usage message). It expects 
+a fasta-like file containing space delimited quality values for each nucleotide of 
+the original sequences. It should be run after the seqclean, as it parses the 
+trimming ("clear range") coordinates and trash codes from the cleaning report 
+and applies them to the quality records.
+
+
+4.Copyright
+===========
+Copyright (c) 2002-2003, The Institute for Genomic Research, All Rights Reserved
+This software is OSI Certified Open Source Software.
+OSI Certified is a certification mark of the Open Source Initiative.
+
+5.Contact information
+=====================
+For problems or questions related to the tools included in this package 
+please contact Geo Pertea at gpertea@tigr.org
+
