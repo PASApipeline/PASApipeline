@@ -86,7 +86,7 @@ main: {
     
     my $format = ($SAM_flag) ? "samse" : "3";
 
-	my $cmd = "gmap -D $genomeBaseDir -d $genomeDir $transcriptDB -f $format -n $num_gmap_top_hits -x 50 -t $CPU -B 5 ";
+	my $cmd = "gmap -D $genomeBaseDir -d $genomeDir -f $format -n $num_gmap_top_hits -x 50 -t $CPU -B 5 ";
 	if ($max_intron) {
 		my $gmapv=`gmap --version 2>&1 | head -1`;
 		chomp($gmapv);
@@ -97,7 +97,7 @@ main: {
 			$cmd .= " --intronlength=$max_intron ";
 		}
 	}
-	
+    $cmd .= "$transcriptDB";
 	&process_cmd($cmd);
 
 	exit(0);
