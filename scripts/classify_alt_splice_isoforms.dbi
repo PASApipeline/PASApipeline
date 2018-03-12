@@ -194,7 +194,7 @@ sub init_alt_splice_tables {
                      );
     
     foreach my $table (@tables) {
-        my $query = "TRUNCATE TABLE $table";
+        my $query = ($dbproc->{__server} eq 'SQLite') ? "DELETE FROM $table" : "TRUNCATE TABLE $table";
         &RunMod($dbproc, $query);
     }
     
@@ -237,7 +237,7 @@ sub summarize_labels() {
             $token_id = $label_to_token_id{$label} = &get_splice_token($label);
         }
 
-        my $query = "insert alt_splice_token_assignment (cdna_acc, token_id) values (?,?)";
+        my $query = "insert into alt_splice_token_assignment (cdna_acc, token_id) values (?,?)";
         &RunMod($dbproc, $query, $cdna_acc, $token_id);
 
     }
@@ -254,7 +254,7 @@ sub summarize_labels() {
 sub get_splice_token {
     my $label = shift;
 
-    my $query = "insert alt_splice_tokens (alt_splice_token) values (?)";
+    my $query = "insert into alt_splice_tokens (alt_splice_token) values (?)";
     &RunMod($dbproc, $query, $label);
     
     my $token_id = &get_last_insert_id($dbproc);

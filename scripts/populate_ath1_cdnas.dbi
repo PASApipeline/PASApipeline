@@ -105,7 +105,7 @@ sub insert_cdna_info {
     
     ## Make an alignment entry:
     my $asmbl_id = $blat_accs{$cdnas[0]}; #get asmbl_id
-    my $query = "insert clusters (annotdb_asmbl_id) values (?)\n";
+    my $query = "insert into clusters (annotdb_asmbl_id) values (?)\n";
     &Mysql_connect::RunMod($dbproc, $query, $asmbl_id);
     
     my $cluster_id = &get_last_insert_id($dbproc);

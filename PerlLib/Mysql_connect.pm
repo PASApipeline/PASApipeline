@@ -28,7 +28,12 @@ sub connect_to_db {
         confess "Error, need all method parameters (server, db, username, password) ";
     }
     
-    my $dbh = DBI->connect("DBI:mysql:$db:$server", $username, $password);
+    my $dbh;
+    if ($server eq 'SQLite') {
+        $dbh = DBI->connect("DBI:SQLite:dbname=$db", undef, undef);
+    } else {
+        $dbh = DBI->connect("DBI:mysql:$db:$server", $username, $password);
+    }
     unless (ref $dbh) {
         croak "Cannot connect to $server: $DBI::errstr";
     }
@@ -197,7 +202,7 @@ sub very_first_result_sql {
 
 sub get_last_insert_id {
     my ($dbproc) = @_;
-    my $query = "select LAST_INSERT_ID()";
+    my $query = ($dbproc->{__server} eq 'SQLite') ? 'select last_insert_rowid()' : "select LAST_INSERT_ID()";
     return (&very_first_result_sql($dbproc, $query));
 }
 

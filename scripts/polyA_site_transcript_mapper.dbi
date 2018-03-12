@@ -488,7 +488,7 @@ sub load_PolyA_info_in_DB {
     
     $trimType = ($trimType eq "lend") ? "lend_PolyT" : "rend_PolyA";
     
-    my $query = "insert transcriptPolyA (align_id, genomicCoord, transcribedOrient, trimType, alignEndOffset) values (?,?,?,?,?)";
+    my $query = "insert into transcriptPolyA (align_id, genomicCoord, transcribedOrient, trimType, alignEndOffset) values (?,?,?,?,?)";
     &RunMod($dbproc, $query, $align_id, $genomicCoord, $transcribedOrient, $trimType, $offset);
     
     ## update spliced orient for single exon alignments to transcribed orient

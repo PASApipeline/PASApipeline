@@ -73,7 +73,7 @@ while (<$filehandle>) {
     my (@x) = split (/\s+/);
     my $acc = shift @x;
     $acc =~ s/>//;
-    my $query = "update cdna_info set is_fli = 1 where cdna_acc = \"$acc\"\n";
+    my $query = "update cdna_info set is_fli = 1 where cdna_acc = '$acc'\n";
     &RunMod($dbproc, $query);
     
     print STDERR "-updating $acc => full-length status.\n" if $SEE || $DEBUG;

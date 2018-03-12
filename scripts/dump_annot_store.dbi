@@ -75,10 +75,10 @@ my $query = "select annot_id, gene_id, model_id, annotdb_asmbl_id, lend, rend, o
 if ($gene_id || $model_id || $gene_id) {
     $query .= " where ";
     if ($gene_id) {
-        $query .= " and gene_id = \"$gene_id\" ";
+        $query .= " and gene_id = '$gene_id' ";
     }
     if ($model_id) {
-        $query .= " and model_id = \"$model_id\" ";
+        $query .= " and model_id = '$model_id' ";
     }
     if ($annotation_version) {
         $query .= " and annotation_version = $annotation_version ";

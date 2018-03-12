@@ -5,7 +5,8 @@
 ## MySQL settings:
 
 # server actively running MySQL
-MYSQLSERVER=localhost # or server.com
+# Set to SQLite to use an SQLite database with pathname specified by MYSQLDATABASE 
+MYSQLSERVER=localhost # or server.com, or SQLite
 # Pass socket connections through Perl DBI syntax e.g. MYSQLSERVER=mysql_socket=/tmp/mysql.sock
 
 # read-write username and password

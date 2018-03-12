@@ -283,7 +283,7 @@ sub validate_alignments_on_asmbl_id {
       . " and al.validate is null";
 	  
     if ($prog_type) {
-        $query .= " and al.prog = \"$prog_type\" ";
+        $query .= " and al.prog = '$prog_type' ";
     }
 	
     my @results = &Mysql_connect::do_sql_2D($dbproc, $query, $asmbl_id);

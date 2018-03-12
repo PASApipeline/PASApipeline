@@ -74,7 +74,7 @@ foreach my $result (@results) {
     my $assembly_seq = uc $cdna_alignment->extractSplicedSequence();
     
     unless ($opt_X) {
-        my $query = "insert cdna_sequence (accession, sequence) values (?,?)";
+        my $query = "insert into cdna_sequence (accession, sequence) values (?,?)";
         &RunMod($dbproc, $query, $cdna_acc, $assembly_seq);
     }
     

@@ -75,7 +75,7 @@ foreach my $table ( qw (alt_splice_FL_compare
 my $query = "delete from cluster_link where is_assembly = 1";
 &RunMod($dbproc, $query);
 
-$query = "delete from cdna_link where cdna_acc like \"asmbl_%\"";
+$query = "delete from cdna_link where cdna_acc like 'asmbl_%'";
 &RunMod($dbproc, $query);
 
 $query = "select max(align_id) from cdna_link";

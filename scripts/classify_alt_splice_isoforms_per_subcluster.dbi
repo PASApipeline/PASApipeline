@@ -394,7 +394,7 @@ sub store_splice_variation {
     } 
 
     ## insert it:
-    $query = qq { insert splice_variation (cdna_acc, lend, rend, orient, type, num_subfeatures_included) values 
+    $query = qq { insert into splice_variation (cdna_acc, lend, rend, orient, type, num_subfeatures_included) values 
                       (?,?,?,?,?,?) };
     &RunMod($dbproc, $query, $cdna_acc, $lend, $rend, $orient, $type, $num_subfeatures_included);
     
@@ -413,7 +413,7 @@ sub add_splice_variation_support {
     print "Count: $count\n" if $SEE;
     
     unless ($count) {
-        my $query = "insert splice_variation_support (sv_id, cdna_acc) values (?,?)";
+        my $query = "insert into splice_variation_support (sv_id, cdna_acc) values (?,?)";
         &RunMod($dbproc, $query, $sv_id, $other_acc);
     }
 }
@@ -428,7 +428,7 @@ sub link_alt_splice {
     my $count = &very_first_result_sql($dbproc, $query, $sv_id_A, $sv_id_B);
     
     unless ($count) {
-        my $query = "insert alt_splice_link (sv_id_A, sv_id_B) values (?,?)";
+        my $query = "insert into alt_splice_link (sv_id_A, sv_id_B) values (?,?)";
         &RunMod($dbproc, $query, $sv_id_A, $sv_id_B);
     }
 }

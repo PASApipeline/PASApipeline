@@ -98,7 +98,7 @@ my $query = "select al.align_id from align_link al, cdna_info ci "
 if ($prog_name) {
 
 	unless ($prog_name eq "ALL") {
-		$query .= " and al.prog = \"$prog_name\" " ;
+		$query .= " and al.prog = '$prog_name' " ;
 	}
 }	
 
