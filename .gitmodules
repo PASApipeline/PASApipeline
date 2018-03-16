@@ -1,0 +1,3 @@
+[submodule "pasapipeline.github.io"]
+	path = pasapipeline.github.io
+	url = https://github.com/PASApipeline/pasapipeline.github.io.git
