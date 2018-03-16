@@ -16,7 +16,7 @@ A. Assigning a version number to the annotation which will be imported.
 
       Perform a single insert directly to this table and retrieve the auto-incremented version_id, like so:
 
-      my $query = "insert annotation_admin (date) values (now())";
+      my $query = "insert into annotation_admin (date) values (CURRENT_TIMESTAMP)";
       &Mysql_connect::RunMod($dbproc, $query);
 
       $query  = "select LAST_INSERT_ID()";

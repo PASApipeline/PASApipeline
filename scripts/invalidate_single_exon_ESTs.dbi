@@ -21,7 +21,7 @@ Script invalidates all single-exon ESTs that would otherwise provide valid align
     
 
 ############################# Options ###############################
-# -M Mysql database name
+# -M database name
 # -d Debug
 # 
 # -h print this option menu and quit
@@ -50,7 +50,7 @@ my @results = &do_sql_2D($dbproc, $query);
 
 
 # prepare a query for invalidation of transcripts
-my $invalidate_query = "update align_link set validate = 0, comment = \"invalidated (valid) single exon est alignment\" where validate =  1 and align_id = ?";
+my $invalidate_query = "update align_link set validate = 0, comment = 'invalidated (valid) single exon est alignment' where validate =  1 and align_id = ?";
 my $sth = $dbproc->{dbh}->prepare ($invalidate_query) or die $dbproc->{dbh}->errstr;
 
 foreach my $result (@results) {

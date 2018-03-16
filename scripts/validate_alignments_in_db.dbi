@@ -79,7 +79,7 @@ Alignment validations include examining for consensus splice sites and examining
 
 ############################# Options ###############################
 #
-# -M Mysql database name
+# -M database name
 # -P cDNA alignment program (ie. blat sim4)
 # -g genomic_seq_db
 # -t transcript_db
@@ -283,12 +283,11 @@ sub validate_alignments_on_asmbl_id {
       . " and al.validate is null";
 	  
     if ($prog_type) {
-        $query .= " and al.prog = \"$prog_type\" ";
+        $query .= " and al.prog = '$prog_type' ";
     }
 	
     my @results = &Mysql_connect::do_sql_2D($dbproc, $query, $asmbl_id);
 
-    $dbproc->{dbh}->{AutoCommit} = 0;
 
 	
     foreach my $result (@results) {
@@ -301,8 +300,6 @@ sub validate_alignments_on_asmbl_id {
 
     close $ofh;
 
-    $dbproc->{dbh}->commit();
-    $dbproc->{dbh}->{AutoCommit} = 1;
 
     system("touch \'$validations_checkpoint_file\'");
     

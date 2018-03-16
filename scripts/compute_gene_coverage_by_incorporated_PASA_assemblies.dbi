@@ -121,7 +121,7 @@ foreach my $model_id (keys %model_to_cdna_accs) {
 		my ($lend, $rend) = &Ath1_cdnas::get_alignment_span($dbproc, $cdna);
 		
 		## get the align_id:
-        my $query = "select align_id from cdna_link where cdna_acc = \"$cdna\" and validate = 1";
+        my $query = "select align_id from cdna_link where cdna_acc = '$cdna' and validate = 1";
         my $align_id = &Mysql_connect::very_first_result_sql($dbproc, $query);
         my $cdna_obj = &Ath1_cdnas::create_alignment_obj($dbproc, $align_id);
 		

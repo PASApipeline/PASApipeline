@@ -12,6 +12,7 @@ use Getopt::Std;
 use TiedHash;
 use Carp;
 use Data::Dumper;
+use File::Basename qw(fileparse);
 
 use vars qw ($opt_M $opt_f $opt_d $opt_h $opt_v);
 
@@ -105,7 +106,7 @@ my %EVENT_SEEN; ## track events already computed.
 
 
 
-my $correlated_features_output_file = "$MYSQLdb.correlated_splicing_features.tab";
+my $correlated_features_output_file = fileparse($MYSQLdb) . ".correlated_splicing_features.tab";
 {
     ## query the symmetrical events
     my $query = qq {

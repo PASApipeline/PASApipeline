@@ -24,7 +24,7 @@ usage: $0 -M "db:server" -p ~/.pwdfile < prog_validations
 
 ############################# Options ###############################
 #
-# -M Mysql database name
+# -M database name
 # -d Debug
 # -v verbose
 # -h print this option menu and quit

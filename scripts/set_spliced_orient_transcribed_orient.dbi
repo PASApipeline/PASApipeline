@@ -25,7 +25,7 @@ Sets the spliced orientation (transcribed orientation) to the aligned orientatio
 
 ############################# Options ###############################
 #
-# -M Mysql database name
+# -M database name
 # 
 # -d Debug
 # 

@@ -101,7 +101,7 @@ sub store_cluster_links {
         my @accs = keys %{$asmbl_id_to_acc{$asmbl_id}};
         
         ## install row in clusters table                                                                                           
-        my $query = qq { insert clusters (annotdb_asmbl_id) values (?) };
+        my $query = qq { insert into clusters (annotdb_asmbl_id) values (?) };
         &RunMod($dbproc, $query, $asmbl_id);
         
         my $cluster_id = &Mysql_connect::get_last_insert_id($dbproc);
@@ -134,10 +134,10 @@ sub process_alignment() {
     }
     
 
-    my $query = "insert cdna_link (cdna_acc, prog, aligned_orient) values (?,?,?)";
+    my $query = "insert into cdna_link (cdna_acc, prog, aligned_orient) values (?,?,?)";
     &RunMod ($dbproc, $query, $acc, $prog, $orientation);
     
-    my $query = "select LAST_INSERT_ID()";
+    my $query = ($dbproc->{dbh}->{Driver}->{Name} eq 'SQLite') ? 'select last_insert_rowid()' : "select LAST_INSERT_ID()";
     my $result_aref = &first_result_sql ($dbproc, $query);
     my $align_id = $result_aref->[0];
     
@@ -154,7 +154,7 @@ sub process_alignment() {
             my $per_id = $coordset_href->{per_id};
             print "g5: $gend5\tg3: $gend3\tc5: $cdnaend5\tc3: $cdnaend3\n" if $SEE;
             ($gend5, $gend3) = sort {$a<=>$b} ($gend5, $gend3);
-            my $query = "insert alignment (align_id, lend, rend, mlend, mrend, orient, per_id) values (?,?,?,?,?,?,?)";
+            my $query = "insert into alignment (align_id, lend, rend, mlend, mrend, orient, per_id) values (?,?,?,?,?,?,?)";
             &RunMod($dbproc, $query, $align_id, $gend5, $gend3, $cdnaend5, $cdnaend3, $orientation, $per_id);
             
         }

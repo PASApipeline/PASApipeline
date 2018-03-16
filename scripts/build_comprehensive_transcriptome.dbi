@@ -78,15 +78,17 @@ unless (-d $outdir) {
 my %config = &readConfig($configfile);
 
 
-my $mysql_db = $config{MYSQLDB} or die "Error, couldn't extract mysql_db name from config file " . cwd() . "/$configfile\n";
+my $database = $config{DATABASE} or die "Error, couldn't extract DATABASE from config file " . cwd() . "/$configfile\n";
 my $mysql_server = &Pasa_conf::getParam("MYSQLSERVER");
 my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
 my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
 
-my ($dbproc) = &connect_to_db($mysql_server,$mysql_db,$user,$password);
+my ($dbproc) = &connect_to_db($mysql_server,$database,$user,$password);
 
-my $query = "use $mysql_db";
-&RunMod($dbproc, $query);
+if ($dbproc->{dbh}->{Driver}->{Name} ne 'SQLite') {
+    my $query = "use $database";
+    &RunMod($dbproc, $query);
+}
 
 main: {
     
@@ -323,12 +325,12 @@ main: {
     ## Generate GTF and BED files describing alignments
     my $gff3_file = "$outdir/$prefix.gff3";
     {
-        my $cmd = "$FindBin::Bin/PASA_transcripts_and_assemblies_to_GFF3.dbi -M $mysql_db -F $fasta_outfile > $gff3_file";
+        my $cmd = "$FindBin::Bin/PASA_transcripts_and_assemblies_to_GFF3.dbi -M '$database' -F $fasta_outfile > $gff3_file";
         &process_cmd($cmd);
     }
     my $bed_file = "$outdir/$prefix.bed";
     {
-        my $cmd = "$FindBin::Bin/PASA_transcripts_and_assemblies_to_GFF3.dbi -M $mysql_db -F $fasta_outfile -B > $bed_file";
+        my $cmd = "$FindBin::Bin/PASA_transcripts_and_assemblies_to_GFF3.dbi -M '$database' -F $fasta_outfile -B > $bed_file";
         &process_cmd($cmd);
     }
     
@@ -392,7 +394,7 @@ sub maps_to_PASA_asm {
             
             ## get subcluster
             my $acc = $pasa_obj->get_acc();
-            my $query = "select subcluster_id from subcluster_link where cdna_acc = \"$acc\"";
+            my $query = "select subcluster_id from subcluster_link where cdna_acc = '$acc'";
             my $subcluster_id = &Mysql_connect::very_first_result_sql($dbproc, $query);
             print STDERR "\tSUBCLUSTER = $subcluster_id\n" if $DEBUG;
             return($subcluster_id);
@@ -417,7 +419,7 @@ sub get_overlapping_pasa_alignments {
     my $query = "select al.align_id "
         . " from align_link al, clusters c, cdna_info ci "
         . " where al.cluster_id = c.cluster_id "
-        . " and c.annotdb_asmbl_id = \"$scaffold\" "
+        . " and c.annotdb_asmbl_id = '$scaffold' "
         . " and al.cdna_info_id = ci.id "
         . " and ci.is_assembly = 1 "
         . " and al.validate = 1 "

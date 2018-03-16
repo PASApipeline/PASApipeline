@@ -1,0 +1,343 @@
+CREATE TABLE URL_templates (
+  url_name TEXT PRIMARY KEY,
+  url_template TEXT DEFAULT NULL,
+  url_var_name TEXT NOT NULL DEFAULT ''
+) WITHOUT ROWID;
+
+CREATE TABLE URL_var_names (
+  url_var_name TEXT PRIMARY KEY
+) WITHOUT ROWID;
+
+CREATE TABLE alignment (
+  feat_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  align_id INTEGER NOT NULL DEFAULT 0,
+  lend INTEGER NOT NULL DEFAULT 0,
+  rend INTEGER NOT NULL DEFAULT 0,
+  mlend INTEGER NOT NULL DEFAULT 0,
+  mrend INTEGER NOT NULL DEFAULT 0,
+  orient TEXT DEFAULT NULL CHECK(orient IN ('', '+','-')),
+  per_id NUMERIC DEFAULT NULL
+) ;
+CREATE INDEX align_idx ON alignment(align_id);
+
+CREATE TABLE alt_splice_FL_compare (
+  row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  template_cdna_acc TEXT DEFAULT NULL,
+  classification TEXT NOT NULL DEFAULT '',
+  lend INTEGER NOT NULL DEFAULT 0,
+  rend INTEGER NOT NULL DEFAULT 0,
+  orient TEXT DEFAULT '' CHECK(orient IN ('', '+','-')),
+  type TEXT NOT NULL DEFAULT ''
+) ;
+
+CREATE TABLE alt_splice_FL_to_FL_compare (
+  row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  template_acc TEXT NOT NULL DEFAULT '',
+  other_acc TEXT NOT NULL DEFAULT '',
+  diff_in_cds BOOLEAN NOT NULL CHECK(diff_in_cds IN(0,1)),
+  frame_change BOOLEAN NOT NULL DEFAULT 0 CHECK(frame_change IN(0,1)),
+  percent_prot_length NUMERIC NOT NULL DEFAULT 0,
+  num_variations INTEGER NOT NULL DEFAULT 0,
+  same_frame_exists BOOLEAN NOT NULL DEFAULT 0 CHECK(frame_change IN(0,1))
+) ;
+
+CREATE TABLE alt_splice_link (
+  sv_id_A INTEGER,
+  sv_id_B INTEGER,
+  PRIMARY KEY (sv_id_A,sv_id_B)
+) WITHOUT ROWID;
+CREATE INDEX sv_idx_B ON alt_splice_link(sv_id_B);
+
+CREATE TABLE alt_splice_token_assignment (
+  cdna_acc TEXT NOT NULL DEFAULT '',
+  token_id INTEGER NOT NULL DEFAULT 0
+) ;
+
+CREATE TABLE alt_splice_tokens (
+  token_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  alt_splice_token TEXT NOT NULL DEFAULT ''
+) ;
+
+CREATE TABLE annotation_admin (
+  version_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date DATETIME NOT NULL CHECK(date IS datetime(date))
+) ;
+
+CREATE TABLE annotation_compare (
+  compare_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date DATETIME NOT NULL CHECK(date IS datetime(date)),
+  annotation_version INTEGER NOT NULL DEFAULT 0 CHECK(annotation_version >= 0)
+) ;
+
+CREATE TABLE annotation_link (
+  annotation_link_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cdna_acc TEXT DEFAULT NULL,
+  gene_id TEXT DEFAULT NULL,
+  model_id TEXT DEFAULT NULL,
+  compare_id INTEGER NOT NULL DEFAULT 0
+) ;
+CREATE INDEX cdna_acc_idx ON annotation_link(cdna_acc);
+CREATE INDEX gene_id_idx ON annotation_link(gene_id);
+CREATE INDEX mod_idx ON annotation_link(model_id);
+CREATE INDEX compare_idx ON annotation_link(compare_id);
+CREATE INDEX comp_id_acc_idx ON annotation_link(compare_id,cdna_acc);
+
+CREATE TABLE annotation_store (
+  annot_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  gene_id TEXT NOT NULL DEFAULT '',
+  model_id TEXT NOT NULL DEFAULT '',
+  annotdb_asmbl_id TEXT NOT NULL DEFAULT '',
+  lend INTEGER NOT NULL DEFAULT 0 CHECK(lend >= 0),
+  rend INTEGER NOT NULL DEFAULT 0 CHECK(rend >= 0),
+  orient TEXT NOT NULL DEFAULT '' CHECK(orient IN ('', '+','-')),
+  gene_obj BLOB NOT NULL,
+  annotation_version INTEGER NOT NULL DEFAULT 0 CHECK(annotation_version >= 0)
+) ;
+CREATE INDEX gene_index_coords ON annotation_store(annotdb_asmbl_id,lend,rend);
+CREATE INDEX geneid_idx ON annotation_store(gene_id);
+CREATE INDEX modelid_idx ON annotation_store(model_id);
+CREATE INDEX annot_version_idx ON annotation_store(annotation_version);
+CREATE INDEX gene_idx ON annotation_store(annotation_version,gene_id);
+
+CREATE TABLE annotation_updates (
+  update_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  gene_id TEXT DEFAULT NULL,
+  model_id TEXT DEFAULT NULL,
+  alt_splice_flag BOOLEAN NOT NULL DEFAULT 0 CHECK(alt_splice_flag IN (0,1)),
+  before_gene_obj BLOB,
+  after_gene_obj BLOB,
+  compare_id INTEGER NOT NULL DEFAULT 0,
+  is_valid BOOLEAN NOT NULL DEFAULT 0 CHECK(is_valid IN (0,1)),
+  have_before BOOLEAN NOT NULL DEFAULT 0 CHECK(have_before IN (0,1)),
+  have_after BOOLEAN NOT NULL DEFAULT 0 CHECK(have_after IN (0,1)),
+  is_novel_flag BOOLEAN DEFAULT 0 CHECK(is_novel_flag IN (0,1))
+) ;
+CREATE INDEX is_valid_idx ON annotation_updates(is_valid);
+CREATE INDEX alt_splice_idx ON annotation_updates(alt_splice_flag);
+CREATE INDEX lotsastuff_idx ON annotation_updates(gene_id,model_id,is_valid,alt_splice_flag);
+CREATE INDEX modelidx ON annotation_updates(model_id);
+
+CREATE TABLE asmblPolyA (
+  asmbl_acc TEXT PRIMARY KEY,
+  genomicCoord INTEGER NOT NULL DEFAULT 0,
+  asmblCoord INTEGER NOT NULL DEFAULT 0,
+  numSupportTranscripts INTEGER NOT NULL DEFAULT 0
+) WITHOUT ROWID;
+
+CREATE TABLE asmbl_gene_objs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cdna_acc TEXT NOT NULL DEFAULT '',
+  allow_5prime_partial BOOLEAN NOT NULL DEFAULT 0 CHECK(allow_5prime_partial IN (0,1)),
+  allow_3prime_partial BOOLEAN NOT NULL DEFAULT 0 CHECK(allow_3prime_partial IN (0,1)),
+  gene_obj BLOB NOT NULL,
+  UNIQUE (cdna_acc,allow_5prime_partial,allow_3prime_partial)
+) ;
+
+CREATE TABLE asmbl_link (
+  asmbl_acc TEXT,
+  cdna_acc TEXT,
+  PRIMARY KEY (asmbl_acc,cdna_acc)
+) WITHOUT ROWID;
+CREATE INDEX cdna_idx ON asmbl_link(cdna_acc);
+
+CREATE TABLE align_link (
+  align_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cdna_info_id INTEGER DEFAULT NULL,
+  align_acc TEXT DEFAULT NULL,
+  cluster_id INTEGER DEFAULT NULL,
+  prog TEXT NOT NULL DEFAULT '',
+  validate BOOLEAN DEFAULT NULL CHECK(validate IN (0,1)),
+  spliced_orient TEXT DEFAULT NULL CHECK(spliced_orient IN ('', '+','-', '?')),
+  num_segments INTEGER DEFAULT NULL CHECK(num_segments >= 0),
+  comment TEXT,
+  alignment TEXT,
+  avg_per_id NUMERIC DEFAULT NULL,
+  percent_aligned REAL DEFAULT NULL,
+  score NUMERIC DEFAULT 0,
+  aligned_orient TEXT DEFAULT NULL CHECK(aligned_orient IN ('', '+','-')),
+  lend INTEGER DEFAULT 0,
+  rend INTEGER DEFAULT 0,
+  UNIQUE (prog,align_acc)
+) ;
+CREATE INDEX align_acc_idx ON align_link(align_acc);
+CREATE INDEX align_id_idx ON align_link(align_id);
+CREATE INDEX cdna_info_id_idx ON align_link(cdna_info_id);
+CREATE INDEX cluster_id_idx ON align_link(cluster_id);
+CREATE INDEX progvalididx ON align_link(prog,validate);
+
+CREATE TABLE cdna_sequence (
+  accession TEXT PRIMARY KEY,
+  sequence TEXT
+) WITHOUT ROWID;
+
+CREATE TABLE cdna_info (
+  cdna_acc TEXT UNIQUE DEFAULT NULL,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  is_assembly BOOLEAN NOT NULL DEFAULT 0 CHECK(is_assembly IN (0,1)),
+  is_fli BOOLEAN NOT NULL DEFAULT 0 CHECK(is_fli IN (0,1)),
+  is_TDN BOOLEAN NOT NULL DEFAULT 0 CHECK(is_TDN IN (0,1)),
+  length INTEGER DEFAULT NULL CHECK(length >= 0),
+  header TEXT,
+  is_EST BOOLEAN DEFAULT 0 CHECK(is_EST IN (0,1))
+) ;
+CREATE INDEX is_fli_idx ON cdna_info(is_fli);
+CREATE INDEX is_assembly_idx ON cdna_info(is_assembly);
+
+CREATE TABLE clusters (
+  cluster_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  lend INTEGER DEFAULT NULL CHECK(lend >= 0),
+  rend INTEGER DEFAULT NULL CHECK(rend >= 0),
+  annotdb_asmbl_id TEXT DEFAULT NULL
+) ;
+CREATE INDEX asmbl_id_idx ON clusters(annotdb_asmbl_id);
+
+CREATE TABLE splice_variation (
+  sv_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cdna_acc TEXT NOT NULL DEFAULT '',
+  lend INTEGER NOT NULL DEFAULT 0,
+  rend INTEGER NOT NULL DEFAULT 0,
+  orient TEXT NOT NULL DEFAULT '' CHECK(orient IN ('', '+','-')),
+  type TEXT NOT NULL DEFAULT '',
+  num_subfeatures_included INTEGER DEFAULT 0,
+  subtype TEXT DEFAULT NULL,
+  UNIQUE (cdna_acc,lend,rend,orient,type)
+) ;
+
+CREATE TABLE splice_variation_support (
+  sv_id INTEGER,
+  cdna_acc TEXT,
+  transcripts_A TEXT,
+  transcripts_B TEXT,
+  num_transcripts_A INTEGER DEFAULT NULL,
+  num_transcripts_B INTEGER DEFAULT NULL,
+  PRIMARY KEY (cdna_acc,sv_id)
+) WITHOUT ROWID;
+
+CREATE TABLE status (
+  status_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  status_descr TEXT DEFAULT NULL,
+  requires_update BOOLEAN DEFAULT 0 CHECK(requires_update IN (0,1)),
+  fails_incorporation BOOLEAN DEFAULT 0 CHECK(fails_incorporation IN (0,1)),
+  rank NUMERIC DEFAULT 0.0
+) ;
+
+CREATE TABLE status_link (
+  status_link_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cdna_acc TEXT NOT NULL DEFAULT '',
+  status_id INTEGER NOT NULL DEFAULT 0,
+  is_chromo BOOLEAN NOT NULL DEFAULT 0 CHECK(is_chromo IN (0,1)),
+  comment TEXT,
+  curated_exception BOOLEAN NOT NULL DEFAULT 0 CHECK(curated_exception IN (0,1)),
+  curator_comment TEXT,
+  compare_id INTEGER NOT NULL DEFAULT 0,
+  annot_update_id INTEGER DEFAULT NULL
+) ;
+CREATE INDEX status_link_acc_idx ON status_link(cdna_acc);
+CREATE INDEX updateididx ON status_link(annot_update_id);
+CREATE INDEX status_link_compare_idx ON status_link(compare_id);
+
+CREATE TABLE subcluster_link (
+  subcluster_id INTEGER,
+  cdna_acc TEXT,
+  PRIMARY KEY (subcluster_id,cdna_acc)
+) WITHOUT ROWID;
+CREATE INDEX subcl_link_acc_idx ON subcluster_link(cdna_acc);
+
+CREATE TABLE subclusters (
+  subcluster_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cluster_id INTEGER NOT NULL DEFAULT 0
+) ;
+CREATE INDEX subcluster_cluster_id_idx ON subclusters(cluster_id);
+
+CREATE TABLE transcriptPolyA (
+  align_id INTEGER PRIMARY KEY,
+  genomicCoord INTEGER NOT NULL DEFAULT 0,
+  transcribedOrient TEXT NOT NULL DEFAULT '' CHECK(transcribedOrient IN ('', '+', '-')),
+  trimType TEXT NOT NULL DEFAULT '',
+  alignEndOffset INTEGER NOT NULL DEFAULT 0
+) ;
+
+-- MySQL dump 8.22
+--
+-- Host: bhaas-lx    Database: Testing_pasa2_B
+
+-- Server version	3.23.57
+
+--
+-- Dumping data for table 'status'
+--
+
+
+INSERT INTO status VALUES (1,'fl-cdna assembly fails validation tests.',0,1,1);
+INSERT INTO status VALUES (2,'fl-cdna assembly encodes inconsistent isoform (deprecated)',0,1,2);
+INSERT INTO status VALUES (3,'gene-compatible fl-cdna assembly incorporated',0,0,3);
+INSERT INTO status VALUES (4,'gene-compatible fl-cdna assembly alters UTRs.',1,0,4);
+INSERT INTO status VALUES (5,'fl-cdna assembly matches multiple genes suggesting gene merging required. (deprecated)',0,1,5);
+INSERT INTO status VALUES (6,'gene-compatible fl-cdna assembly alters protein, passed validation.',1,0,6);
+INSERT INTO status VALUES (7,'gene-compatible fl-cdna assembly alters protein, fails validation.',0,1,7);
+INSERT INTO status VALUES (8,'incompatible fl-cdna assembly alignment updates gene structure.',1,0,8);
+INSERT INTO status VALUES (9,'incompatible fl-cdna assembly provides alternative splicing isoform, passes validation.',1,0,9);
+INSERT INTO status VALUES (10,'fl-cdna assembly provides a novel gene.',1,0,10);
+INSERT INTO status VALUES (11,'EST assembly matches multiple genes, suggesting gene merging required.  (deprecated)',0,1,11);
+INSERT INTO status VALUES (12,'EST assembly incorporated.',0,0,12);
+INSERT INTO status VALUES (13,'EST assembly extends UTRs.',1,0,13);
+INSERT INTO status VALUES (14,'EST assembly alters protein sequence, passes validation.',1,0,14);
+INSERT INTO status VALUES (15,'EST assembly alters protein sequence, fails validation.',0,1,15);
+INSERT INTO status VALUES (16,'EST assembly properly stitched into gene structure.',1,0,16);
+INSERT INTO status VALUES (17,'EST assembly stitched into Gene model requires alternative splicing isoform. (deprecated, see status_ids: 24,25)',1,0,17);
+INSERT INTO status VALUES (24,'FL-cDNA assembly stitched by EST assembly to provide alt splicing isoform.',1,0,10.5);
+INSERT INTO status VALUES (18,'EST assembly stitched into gene model fails validation.',0,1,18);
+INSERT INTO status VALUES (19,'EST assembly aligns to intergenic region.',0,1,19);
+INSERT INTO status VALUES (20,'EST assembly overlaps non-validating existing annotated gene. (deprecated)',0,1,20);
+INSERT INTO status VALUES (21,'fl-cdna assembly provides alternate splicing isoform, fails validation',0,1,10.2);
+INSERT INTO status VALUES (22,'fl-cdna assembly provides novel gene which overlaps existing annotations',0,1,10.3);
+INSERT INTO status VALUES (23,'incompatible fl-cdna assembly fails validation',0,1,10.4);
+INSERT INTO status VALUES (25,'EST assembly stitched into Gene model requires alternative splicing isoform.',1,0,21);
+INSERT INTO status VALUES (26,'FL-cDNA spans single gene and allowed to STOMP it.',1,0,10.6);
+INSERT INTO status VALUES (27,'EST-assembly stitched into a FL-alignment providing new alt splice isoform.',1,0,21);
+INSERT INTO status VALUES (28,'EST-assembly stitched into a FL-alignment but fails validation tests.',0,1,22);
+INSERT INTO status VALUES (29,'FL-cDNA found capable of merging multiple genes',1,0,10.7);
+INSERT INTO status VALUES (30,'FL-cDNA overlaps multiple genes, but found incapable of merging them.',0,1,10.8);
+INSERT INTO status VALUES (31,'EST-stitched assembly STOMPS model lacking transcript support.',1,0,23);
+INSERT INTO status VALUES (32,'EST-stitched gene w/preexisting transcript support STOMPS a new alt splicing variation.',1,0,24);
+INSERT INTO status VALUES (33,'FL-assembly STOMPS new splice isoform',1,0,10.84);
+INSERT INTO status VALUES (34,'single-exon EST-assembly  fails gene compatibility test',0,1,25);
+INSERT INTO status VALUES (35,'EST-assembly  overlaps multiple genes, but found incapable of merging them.',0,1,26);
+INSERT INTO status VALUES (36,'EST-assembly found capable of merging multiple genes.',1,0,25.5);
+INSERT INTO status VALUES (37,'Delayed incorporation of FL-assembly due to successful merging operation.',0,1,10.89);
+INSERT INTO status VALUES (38,'Delayed incorporation of EST-assembly due to successful merging operation.',0,1,27);
+INSERT INTO status VALUES (39,'Delayed incorporation of FL-assembly due to successful splitting operation',0,1,10.92);
+INSERT INTO status VALUES (40,'FL-cDNAs split single gene into multiple genes',1,0,10.94);
+INSERT INTO status VALUES (41,'FL-cDNAs suggest split single gene into multiple genes, failed automation',0,1,10.95);
+INSERT INTO status VALUES (42,'FL-cDNA aligns as antisense to existing annotated gene',0,1,10.96);
+INSERT INTO status VALUES (43,'EST assembly aligns as antisense to existing annotated gene',0,1,25.6);
+INSERT INTO status VALUES (44,'FL-cDNA provides alt splicing isoform of a novel gene',1,0,10.97);
+INSERT INTO status VALUES (45,'fl-cdna assembly provides isoform for novel gene which overlaps existing annotations',0,1,10.35);
+
+-- MySQL dump 8.22
+--
+-- Host: bhaas-lx    Database: Testing_pasa2_B
+
+-- Server version	3.23.57
+
+
+INSERT INTO URL_templates VALUES ('manatee','http://manatee.tigr.org/tigr-scripts/euk_manatee/shared/ORF_infopage.cgi?db=__ANNOT_DB_NAME__;orf=__URLVAR__','model_id');
+INSERT INTO URL_templates VALUES ('GenomeViewer','http://intranet.tigr.org/tigr-scripts/AnnotationStation/AssemblyNavigator/euk_assembly_navigator.cgi?db=__ANNOT_DB_NAME__&LEND=__END5__&REND=__END3__&asmbl_id=__URLVAR__&submit=1','contig_id');
+
+-- MySQL dump 8.22
+--
+-- Host: bhaas-lx    Database: Testing_pasa2_B
+
+-- Server version	3.23.57
+
+--
+-- Dumping data for table 'URL_var_names'
+--
+
+
+INSERT INTO URL_var_names VALUES ('cdna_acc');
+INSERT INTO URL_var_names VALUES ('contig_id');
+INSERT INTO URL_var_names VALUES ('gene_id');
+INSERT INTO URL_var_names VALUES ('model_id');
+INSERT INTO URL_var_names VALUES ('pasa_acc');
+

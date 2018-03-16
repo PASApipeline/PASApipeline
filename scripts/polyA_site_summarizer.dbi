@@ -28,7 +28,7 @@ The polyA coordinate is the base to which polyA is added.
 
 ############################# Options ###############################
 #
-# -M Mysql database name
+# -M database name
 # -g genome multi-fasta file
 # -d Debug
 #

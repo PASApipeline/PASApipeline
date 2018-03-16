@@ -13,6 +13,7 @@ use Gene_obj;
 use Pasa_init;
 use Fasta_reader;
 use Ath1_cdnas;
+use File::Basename qw(fileparse);
 
 use vars qw ($opt_T $opt_P $opt_h $opt_D $opt_d $DEBUG $opt_S $opt_M $opt_f $opt_a $opt_B $opt_v $opt_F $opt_A);
 
@@ -26,7 +27,7 @@ Script loads the cDNA assembly alignment data into the annotation database for v
 
 ############################# Options ###############################
 #
-# -M <string>      Mysql database name
+# -M <string>      database name
 # 
 # -P <string>      program name, if alignment. Set to 'ALL' for all valid alignments, regardless of program
 # -f               failed alignments only (-P program name to use for failed alignment identification)
@@ -48,7 +49,7 @@ _EOH_
     ;
 
 if ($opt_h) {die $usage;}
-my $MYSQLdb = $opt_M or die $usage;
+my $database = $opt_M or die $usage;
 
 my $MYSQLserver = &Pasa_conf::getParam("MYSQLSERVER");
 my $mysql_user = &Pasa_conf::getParam("MYSQL_RW_USER");
@@ -65,7 +66,6 @@ my $BY_FASTA = $opt_F;
 my $BED_FORMAT = $opt_B;
 my $GTF_FORMAT = $opt_T;
 
-my $TIER_NAME = $MYSQLdb;
 #process passwords
 
 my $prog_name = $opt_P;# or die "Error, must specifiy prog name with -P ";
@@ -74,7 +74,7 @@ unless ($prog_name || $ASSEMBLIES_ONLY || $BY_FASTA) {
     die "error, must specifiy prog name with -P";
 }
 
-my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$mysql_user,$mysql_password);
+my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$database,$mysql_user,$mysql_password);
 
 my $db_id;
 
@@ -98,7 +98,7 @@ my $query = "select al.align_id from align_link al, cdna_info ci "
 if ($prog_name) {
 
 	unless ($prog_name eq "ALL") {
-		$query .= " and al.prog = \"$prog_name\" " ;
+		$query .= " and al.prog = '$prog_name' " ;
 	}
 }	
 
@@ -243,7 +243,7 @@ sub print_GFF_row {
     }
         
     print &GFF_maker::get_GFF_line( { type => "cDNA_match",
-                                      source => "$prog-$MYSQLdb",
+                                      source => "$prog-" . fileparse($database),
                                       seq_id => $asmbl_id,
                                       lend => $lend,
                                       rend => $rend,

@@ -13,15 +13,26 @@ BEGIN {
         die "ERROR, env var PASAHOME not set to base PASA installation directory.\n";
     }
     
-    my $confFile = "$ENV{PASAHOME}/pasa_conf/conf.txt";
+    my $confFile;
 
     ## allow users to leverage their own conf file:
     if ($ENV{PASACONF}) {
         $confFile = $ENV{PASACONF};
-    }
-    
-    unless (-s $confFile) {
-        die "ERROR, cannot find conf file $confFile\n";
+        unless (-s $confFile) {
+            die "ERROR, cannot find conf file $confFile\n";
+        }
+    } else {
+        ## default PASA conf file (must have been created by user)
+        $confFile = "$ENV{PASAHOME}/pasa_conf/conf.txt";
+        unless (-s $confFile) {
+            if (not (exists($ENV{DBI_DRIVER}) and $ENV{DBI_DRIVER} eq 'mysql')) {
+                # SQLite: default to template file for hooks
+                $confFile="$ENV{PASAHOME}/pasa_conf/pasa.CONFIG.template";
+            }
+            unless (-s $confFile) {
+                die "ERROR, cannot find conf file $confFile\n";
+            }
+        }
     }
     
     %conf = &ConfigFileReader::readConfig($confFile);

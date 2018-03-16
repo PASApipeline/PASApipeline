@@ -26,7 +26,7 @@ Subclusters broken out of clusters to group together potential alt-splice variat
 
 ############################# Options ###############################
 #
-# -M Mysql database name
+# -M database name
 # -G genomic_sequence fasta file db
 # -m minimum percent overlap for two cDNA sequences to be grouped into the same subcluster
 #    (default: 50)
@@ -91,7 +91,7 @@ foreach my $result (@results) {
     ## Get all cluster info for that chromosome
     my $query = "select distinct c.cluster_id, c.lend, c.rend "
         . " from clusters c, align_link al, cdna_info ci "
-        . " where c.annotdb_asmbl_id = \"$asmbl_id\" and al.cluster_id = c.cluster_id and al.cdna_info_id = ci.id and ci.is_assembly = 1 ";
+        . " where c.annotdb_asmbl_id = '$asmbl_id' and al.cluster_id = c.cluster_id and al.cdna_info_id = ci.id and ci.is_assembly = 1 ";
     my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
     
     my @clusters; #index to bin of clusters

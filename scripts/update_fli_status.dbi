@@ -25,7 +25,7 @@ Simply loads in the FL-cDNA status into the Mysql DB.
 
 ############################# Options ###############################
 #
-# -M Mysql database name
+# -M database name
 # 
 # -f fl-cdna accession list filename. ('NULL' results in graceful exit)
 # 
@@ -45,7 +45,7 @@ my $DEBUG = $opt_d;
 
 
 
-my $MYSQLdb = $opt_M or die "Must indicate MySQL database name.\n\n$usage";
+my $MYSQLdb = $opt_M or die "Must indicate database name.\n\n$usage";
 my $MYSQLserver = &Pasa_conf::getParam("MYSQLSERVER");
 my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
 my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
@@ -73,7 +73,7 @@ while (<$filehandle>) {
     my (@x) = split (/\s+/);
     my $acc = shift @x;
     $acc =~ s/>//;
-    my $query = "update cdna_info set is_fli = 1 where cdna_acc = \"$acc\"\n";
+    my $query = "update cdna_info set is_fli = 1 where cdna_acc = '$acc'\n";
     &RunMod($dbproc, $query);
     
     print STDERR "-updating $acc => full-length status.\n" if $SEE || $DEBUG;

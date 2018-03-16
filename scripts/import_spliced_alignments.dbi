@@ -24,7 +24,7 @@ my $usage =  <<_EOH_;
 Script loads the alignment textual representation for the pasa assemblies.
 
 ############################# Options ###############################
-# -M Mysql database name
+# -M database name
 # -A aligner
 # -g gff3 file
 # -d Debug
@@ -220,7 +220,7 @@ sub store_cluster_links {
 
         ## install row in clusters table
 
-        my $query = qq { insert clusters (annotdb_asmbl_id) values (?) };
+        my $query = qq { insert into clusters (annotdb_asmbl_id) values (?) };
         &RunMod($dbproc, $query, $asmbl_id);
         
         my $cluster_id = &Mysql_connect::get_last_insert_id($dbproc);
