@@ -196,9 +196,10 @@ sub generate_report_stats() {
                       "skipped_exon", 
                       "alternate_exon", "starts_in_intron", "ends_in_intron") {
         
-        my $query = "select count(distinct c.annotdb_asmbl_id, s.lend, s.rend, s.orient) "
+        my $query = "select count(*) "
             . " from splice_variation s, align_link al, clusters c  "
-            . " where type = ? and s.cdna_acc = al.align_acc and al.cluster_id = c.cluster_id ";
+            . " where type = ? and s.cdna_acc = al.align_acc and al.cluster_id = c.cluster_id "
+            . " group by c.annotdb_asmbl_id, s.lend, s.rend, s.orient ";
         my $count = &very_first_result_sql($dbproc, $query, $type);
         print "<tr><td>number of <b>$type</b>s</td><td>$count</td></tr>\n";
     }
@@ -238,10 +239,11 @@ sub generate_report_stats() {
         print "</table>\n";
     }
 
-    my $query = "select count(distinct c.annotdb_asmbl_id, s.lend, s.rend, s.orient) "
+    my $query = "select count(*) "
         . " from splice_variation s, align_link al, clusters c "
         . " where type = 'retained_exon' and subtype = 'alternate_internal_exons' "
-        . " and s.cdna_acc = al.align_acc and al.cluster_id = c.cluster_id ";
+        . " and s.cdna_acc = al.align_acc and al.cluster_id = c.cluster_id "
+        . " group by c.annotdb_asmbl_id, s.lend, s.rend, s.orient";
     my $count_alternate_internal_exons = &very_first_result_sql($dbproc, $query);
 
     print "<p><a href=\"alt_splice_report.cgi?db=$db&type=retained_exon&subtype=alternate_internal_exons\">$count_alternate_internal_exons</a> internal exons appear to be alternate internal exons.\n";
