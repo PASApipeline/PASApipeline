@@ -38,7 +38,7 @@ sub connect_to_db {
     else {
         $ENV{DBI_DRIVER} = 'mysql';
         
-        if not (defined ($server) && defined($db) && defined($username) && defined($password)) {
+        if (! (defined ($server) && defined($db) && defined($username) && defined($password)) ) {
             confess "Error, need all method parameters (server, db, username, password) for mysql ";
         }
     }
