@@ -24,13 +24,25 @@ my $QUERYFAIL;
 sub connect_to_db {
     my ($server, $db, $username, $password) = @_;
     
-    $ENV{DBI_DRIVER} //= 'SQLite';
-
-    if ($ENV{DBI_DRIVER} eq 'mysql'
-        and not (defined ($server) && defined($db) && defined($username) && defined($password))) {
-        confess "Error, need all method parameters (server, db, username, password) for mysql ";
+    unless ($db) {
+        confess "Error, require parameters: server, db, username, password\n"
+            . " If you're using sqlite, you can specify dummy values for server, username, and password\n"
+            . " but the 'db' parameter must be specified as a fully qualified path. \n"
+            . " ie.   /path/to/my/sqlite.db\n\n";
     }
 
+    if ($db =~ /^\//) {
+        # have fully qualified path:
+        $ENV{DBI_DRIVER} = 'SQLite';
+    }
+    else {
+        $ENV{DBI_DRIVER} = 'mysql';
+        
+        if not (defined ($server) && defined($db) && defined($username) && defined($password)) {
+            confess "Error, need all method parameters (server, db, username, password) for mysql ";
+        }
+    }
+    
     my $dbh = DBI->connect("dbi::database=$db;host=$server", $username, $password);
     unless (ref $dbh) {
         croak "Cannot connect to $db: $DBI::errstr";

@@ -10,6 +10,12 @@ my $usage = <<__EOUSAGE__;
 
 ####################################################################################
 #
+#
+#  --align_assembly_config <string>  align_assembly.config file
+#
+#  --annot_compare_config <string>   annot_compare.config file
+#
+#
 # ## all optional:
 #
 # --ALIGNERS <string>   "blat", "gmap", or "blat,gmap" (default: blat,gmap)
@@ -45,8 +51,13 @@ my $resume_step;
 my $num_top_hits = 2;
 my $stringent_alignment_overlap;
 my $gene_overlap;
+my $align_assembly_config_file;
+my $annot_compare_config_file;
 
 &GetOptions ( 'h' => \$help_flag,
+              'align_assembly_config=s' => \$align_assembly_config_file,
+              'annot_compare_config=s' => \$annot_compare_config_file,
+              
               'CPU=i' => \$CPU,
               'TRANSDECODER' => \$TRANSDECODER,
               'ALIGNERS=s' => \$ALIGNERS,
@@ -59,6 +70,10 @@ my $gene_overlap;
 
 
 if ($help_flag) {
+    die $usage;
+}
+
+unless ($align_assembly_config_file && $annot_compare_config_file) {
     die $usage;
 }
 
@@ -79,7 +94,7 @@ main: {
 		print "********* Running Alignment Assembly ************\n";
 		
 		# "-C -r" will drop db if exists
-		my $cmd = "../scripts/Launch_PASA_pipeline.pl -c alignAssembly.config -C -r -R -g genome_sample.fasta -t all_transcripts.fasta.clean -T -u all_transcripts.fasta -f FL_accs.txt --ALIGNERS $ALIGNERS --CPU $CPU -N $num_top_hits --TDN tdn.accs  --IMPORT_CUSTOM_ALIGNMENTS_GFF3 custom_alignments.gff3 ";
+		my $cmd = "../scripts/Launch_PASA_pipeline.pl -c $align_assembly_config_file -C -r -R -g genome_sample.fasta -t all_transcripts.fasta.clean -T -u all_transcripts.fasta -f FL_accs.txt --ALIGNERS $ALIGNERS --CPU $CPU -N $num_top_hits --TDN tdn.accs  --IMPORT_CUSTOM_ALIGNMENTS_GFF3 custom_alignments.gff3 ";
 		
         if ($TRANSDECODER) {
             $cmd .= " --TRANSDECODER ";
@@ -104,7 +119,7 @@ main: {
   comprehensive_transcriptome_build:
     {
         print "********** Building comprehensive transcriptome database ***********\n";
-        my $cmd = "../scripts/build_comprehensive_transcriptome.dbi -c alignAssembly.config -t all_transcripts.fasta.clean";
+        my $cmd = "../scripts/build_comprehensive_transcriptome.dbi -c $align_assembly_config_file -t all_transcripts.fasta.clean";
         &process_cmd($cmd);
     }
     
@@ -123,7 +138,7 @@ main: {
 		## First round, using pre-existing gene structure annotations:
 		
 		print "******** Comparing Annotations to Alignment Assemblies ***********\n";
-		my $cmd = "../scripts/Launch_PASA_pipeline.pl -c annotCompare.config -g genome_sample.fasta -t all_transcripts.fasta.clean -A -L --annots_gff3 orig_annotations_sample.gff3 --CPU $CPU";
+		my $cmd = "../scripts/Launch_PASA_pipeline.pl -c $annot_compare_config_file -g genome_sample.fasta -t all_transcripts.fasta.clean -A -L --annots_gff3 orig_annotations_sample.gff3 --CPU $CPU";
 		&process_cmd($cmd);
 		
 	}
@@ -147,7 +162,7 @@ main: {
 		}
 		
 		print "******** Comparing Annotations to Alignment Assemblies ***********\n";
-		my $cmd = "../scripts/Launch_PASA_pipeline.pl -c annotCompare.config -g genome_sample.fasta -t all_transcripts.fasta.clean -A -L --annots_gff3 $recent_update_file --CPU $CPU ";
+		my $cmd = "../scripts/Launch_PASA_pipeline.pl -c $annot_compare_config_file -g genome_sample.fasta -t all_transcripts.fasta.clean -A -L --annots_gff3 $recent_update_file --CPU $CPU ";
 		&process_cmd($cmd);
 	}
     
@@ -156,7 +171,7 @@ main: {
 
     {
         print "*********** Running Analysis of Alternative Splicing *******\n";
-        my $cmd = "../scripts/Launch_PASA_pipeline.pl -c annotCompare.config -g genome_sample.fasta -t all_transcripts.fasta.clean --CPU $CPU --ALT_SPLICE";
+        my $cmd = "../scripts/Launch_PASA_pipeline.pl -c $annot_compare_config_file -g genome_sample.fasta -t all_transcripts.fasta.clean --CPU $CPU --ALT_SPLICE";
         &process_cmd($cmd);
         
     }
