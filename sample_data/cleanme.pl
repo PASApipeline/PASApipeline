@@ -28,6 +28,10 @@ my @files_to_keep = qw (genome_sample.fasta.gz
                         extract_introns_from_pasa_assemblies.sh
 						tdn.accs
                         custom_alignments.gff3
+runMe.SQLite.sh
+runMe.MySQL.sh
+__run_sample_pipeline.pl
+
 );
 
 my %keep = map { + $_ => 1 } @files_to_keep;
