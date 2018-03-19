@@ -11,7 +11,7 @@ use Sequence_coords_image;
 use Data::Dumper;
 use Gene_obj;
 use CDNA::CDNA_alignment;
-use Mysql_connect;
+use DB_connect;
 use Ath1_cdnas;
 use strict;
 use Storable qw (thaw);
@@ -60,7 +60,7 @@ my $consensus_color = "blue";
     if ($subcluster_id) {
         ## From the subcluster_id, get the genes linked, assembly accs, and the sub_accs:
         my $query = "select cdna_acc from subcluster_link where subcluster_id = ?";
-        my @results = &Mysql_connect::do_sql_2D ($dbproc, $query, $subcluster_id);
+        my @results = &DB_connect::do_sql_2D ($dbproc, $query, $subcluster_id);
         
         foreach my $result (@results) {
             my $assembly_acc = $result->[0];
@@ -72,14 +72,14 @@ my $consensus_color = "blue";
     
     ## Get the annotation version:
     my $query = "select annotation_version from annotation_compare where compare_id = ?";
-    my $annot_version = &Mysql_connect::very_first_result_sql($dbproc, $query, $compare_id);
+    my $annot_version = &DB_connect::very_first_result_sql($dbproc, $query, $compare_id);
     
     ## Get the genes linked to and cDNAs built into each assembly.
     foreach my $assembly_acc (keys %assemblies) {
         
         ## Get the genes linked:
         my $query = "select gene_id from annotation_link where cdna_acc = ? and compare_id = ?";
-        my @results = &Mysql_connect::do_sql_2D ($dbproc, $query, $assembly_acc, $compare_id);
+        my @results = &DB_connect::do_sql_2D ($dbproc, $query, $assembly_acc, $compare_id);
         foreach my $result (@results) {
             my $tu = $result->[0];
             $TUs{$tu} = 1;
@@ -87,7 +87,7 @@ my $consensus_color = "blue";
         
         ## Get the cdnas comprising the assembly
         my $query = "select cdna_acc from asmbl_link where asmbl_acc = ?";
-        my @results = &Mysql_connect::do_sql_2D ($dbproc, $query, $assembly_acc);
+        my @results = &DB_connect::do_sql_2D ($dbproc, $query, $assembly_acc);
         foreach my $result (@results) {
             my $cdna_acc = $result->[0];
             $cdnas{$cdna_acc} = 1;
@@ -119,12 +119,12 @@ my $consensus_color = "blue";
     ## See if gene structures are available for each assembly
     foreach my $assembly_acc (keys %assemblies) {
         my $query = "select annot_update_id from status_link where compare_id = ? and cdna_acc = ?";
-        my $result = &Mysql_connect::first_result_sql($dbproc, $query, $compare_id, $assembly_acc);
+        my $result = &DB_connect::first_result_sql($dbproc, $query, $compare_id, $assembly_acc);
         if ($result) {
             my $annot_update_id = $result->[0];
             print "Asmbl_acc: $assembly_acc, Annot_update_id: $annot_update_id\n" if $DEBUG;
             my $query = "select after_gene_obj from annotation_updates where update_id = ?";
-            my $result = &Mysql_connect::first_result_sql($dbproc, $query, $annot_update_id);
+            my $result = &DB_connect::first_result_sql($dbproc, $query, $annot_update_id);
             if ((ref $result) && $result->[0]) {
                 my $blob = $result->[0];
                 my $gene_obj = thaw($blob);

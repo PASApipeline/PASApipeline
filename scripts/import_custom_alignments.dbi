@@ -3,7 +3,7 @@
 use FindBin;
 use lib ($FindBin::Bin);
 use Pasa_init;
-use Mysql_connect;
+use DB_connect;
 use strict;
 use DBI;
 use Getopt::Std;
@@ -174,7 +174,7 @@ sub store_cluster_links {
         my $query = qq { insert into clusters (annotdb_asmbl_id) values (?) };
         &RunMod($dbproc, $query, $asmbl_id);
         
-        my $cluster_id = &Mysql_connect::get_last_insert_id($dbproc);
+        my $cluster_id = &DB_connect::get_last_insert_id($dbproc);
 
         ## set the cluster link values
         $query = qq { update cluster_link set cluster_id = $cluster_id where cdna_acc = ? };

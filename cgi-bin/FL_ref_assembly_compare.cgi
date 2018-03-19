@@ -8,7 +8,7 @@ use DBI;
 use CGI;
 use CGI::Carp qw(fatalsToBrowser);
 use Data::Dumper;
-use Mysql_connect;
+use DB_connect;
 use Ath1_cdnas;
 use GD::Graph::lines;
 use CGI::Pretty ":standard";

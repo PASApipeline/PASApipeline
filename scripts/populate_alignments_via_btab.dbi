@@ -3,7 +3,7 @@
 use FindBin;
 use lib ($FindBin::Bin);
 use Pasa_init;
-use Mysql_connect;
+use DB_connect;
 use strict;
 use DBI;
 use Getopt::Std;
@@ -54,7 +54,7 @@ my $prog = $opt_P or die $usage;
 
 my ($user, $password) = split (/:/, $passwordinfo);
 
-my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+my ($dbproc) = &DB_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
 my %data;
 open (BTAB, "$btab_file") or die "Can't open $btab_file.\n";
 
@@ -104,7 +104,7 @@ sub store_cluster_links {
         my $query = qq { insert into clusters (annotdb_asmbl_id) values (?) };
         &RunMod($dbproc, $query, $asmbl_id);
         
-        my $cluster_id = &Mysql_connect::get_last_insert_id($dbproc);
+        my $cluster_id = &DB_connect::get_last_insert_id($dbproc);
         
         ## set the cluster link values
         $query = qq { update cluster_link set cluster_id = $cluster_id where cdna_acc = ? };
@@ -137,9 +137,7 @@ sub process_alignment() {
     my $query = "insert into cdna_link (cdna_acc, prog, aligned_orient) values (?,?,?)";
     &RunMod ($dbproc, $query, $acc, $prog, $orientation);
     
-    my $query = ($dbproc->{dbh}->{Driver}->{Name} eq 'SQLite') ? 'select last_insert_rowid()' : "select LAST_INSERT_ID()";
-    my $result_aref = &first_result_sql ($dbproc, $query);
-    my $align_id = $result_aref->[0];
+    my $align_id = &DB_connect::get_last_insert_id($dbproc);
     
     if ($align_id) {
         print "\n\n\n// Processing $acc ($orientation) align_id: $align_id\n" if $SEE;

@@ -4,7 +4,7 @@ use FindBin;
 use lib ($FindBin::Bin);
 use Pasa_init;
 use Pasa_conf;
-use Mysql_connect;
+use DB_connect;
 use strict;
 use DBI;
 use CDNA::PASA_alignment_assembler;
@@ -108,13 +108,13 @@ else {
 
 
 main: {
-    my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
-    $dbproc = &Mysql_connect::reconnect_to_server($dbproc); #just for the fun of it
+    my ($dbproc) = &DB_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+    $dbproc = &DB_connect::reconnect_to_server($dbproc); #just for the fun of it
     
     
     my $query = "select distinct annotdb_asmbl_id from clusters";
     my @asmbl_ids;
-    my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+    my @results = &DB_connect::do_sql_2D($dbproc, $query);
     foreach my $result_aref (@results) {
         push (@asmbl_ids, $result_aref->[0]);
     }
@@ -155,7 +155,7 @@ main: {
 sub assemble_transcripts_on_scaffold {
     my ($asmbl_id) = @_;
     
-    my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password); # refresh it per thread
+    my ($dbproc) = &DB_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password); # refresh it per thread
 
     my @all_assemblies;
     my $sequence = &Ath1_cdnas::get_seq_from_fasta ($asmbl_id, $genomic_seq_db);
@@ -177,10 +177,10 @@ sub assemble_transcripts_on_scaffold {
         ## get the cdnas on that cluster
 
         ## refreshen db connection (sometimes assembly takes way tooo long and mysql server goes away)
-        $dbproc = &Mysql_connect::reconnect_to_server($dbproc);
+        $dbproc = &DB_connect::reconnect_to_server($dbproc);
         
         my $query = "select al.align_acc, al.align_id, al.lend, al.score from align_link al where al.cluster_id = $cluster_id and al.validate = 1";
-        my @results = &Mysql_connect::do_sql_2D ($dbproc, $query);
+        my @results = &DB_connect::do_sql_2D ($dbproc, $query);
 
         if (scalar @results > $max_num_aligns_assemble_per_cluster) {
 

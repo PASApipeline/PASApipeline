@@ -8,7 +8,7 @@ use CGI::Carp qw(fatalsToBrowser);
 use Data::Dumper;
 use Gene_obj;
 use CDNA::CDNA_alignment;
-use Mysql_connect;
+use DB_connect;
 use Ath1_cdnas;
 use strict;
 use Storable qw (thaw);
@@ -96,7 +96,7 @@ my $consensus_color = "blue";
     
     ## Get the alt splice isoforms:
     my $query = "select after_gene_obj from annotation_updates where compare_id = $compare_id and gene_id = \"$TU_feat_name\" and alt_splice_flag = 1 and is_valid = 1 and have_after = 1";
-    my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+    my @results = &DB_connect::do_sql_2D($dbproc, $query);
     foreach my $result (@results) {
 		my $blob = $result->[0];
 		if ($blob) {
@@ -111,7 +111,7 @@ my $consensus_color = "blue";
     ## See if gene structures are available for each assembly
     foreach my $update_id (keys %update_ids) {
 		my $query = "select after_gene_obj from annotation_updates where update_id = ? and is_valid = 0";
-		my $result = &Mysql_connect::very_first_result_sql($dbproc, $query, $update_id);
+		my $result = &DB_connect::very_first_result_sql($dbproc, $query, $update_id);
 		if ($result) {
 			my $gene_obj = thaw($result);
 			$gene_obj->{com_name} = "cdna failed update"; 

@@ -4,7 +4,7 @@ use Pasa_init;
 use Pasa_conf;
 use CGI;
 use CGI::Carp qw(fatalsToBrowser);
-use Mysql_connect;
+use DB_connect;
 use strict;
 use DBI;
 use Data::Dumper;
@@ -47,12 +47,12 @@ my $query = "select distinct a.update_id, a.gene_id, a.model_id, a.alt_splice_fl
     . " and s.status_id = sl.status_id and s.requires_update = 1 "
     . " and sl.annot_update_id = a.update_id";
 
-my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+my @results = &DB_connect::do_sql_2D($dbproc, $query);
 foreach my $result (@results) {
     my ($update_id, $gene_id, $model_id, $alt_splice_flag, $is_novel_flag) = @$result;
     #print "\n//$update_id, $gene_id, $model_id, altsplice: $alt_splice_flag, novel: $is_novel_flag\n";
     my $query = "select after_gene_obj from annotation_updates where update_id = $update_id";
-    my $after_gene_obj = &Mysql_connect::very_first_result_sql($dbproc, $query);
+    my $after_gene_obj = &DB_connect::very_first_result_sql($dbproc, $query);
     my $asmbl_id = &get_asmbl_id_via_update_id($update_id);
     #print "asmbl_id: $asmbl_id\n";
     my $new_gene_obj = thaw($after_gene_obj);
@@ -78,10 +78,10 @@ sub get_asmbl_id_via_update_id {
     my ($update_id) = @_;
 
     my $query = "select cdna_acc from status_link where annot_update_id = $update_id";
-    my $cdna_acc = &Mysql_connect::very_first_result_sql($dbproc, $query);
+    my $cdna_acc = &DB_connect::very_first_result_sql($dbproc, $query);
     
     my $query = "select c.annotdb_asmbl_id from clusters c, align_link al where al.align_acc = ? and al.cluster_id = c.cluster_id";
-    my $asmbl_id = &Mysql_connect::very_first_result_sql($dbproc, $query, $cdna_acc);
+    my $asmbl_id = &DB_connect::very_first_result_sql($dbproc, $query, $cdna_acc);
     return ($asmbl_id);
 }
 

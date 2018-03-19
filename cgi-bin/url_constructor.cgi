@@ -7,7 +7,7 @@ use DBI;
 use CGI;
 use CGI::Carp qw(fatalsToBrowser);
 use Data::Dumper;
-use Mysql_connect;
+use DB_connect;
 use Ath1_cdnas;
 use CGI::Pretty ":standard";
 use Pasa_CGI;

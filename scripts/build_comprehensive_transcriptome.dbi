@@ -7,7 +7,7 @@ use FindBin;
 use lib ("$FindBin::Bin");
 use Pasa_init;
 use Pasa_conf;
-use Mysql_connect;
+use DB_connect;
 use ConfigFileReader;
 use DBI;
 use Cwd;
@@ -395,7 +395,7 @@ sub maps_to_PASA_asm {
             ## get subcluster
             my $acc = $pasa_obj->get_acc();
             my $query = "select subcluster_id from subcluster_link where cdna_acc = '$acc'";
-            my $subcluster_id = &Mysql_connect::very_first_result_sql($dbproc, $query);
+            my $subcluster_id = &DB_connect::very_first_result_sql($dbproc, $query);
             print STDERR "\tSUBCLUSTER = $subcluster_id\n" if $DEBUG;
             return($subcluster_id);
             
@@ -425,7 +425,7 @@ sub get_overlapping_pasa_alignments {
         . " and al.validate = 1 "
         . " and al.lend < $rend and al.rend > $lend and al.spliced_orient = \'$spliced_orient\' ";
     
-    my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+    my @results = &DB_connect::do_sql_2D($dbproc, $query);
 
     my @align_objs;
     

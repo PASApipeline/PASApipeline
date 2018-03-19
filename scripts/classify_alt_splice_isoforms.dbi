@@ -4,7 +4,7 @@ use FindBin;
 use lib ($FindBin::Bin);
 use Pasa_init;
 use Pasa_conf;
-use Mysql_connect;
+use DB_connect;
 use strict;
 use DBI;
 use Getopt::Std;
@@ -194,8 +194,7 @@ sub init_alt_splice_tables {
                      );
     
     foreach my $table (@tables) {
-        my $query = ($dbproc->{dbh}->{Driver}->{Name} eq 'SQLite') ? "DELETE FROM $table" : "TRUNCATE TABLE $table";
-        &RunMod($dbproc, $query);
+        &DB_connect::delete_table($dbproc, $table);
     }
     
     return;
@@ -266,7 +265,7 @@ sub get_splice_token {
 sub process_subcluster(){
     my $subcluster_id = shift;
     my $outfile = shift;
-    my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password); # refresh it per thread
+    my ($dbproc) = &DB_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password); # refresh it per thread
     # had to redirect output to each file to make it thread safe
     #cmd if are skipping files: make sure it has really finished?
     #       my $cmd = $FindBin::Bin . "/classify_alt_splice_isoforms_per_subcluster.dbi -M $opt_M -s $subcluster_id > $outfile.temp";

@@ -6,7 +6,7 @@ use Pasa_init;
 use strict;
 use DBI;
 use CDNA::CDNA_alignment;
-use Mysql_connect;
+use DB_connect;
 use Getopt::Long qw (:config no_ignore_case bundling);
 use Ath1_cdnas;
 use Nuc_translator;
@@ -141,7 +141,7 @@ my $prog_type = $opt_P;
 
 $|++;
 
-my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+my ($dbproc) = &DB_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
 
 #open (STDERR, ">&STDOUT");
 
@@ -183,7 +183,7 @@ my $genome_fasta_retriever = new Fasta_retriever($genomic_seq_db);
 print STDERR "done.\n\nNow validating alignments on scaffolds.\n";
 
 my $query = "select distinct annotdb_asmbl_id from clusters";
-my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+my @results = &DB_connect::do_sql_2D($dbproc, $query);
 
 
 #$Thread_helper::THREAD_MONITORING = 1;
@@ -269,7 +269,7 @@ sub validate_alignments_on_asmbl_id {
 
     my $sequence = uc $genome_fasta_retriever->get_seq($asmbl_id);
     
-    my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+    my ($dbproc) = &DB_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
 
     
     ## Get the align ids linked to this asmbl_id:
@@ -286,7 +286,7 @@ sub validate_alignments_on_asmbl_id {
         $query .= " and al.prog = '$prog_type' ";
     }
 	
-    my @results = &Mysql_connect::do_sql_2D($dbproc, $query, $asmbl_id);
+    my @results = &DB_connect::do_sql_2D($dbproc, $query, $asmbl_id);
 
 
 	

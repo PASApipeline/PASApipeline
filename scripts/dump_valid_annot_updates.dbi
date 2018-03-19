@@ -5,7 +5,7 @@ use FindBin;
 use lib ($FindBin::Bin);
 use Pasa_init;
 use Pasa_conf;
-use Mysql_connect;
+use DB_connect;
 use strict;
 use DBI;
 use Ath1_cdnas;
@@ -82,7 +82,7 @@ if (! $genome_db || ! -s $genome_db) {
     die "Error, must specify -g with the genome fasta database";
 }
 
-my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+my ($dbproc) = &DB_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
 
 unless ($compare_id) {
     ## get the most recent one

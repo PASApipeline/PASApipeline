@@ -6,7 +6,7 @@ use FindBin;
 use lib ($FindBin::Bin);
 use Pasa_init;
 use Pasa_conf;
-use Mysql_connect;
+use DB_connect;
 use strict;
 use DBI;
 use CDNA::CDNA_alignment;
@@ -160,7 +160,7 @@ my $MYSQLserver = &Pasa_conf::getParam("MYSQLSERVER");
 my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
 my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
 
-my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+my ($dbproc) = &DB_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
 
 $TRUST_FL_STATUS = ($TRUST_FL_STATUS) ? 1:0;
 $STOMP_HIGH_PERCENTAGE_OVERLAPPING_GENE = ($STOMP_HIGH_PERCENTAGE_OVERLAPPING_GENE) ? 1:0;
@@ -231,7 +231,7 @@ if ($GENETIC_CODE) {
 
 ## get latest annotation version:
 my $query = "select max(version_id) from annotation_admin";
-my $annot_version = &Mysql_connect::very_first_result_sql($dbproc, $query);
+my $annot_version = &DB_connect::very_first_result_sql($dbproc, $query);
 unless ($annot_version) {
     print STDERR "Sorry, no version of the annotation to compare to yet. Creating genes based on full-length transcripts.\n";
     $annot_version = 0;
@@ -239,11 +239,9 @@ unless ($annot_version) {
 
 ## get new compare_id
 $query = "insert into annotation_compare (date, annotation_version) values (CURRENT_TIMESTAMP, $annot_version)";
-&Mysql_connect::RunMod($dbproc, $query);
+&DB_connect::RunMod($dbproc, $query);
 
-$query = ($dbproc->{dbh}->{Driver}->{Name} eq 'SQLite') ? 'select last_insert_rowid()' : "select LAST_INSERT_ID()";
-my $result = &Mysql_connect::first_result_sql($dbproc, $query);
-my $compare_id = $result->[0];
+my $compare_id = &DB_connect::get_last_insert_id($dbproc);
 
 print "Settings for annot compare:\n"
     . "min_percent_overlap: $MIN_PERCENT_OVERLAP\n"
@@ -264,7 +262,7 @@ print "Settings for annot compare:\n"
 ## populate full-length cDNA listing. 
 my %FLCDNA;
 $query = "select cdna_acc from cdna_info where is_fli = 1 and is_assembly = 1";
-my @results = &Mysql_connect::do_sql_2D ($dbproc, $query);
+my @results = &DB_connect::do_sql_2D ($dbproc, $query);
 foreach my $result_aref (@results) {
     my $acc = $result_aref->[0];
     $FLCDNA{$acc} = 1;
@@ -273,7 +271,7 @@ foreach my $result_aref (@results) {
 ## Get the status info from ath1_cdnas mysql db:
 my %status_descr;
 $query = "select status_id, status_descr from status";
-@results = &Mysql_connect::do_sql_2D($dbproc, $query);
+@results = &DB_connect::do_sql_2D($dbproc, $query);
 foreach my $result_aref (@results) {
     my ($status_id, $descr) = @$result_aref;
     $status_descr{$status_id} = $descr;
@@ -291,7 +289,7 @@ main: {
     $query .= " order by annotdb_asmbl_id";
     
     
-    my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+    my @results = &DB_connect::do_sql_2D($dbproc, $query);
     my $num_contigs = $#results + 1;
     
     my $thread_helper = new Thread_helper($CPU);
@@ -341,7 +339,7 @@ main: {
     ## Last step, disable those classified as alt splices of novel genes for which the novel genes were
     ## changed to antisense and the alt-splices of these were not.
     
-    my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);    
+    my ($dbproc) = &DB_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);    
     
     &convert_novel_alt_splice_of_antisense($dbproc);
     
@@ -356,7 +354,7 @@ main: {
 sub process_contig {
     my ($asmbl_id) = @_;
 
-    my ($dbproc_t) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+    my ($dbproc_t) = &DB_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
     
     my $contig_id = $asmbl_id; #should probably use contig_id rather than asmbl_id (our database field)
     print "## Processing contig: $asmbl_id\n";
@@ -1113,7 +1111,7 @@ sub summarize_asmbl_status {
             push (@params, $comment);
         }
         my $query = "insert into status_link ($fields) values ($values)";
-        &Mysql_connect::RunMod($dbproc, $query, @params);
+        &DB_connect::RunMod($dbproc, $query, @params);
         
         
         ## Annotated gene model IDs 
@@ -1129,7 +1127,7 @@ sub summarize_asmbl_status {
             foreach my $tu (@TUs) {
                 my $model = $Gene_to_model_list{$tu}->[0];
                 my $query = "insert into annotation_link (cdna_acc, gene_id, model_id, compare_id) values (?,?,?,?)";
-                &Mysql_connect::RunMod($dbproc, $query, $acc, $tu, $model, $compare_id);
+                &DB_connect::RunMod($dbproc, $query, $acc, $tu, $model, $compare_id);
             }
         } else { #only one gene, load gene and model:
             
@@ -1139,7 +1137,7 @@ sub summarize_asmbl_status {
             }
             
             my $query = "insert into annotation_link (cdna_acc, gene_id, model_id, compare_id) values (?,?,?,?)";
-            &Mysql_connect::RunMod($dbproc, $query, $acc, $overlapping_gene_text, $matching_gene_model_feat_name, $compare_id);
+            &DB_connect::RunMod($dbproc, $query, $acc, $overlapping_gene_text, $matching_gene_model_feat_name, $compare_id);
         }
         
     }
@@ -1253,13 +1251,13 @@ sub get_update_id {
     ## Several accessions may be built into the same maximally updated structure.  Only store one entry for this update.
     if (($is_valid_flag) && (!$alt_splice_flag) && (!$is_novel_flag)) {
         my $query = "select update_id from annotation_updates where gene_id = ? and model_id = ? and is_valid = ? and alt_splice_flag = ? and is_novel_flag = ? and compare_id = ?";
-        $update_id = &Mysql_connect::very_first_result_sql ($dbproc, $query, $gene_id, $matching_gene_model_feat_name, 1, 0, 0, $compare_id);
+        $update_id = &DB_connect::very_first_result_sql ($dbproc, $query, $gene_id, $matching_gene_model_feat_name, 1, 0, 0, $compare_id);
         if ($update_id) {
             
             ## Update the latest updated gene structure:
             print "Got update_id: $update_id (already exists), now updating the after-gene-obj structure to this one.\n";
             my $query = "update annotation_updates set after_gene_obj = ? where update_id = ?";
-            &Mysql_connect::RunMod($dbproc, $query, $after_gene_obj, $update_id);
+            &DB_connect::RunMod($dbproc, $query, $after_gene_obj, $update_id);
 	        
             return ($update_id);
         }
@@ -1269,11 +1267,9 @@ sub get_update_id {
     print "Inserting new entry in annotation_updates; getting an update_id for it.\n";
     my $query = "insert into annotation_updates (gene_id, model_id, alt_splice_flag, before_gene_obj, after_gene_obj, compare_id, is_valid, have_before, have_after, is_novel_flag) values (?,?,?,?,?,?,?,?,?,?)";
     print "BLOB Length: after_gene_obj: " . length ($after_gene_obj);
-    &Mysql_connect::RunMod($dbproc, $query, $gene_id, $model_id, $alt_splice_flag, undef, $after_gene_obj, $compare_id, $is_valid_flag, 0, 1, $is_novel_flag);
+    &DB_connect::RunMod($dbproc, $query, $gene_id, $model_id, $alt_splice_flag, undef, $after_gene_obj, $compare_id, $is_valid_flag, 0, 1, $is_novel_flag);
     
-    $query = ($dbproc->{dbh}->{Driver}->{Name} eq 'SQLite') ? 'select last_insert_rowid()' : "select LAST_INSERT_ID()";
-    my $result = &Mysql_connect::first_result_sql($dbproc, $query);
-    $update_id = $result->[0];
+    $update_id = &DB_connect::get_last_insert_id($dbproc);
     print ", UPDATE_ID: $update_id\n";
     return ($update_id); #undef returned if there's no reason to archive the data.
 }
@@ -1285,7 +1281,7 @@ sub get_latest_gene_models {
     
     ## Get list of working models:
     my $query = "select model_id from annotation_store where gene_id = ? and annotation_version = ?";
-    my @results = &Mysql_connect::do_sql_2D($dbproc, $query, $TU_feat_name, $annot_version);
+    my @results = &DB_connect::do_sql_2D($dbproc, $query, $TU_feat_name, $annot_version);
     my @working_models;
     foreach my $result (@results) {
         my ($model) = @$result;
@@ -1468,7 +1464,7 @@ sub get_annotated_gene_models_on_contig {
     
     # get the annotated working models for that chromosome:
     my $query = "select a.gene_id, min(a.lend), max(a.rend), a.orient from annotation_store a where a.annotdb_asmbl_id = ? and annotation_version = ? group by a.gene_id, a.orient\n";
-    my @results = &Mysql_connect::do_sql_2D($dbproc, $query, $asmbl_id, $annot_version);
+    my @results = &DB_connect::do_sql_2D($dbproc, $query, $asmbl_id, $annot_version);
     
     foreach my $result (@results) {
         
@@ -1500,7 +1496,7 @@ sub get_contig_cluster_listing {
     
     ## Get all cluster info for that chromosome
     my $query = "select cluster_id, lend, rend from clusters where annotdb_asmbl_id = ? order by cluster_id";
-    my @results = &Mysql_connect::do_sql_2D($dbproc, $query, $asmbl_id);
+    my @results = &DB_connect::do_sql_2D($dbproc, $query, $asmbl_id);
     
     foreach my $result (@results) {
         my ($cluster_id, $lend, $rend) = @$result;
@@ -1541,7 +1537,7 @@ sub get_subclusters_from_clusters {
     
     my $query = "select subcluster_id from subclusters where cluster_id = $cluster_id order by subcluster_id";
     
-    my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+    my @results = &DB_connect::do_sql_2D($dbproc, $query);
     foreach my $result_aref (@results) {
         my $subcluster_id = $result_aref->[0];
         push (@subclusters, $subcluster_id);
@@ -1579,7 +1575,7 @@ sub get_alignment_assemblies_via_subcluster_id {
     
     my @assemblies;
     my $query = "select cdna_acc from subcluster_link where subcluster_id = $subcluster_id";
-    my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+    my @results = &DB_connect::do_sql_2D($dbproc, $query);
     
     foreach my $result (@results) {
         push (@assemblies, $result->[0]);
@@ -2998,7 +2994,7 @@ sub set_status_to_delay_update {
         
         
         my $query = "select status_link_id, annot_update_id, status_id, comment from status_link where compare_id = ? and cdna_acc = ?";
-        my $result = &Mysql_connect::first_result_sql($dbproc, $query, $compare_id, $cdna_acc);
+        my $result = &DB_connect::first_result_sql($dbproc, $query, $compare_id, $cdna_acc);
         my ($status_link_id, $update_id, $status_id, $comment) = @$result;
         die "ERROR, no status link entry for $cdna_acc, compare: $compare_id!\n" unless ($status_link_id);
         
@@ -3056,7 +3052,7 @@ sub analyze_potential_gene_splitting {
 
         . " and al.gene_id is not null group by al.gene_id having count(sl.subcluster_id) > 1";
     
-    my @results = &Mysql_connect::do_sql_2D($dbproc, $query, $contig_id);
+    my @results = &DB_connect::do_sql_2D($dbproc, $query, $contig_id);
     foreach my $result (@results) {
         my ($gene_id, $count) = @$result;
         
@@ -3271,7 +3267,7 @@ sub set_status_to_split_gene { ## Should join this function with the status upda
         }
         
         my $query = "select status_link_id, annot_update_id, status_id, comment from status_link where compare_id = ? and cdna_acc = ?";
-        my $result = &Mysql_connect::first_result_sql($dbproc, $query, $compare_id, $cdna_acc);
+        my $result = &DB_connect::first_result_sql($dbproc, $query, $compare_id, $cdna_acc);
         my ($status_link_id, $update_id, $status_id, $comment) = @$result;
         die "ERROR, no status link entry for $cdna_acc, compare: $compare_id!\n" unless ($status_link_id);
         
@@ -3396,7 +3392,7 @@ sub set_status_to_antisense {
     my ($dbproc, $cdna_acc, $overlapping_genes_aref) = @_;
     
     my $query = "select status_link_id, annot_update_id, status_id, comment from status_link where compare_id = ? and cdna_acc = ?";
-    my $result = &Mysql_connect::first_result_sql($dbproc, $query, $compare_id, $cdna_acc);
+    my $result = &DB_connect::first_result_sql($dbproc, $query, $compare_id, $cdna_acc);
     my ($status_link_id, $update_id, $status_id, $comment) = @$result;
     die "ERROR, no status link entry for $cdna_acc, compare: $compare_id!\n" unless ($status_link_id);
     

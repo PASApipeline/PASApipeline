@@ -3,7 +3,7 @@
 use FindBin;
 use lib ($FindBin::Bin);
 use Pasa_init;
-use Mysql_connect;
+use DB_connect;
 use strict;
 use DBI;
 use CDNA::PASA_alignment_assembler;
@@ -62,7 +62,7 @@ unless (-s "$genomic_seq_db.cidx") {
 
 my ($user, $password) = split (/:/, $passwordinfo);
 
-my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+my ($dbproc) = &DB_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
 
 my $query = "select c.cluster_id, c.annotdb_asmbl_id from clusters c, subclusters s where s.subcluster_id = $subcluster_id and s.cluster_id = c.cluster_id";
 my $result = &first_result_sql($dbproc, $query) or die "Error, no asmbl_id for subcluster: $subcluster_id";
@@ -75,7 +75,7 @@ my $assembler = new CDNA::PASA_alignment_assembler();
 ## get the cdnas on that cluster
 
 my $query = "select cdl.cdna_acc, cdl.align_id from cluster_link cl, cdna_link cdl where cl.cluster_id = $cluster_id and cl.cdna_acc = cdl.cdna_acc and cdl.validate = 1";
-my @results = &Mysql_connect::do_sql_2D ($dbproc, $query);
+my @results = &DB_connect::do_sql_2D ($dbproc, $query);
 my @alignments;
 foreach my $result (@results) {
     my ($cdna_acc, $align_id) = @$result;

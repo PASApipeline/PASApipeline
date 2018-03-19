@@ -4,7 +4,7 @@ package main;
 our ($DB_SEE, $DEBUG);
 
 
-package Mysql_connect;
+package DB_connect;
 
 require 5.6.0;
 require Exporter;
@@ -41,7 +41,7 @@ sub connect_to_db {
     
     ## add attributes so can reconnect later in case mysql server goes away.
     
-    my $dbproc = new Mysql_connect(); ## temporary fix to deal with lost connections
+    my $dbproc = new DB_connect(); ## temporary fix to deal with lost connections
     $dbproc->{dbh} = $dbh;
     
     if ($dbh->{Driver}->{Name} ne 'SQLite') {
@@ -208,6 +208,13 @@ sub get_last_insert_id {
     return (&very_first_result_sql($dbproc, $query));
 }
 
+sub delete_table {
+    my ($dbproc, $table) = @_;
 
+    my $query = ($dbproc->{dbh}->{Driver}->{Name} eq 'SQLite') ? "DELETE FROM $table" : "TRUNCATE TABLE $table"; 
+    &RunMod($dbproc, $query);
+
+    return;
+}
 
 1; #EOM

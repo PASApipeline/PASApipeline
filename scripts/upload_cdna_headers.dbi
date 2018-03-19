@@ -4,7 +4,7 @@
 use FindBin;
 use lib ($FindBin::Bin);
 use Pasa_init;
-use Mysql_connect;
+use DB_connect;
 use strict;
 use DBI;
 use Ath1_cdnas;
@@ -49,7 +49,7 @@ our $SEE = $opt_v;
 
 my ($user, $password) = split (/:/, $passwordinfo);
 
-my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+my ($dbproc) = &DB_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
 
 open (FASTA, "$fasta_db") or die "Can't open $fasta_db";
 while (<FASTA>) {

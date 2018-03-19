@@ -3,7 +3,7 @@
 use FindBin;
 use lib ($FindBin::Bin);
 use Pasa_init;
-use Mysql_connect;
+use DB_connect;
 use strict;
 use DBI;
 use CDNA::PASA_alignment_assembler;
@@ -61,15 +61,15 @@ my $passwordinfo = $opt_p or die $usage;
 
 my ($user, $password) = split (/:/, $passwordinfo);
 
-my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
-$dbproc = &Mysql_connect::reconnect_to_server($dbproc); #just for the fun of it
+my ($dbproc) = &DB_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+$dbproc = &DB_connect::reconnect_to_server($dbproc); #just for the fun of it
 
 my $match_id = 0;
 
 
 my $query = "select distinct annotdb_asmbl_id from clusters";
 my @asmbl_ids;
-my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+my @results = &DB_connect::do_sql_2D($dbproc, $query);
 foreach my $result_aref (@results) {
     push (@asmbl_ids, $result_aref->[0]);
 }
@@ -90,7 +90,7 @@ foreach my $asmbl_id (@asmbl_ids) {
         
         $query .= " order by cdl.cdna_acc"; 
         
-        my @results = &Mysql_connect::do_sql_2D ($dbproc, $query);
+        my @results = &DB_connect::do_sql_2D ($dbproc, $query);
         if (@results) {
             print "\n\n// cluster: $cluster_id\n";
             

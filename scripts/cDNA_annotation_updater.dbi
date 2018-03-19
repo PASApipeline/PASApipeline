@@ -6,7 +6,7 @@ use FindBin;
 use lib ($FindBin::Bin);
 use Pasa_init;
 use Pasa_conf;
-use Mysql_connect;
+use DB_connect;
 use DBI;
 use Data::Dumper;
 use Ath1_cdnas;
@@ -164,7 +164,7 @@ if ($opt_N) {
 }
 
 
-my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$MYSQLuser,$MYSQLpassword);
+my ($dbproc) = &DB_connect::connect_to_db($MYSQLserver,$MYSQLdb,$MYSQLuser,$MYSQLpassword);
 
 
 my $PASA_update_retriever = new PASA_UPDATES::Pasa_annot_update_retriever($dbproc);
@@ -300,7 +300,7 @@ if ($TARGETED_UPDATES{novel}) {
                 eval {
                 	my $query = "update annotation_updates set gene_id = '$new_gene_id' "
                     	. "where gene_id = '$temp_gene_id' and compare_id = $compare_id ";
-                	&Mysql_connect::RunMod($dbproc, $query);
+                	&DB_connect::RunMod($dbproc, $query);
                 };
                 if ($@) {
                 	print STDERR $@;

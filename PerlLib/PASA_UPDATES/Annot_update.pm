@@ -93,7 +93,7 @@ sub get_gene_objs {
             
             ## must retrieve them from the database live so as to reduce memory requirements
             my $query = "select after_gene_obj from annotation_updates where update_id = $update_id";
-            my $after_gene_obj = &Mysql_connect::very_first_result_sql($dbproc, $query);
+            my $after_gene_obj = &DB_connect::very_first_result_sql($dbproc, $query);
             my $new_gene_obj = thaw($after_gene_obj);
             
             die "No new gene_obj from update: $update_id " unless (ref $new_gene_obj);

@@ -3,7 +3,7 @@
 use FindBin;
 use lib ($FindBin::Bin);
 use Pasa_init;
-use Mysql_connect;
+use DB_connect;
 use strict;
 use DBI;
 
@@ -14,10 +14,10 @@ my $password = $ARGV[1] or die $usage;
 my $host = $ARGV[2] or die $usage;
 my $database = $ARGV[3] or die $usage;
 
-# my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+# my ($dbproc) = &DB_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
 
 eval {
-  my ($dbproc) = &Mysql_connect::connect_to_db($host,$database,$user,$password);
+  my ($dbproc) = &DB_connect::connect_to_db($host,$database,$user,$password);
   };
 
 

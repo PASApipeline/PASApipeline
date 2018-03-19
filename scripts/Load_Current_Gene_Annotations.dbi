@@ -5,7 +5,7 @@ use FindBin;
 use lib ($FindBin::Bin);
 use Pasa_init;
 use Pasa_conf;
-use Mysql_connect;
+use DB_connect;
 use DBI;
 use Getopt::Std;
 use ConfigFileReader;
@@ -63,7 +63,7 @@ my $mysql_rw_password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
 
 $ENV{UTILDIR} = $ENV{PASAHOME} . "/scripts/";
 
-my $dbproc = &Mysql_connect::connect_to_db($mysql_server,$MYSQLdb,$mysql_rw_user,$mysql_rw_password);
+my $dbproc = &DB_connect::connect_to_db($mysql_server,$MYSQLdb,$mysql_rw_user,$mysql_rw_password);
 
 
 my $annot_version;
@@ -127,7 +127,7 @@ while (my $seqobj = $fasta_reader->next() ) {
             my $blob = nfreeze($gene);
             
             my $query = "insert into annotation_store (gene_id, model_id, annotdb_asmbl_id, lend, rend, orient, annotation_version, gene_obj) values (?,?,?,?,?,?,?,?)";
-            &Mysql_connect::RunMod($dbproc, $query, $gene_id, $model_id, $asmbl_id, $lend, $rend, $orient, $annot_version, $blob);
+            &DB_connect::RunMod($dbproc, $query, $gene_id, $model_id, $asmbl_id, $lend, $rend, $orient, $annot_version, $blob);
         }
     }
 }

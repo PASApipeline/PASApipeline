@@ -4,7 +4,7 @@ use FindBin;
 use lib ($FindBin::Bin);
 use Pasa_init;
 use Pasa_conf;
-use Mysql_connect;
+use DB_connect;
 use strict;
 use DBI;
 use Data::Dumper;
@@ -70,7 +70,7 @@ my $cln_file = $opt_c or die $usage;
 my $genomic_db = $opt_g or die $usage;
 my $uncleaned_transcript_db = $opt_t or die $usage;
 
-my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+my ($dbproc) = &DB_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
 
 &clear_polyA_db_tables();
 

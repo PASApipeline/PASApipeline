@@ -8,7 +8,7 @@ use DBI;
 use CGI;
 #use CGI::Carp qw(fatalsToBrowser);
 use Data::Dumper;
-use Mysql_connect;
+use DB_connect;
 use Ath1_cdnas;
 use Gene_obj;
 use Gene_cdna_image;

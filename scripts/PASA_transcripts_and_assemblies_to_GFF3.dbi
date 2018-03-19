@@ -4,7 +4,7 @@ use FindBin;
 use lib ($FindBin::Bin);
 use Pasa_init;
 use Pasa_conf;
-use Mysql_connect;
+use DB_connect;
 use GFF_maker;
 use strict;
 use DBI;
@@ -74,7 +74,7 @@ unless ($prog_name || $ASSEMBLIES_ONLY || $BY_FASTA) {
     die "error, must specifiy prog name with -P";
 }
 
-my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$database,$mysql_user,$mysql_password);
+my ($dbproc) = &DB_connect::connect_to_db($MYSQLserver,$database,$mysql_user,$mysql_password);
 
 my $db_id;
 
@@ -117,7 +117,7 @@ if ($ASSEMBLIES_ONLY) {
     {
         ## get the gene-to-trans relationship
         my $q = "select subcluster_id, cdna_acc from subcluster_link";
-        my @results = &Mysql_connect::do_sql_2D($dbproc, $q);
+        my @results = &DB_connect::do_sql_2D($dbproc, $q);
         foreach my $result (@results) {
             my ($subcluster_id, $cdna_acc) = @$result;
             $asmbl_to_cluster_id{$cdna_acc} = $subcluster_id;
@@ -128,7 +128,7 @@ elsif ($ALIGNMENTS_ONLY) {
     $query .= " and ci.is_assembly = 0 ";
 }
 
-my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+my @results = &DB_connect::do_sql_2D($dbproc, $query);
 if (@results) {
     
     foreach my $result (@results) {
@@ -176,7 +176,7 @@ if (@results) {
             . " and al.cdna_info_id = ci.id ";
             
 
-        my @Lresults = &Mysql_connect::do_sql_2D($dbproc, $query);
+        my @Lresults = &DB_connect::do_sql_2D($dbproc, $query);
         foreach my $Lresult (@Lresults) {
             my ($asmbl_id, $acc, $align_acc, $align_id, $spliced_orient, $lend, $rend, $mlend, $mrend, $orient, $per_id, $prog)= @$Lresult;
             if (%ACCS_WANT && ! $ACCS_WANT{$acc}) { 

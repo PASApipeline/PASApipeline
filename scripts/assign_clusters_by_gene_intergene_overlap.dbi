@@ -3,7 +3,7 @@
 use FindBin;
 use lib ($FindBin::Bin);
 use Pasa_init;
-use Mysql_connect;
+use DB_connect;
 use strict;
 use DBI;
 use Getopt::Std;
@@ -64,7 +64,7 @@ if ($opt_L) {
 	$min_percent_shorter_length = $opt_L;
 }
 
-my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+my ($dbproc) = &DB_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
 
 
 my %scaffold_to_genes = &parse_genes_from_gff3($genes_gff3);
@@ -257,8 +257,7 @@ sub insert_cluster {
 	} else {
 		my $query = "insert into clusters (annotdb_asmbl_id) values ('$asmbl_id')";
 		&RunMod($dbproc, $query);
-        $query = ($dbproc->{dbh}->{Driver}->{Name} eq 'SQLite') ? 'select last_insert_rowid()' : "select LAST_INSERT_ID()";
-		$cluster_id = &very_first_result_sql($dbproc, $query);
+		$cluster_id = &DB_connect::get_last_insert_id($dbproc);
 	}
 	
 	## update cdna_accs to new cluster_id:

@@ -2,7 +2,7 @@
 
 use Pasa_init;
 use Pasa_conf;
-use Mysql_connect;
+use DB_connect;
 use strict;
 use DBI;
 use Data::Dumper;
@@ -39,7 +39,7 @@ my %assembly_to_asmbl_id;
 
 my $query = "select c.annotdb_asmbl_id, al.align_acc from clusters c, align_link al, cdna_info ci "
     . " where c.cluster_id = al.cluster_id and al.cdna_info_id = ci.id and ci.is_assembly = 1";
-my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+my @results = &DB_connect::do_sql_2D($dbproc, $query);
 foreach my $result (@results) {
     my ($asmbl_id, $cdna_acc) = @$result;
     $assembly_to_asmbl_id{$cdna_acc} = $asmbl_id;
@@ -48,7 +48,7 @@ foreach my $result (@results) {
 ## Get listing of cdna_accs for each asmbl_id:
 my %asmbl_to_accs;
 my $query = "select asmbl_acc, cdna_acc from asmbl_link";
-my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+my @results = &DB_connect::do_sql_2D($dbproc, $query);
 foreach my $result (@results) {
     my ($asmbl_acc, $cdna_acc) = @$result;
     my $listref = $asmbl_to_accs{$asmbl_acc};
@@ -65,7 +65,7 @@ foreach my $asmbl (sort keys %asmbl_to_accs) {
     my $assembly_alignment = "";
     if ($INCLUDE_ASSEMBLY_ALIGNMENT) {
 	my $query = "select alignment from align_link where align_acc = \"$asmbl\"";
-	$assembly_alignment = &Mysql_connect::very_first_result_sql($dbproc, $query);
+	$assembly_alignment = &DB_connect::very_first_result_sql($dbproc, $query);
     }
     if ($assembly_alignment) {
 	$assembly_alignment = "alignment_assembly: " . $assembly_alignment;

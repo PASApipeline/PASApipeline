@@ -7,7 +7,7 @@ use CGI;
 use CGI::Carp qw(fatalsToBrowser);
 use lib ($ENV{EGC_SCRIPTS}, $ENV{MYSQL_LIB}, $ENV{EUK_MODULES});
 use Data::Dumper;
-use Mysql_connect;
+use DB_connect;
 use Ath1_cdnas;
 use strict;
 use CGI::Pretty ":standard";

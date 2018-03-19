@@ -4,7 +4,7 @@ use FindBin;
 use lib ($FindBin::Bin);
 use Pasa_init;
 use Pasa_conf;
-use Mysql_connect;
+use DB_connect;
 use strict;
 use DBI;
 use Getopt::Std;
@@ -46,7 +46,7 @@ my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
 
 my $DEBUG = $opt_d;
 
-my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+my ($dbproc) = &DB_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
 
 my $query = "select align_id, align_acc, aligned_orient, spliced_orient from align_link";
 my @results = &do_sql_2D($dbproc, $query);

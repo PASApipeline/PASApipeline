@@ -4,7 +4,7 @@ use FindBin;
 use lib ($FindBin::Bin);
 use Pasa_init;
 use Pasa_conf;
-use Mysql_connect;
+use DB_connect;
 use strict;
 use DBI;
 use Data::Dumper;
@@ -58,7 +58,7 @@ $query = "select c.annotdb_asmbl_id, al.align_acc, al.align_id "
     . " from clusters c, align_link al, cdna_info ci "
     . " where c.cluster_id = al.cluster_id and al.cdna_info_id = ci.id and ci.is_assembly = 1 order by c.annotdb_asmbl_id";
 
-my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+my @results = &DB_connect::do_sql_2D($dbproc, $query);
 my $curr_asmbl_id = 0;
 my $sequence = "";
 foreach my $result (@results) {

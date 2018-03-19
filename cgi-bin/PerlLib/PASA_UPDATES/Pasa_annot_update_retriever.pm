@@ -6,7 +6,7 @@ package PASA_UPDATES::Pasa_annot_update_retriever;
 use strict;
 use warnings;
 use Ath1_cdnas;
-use Mysql_connect;
+use DB_connect;
 use PASA_UPDATES::Annot_update;
 use Carp;
 
@@ -91,7 +91,7 @@ sub get_single_gene_updates {
     my $query = $self->_get_core_retrieval_query() 
         . "and a.alt_splice_flag = 0 and a.is_novel_flag = 0 and s.status_id not in (29,36,40)";
     
-    my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+    my @results = &DB_connect::do_sql_2D($dbproc, $query);
     foreach my $result (@results) {
         my ($update_id, $gene_id, $model_id, $alt_splice_flag, $novel_flag) = @$result;
     
@@ -160,7 +160,7 @@ sub get_split_gene_updates {
 
     ## group split gene objects by the original model identifier:
     my %model_id_to_new_model_info;
-    my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+    my @results = &DB_connect::do_sql_2D($dbproc, $query);
     foreach my $result (@results) {
         my ($update_id, $gene_id, $model_id, $alt_splice_flag, $is_novel_flag) = @$result;
         
@@ -253,7 +253,7 @@ sub get_merge_gene_updates {
     my @annot_update_objs;
     
 
-    my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+    my @results = &DB_connect::do_sql_2D($dbproc, $query);
     foreach  my $result (@results) {
         my ($update_id, $gene_id, $model_id, $alt_splice_flag, $is_novel_flag) = @$result;
         print "Gene Merge. update_id($update_id), gene_id($gene_id), model_id($model_id)\n";
@@ -314,7 +314,7 @@ sub get_novel_gene_updates {
     my @annot_update_objs;
 
 
-    my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+    my @results = &DB_connect::do_sql_2D($dbproc, $query);
     foreach my $result (@results) {
         my ($update_id, $gene_id, $model_id, $alt_splice_flag, $novel_flag) = @$result;
         
@@ -365,7 +365,7 @@ sub get_alt_splice_isoform_updates {
     my @annot_update_objs;
 
 
-    my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+    my @results = &DB_connect::do_sql_2D($dbproc, $query);
     foreach my $result (@results) {
         my ($update_id, $gene_id, $model_id, $alt_splice_flag, $novel_flag) = @$result;
         
@@ -402,10 +402,10 @@ sub _get_asmbl_id_via_update_id {
     my $dbproc = $self->{_dbproc};
     
     my $query = "select cdna_acc from status_link where annot_update_id = $update_id";
-    my $cdna_acc = &Mysql_connect::very_first_result_sql($dbproc, $query);
+    my $cdna_acc = &DB_connect::very_first_result_sql($dbproc, $query);
     
     $query = "select c.annotdb_asmbl_id from clusters c, cluster_link cl where cl.cdna_acc = ? and cl.cluster_id = c.cluster_id";
-    my $asmbl_id = &Mysql_connect::very_first_result_sql($dbproc, $query, $cdna_acc);
+    my $asmbl_id = &DB_connect::very_first_result_sql($dbproc, $query, $cdna_acc);
     return ($asmbl_id);
 }
 

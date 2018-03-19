@@ -4,7 +4,7 @@ use FindBin;
 use lib ($FindBin::Bin);
 use Pasa_init;
 use Pasa_conf;
-use Mysql_connect;
+use DB_connect;
 use strict;
 use DBI;
 use Getopt::Std;
@@ -704,8 +704,7 @@ sub insert_alt_splice_FL_to_FL_compare {
 ####
 sub clear_tables {
     foreach my $table ("alt_splice_FL_compare", "alt_splice_FL_to_FL_compare") {
-        my $query = ($dbproc->{dbh}->{Driver}->{Name} eq 'SQLite') ? "DELETE FROM $table" : "TRUNCATE TABLE $table";
-        &RunMod($dbproc, $query);
+        &DB_connect::delete_table($dbproc, $table);
     }
 }
 

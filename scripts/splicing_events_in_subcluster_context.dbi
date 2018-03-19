@@ -4,7 +4,7 @@
 use FindBin;
 use lib ($FindBin::Bin);
 use Pasa_init;
-use Mysql_connect;
+use DB_connect;
 use strict;
 use DBI;
 use Ath1_cdnas;
@@ -53,7 +53,7 @@ my $time = sprintf ("%X", time());
 
 my ($user, $password) = split (/:/, $passwordinfo);
 
-my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+my ($dbproc) = &DB_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
 
 ###################################################################
 ## Begin program here

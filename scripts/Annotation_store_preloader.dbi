@@ -4,7 +4,7 @@ use FindBin;
 use lib ($FindBin::Bin);
 use Pasa_init;
 use Pasa_conf;
-use Mysql_connect;
+use DB_connect;
 use strict;
 use DBI;
 use Getopt::Std;
@@ -46,13 +46,12 @@ my $mysql_rw_user = &Pasa_conf::getParam("MYSQL_RW_USER");
 my $mysql_rw_password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
 
 
-my $dbproc = &Mysql_connect::connect_to_db($mysql_server,$MYSQLdb,$mysql_rw_user,$mysql_rw_password);
+my $dbproc = &DB_connect::connect_to_db($mysql_server,$MYSQLdb,$mysql_rw_user,$mysql_rw_password);
 
 my $query = "insert into annotation_admin (date) values (CURRENT_TIMESTAMP)";
-&Mysql_connect::RunMod($dbproc, $query);
+&DB_connect::RunMod($dbproc, $query);
 
-my $query = ($dbproc->{dbh}->{Driver}->{Name} eq 'SQLite') ? 'select last_insert_rowid()' : "select LAST_INSERT_ID()";
-my $annot_version = &Mysql_connect::very_first_result_sql($dbproc, $query);
+my $annot_version = &DB_connect::get_last_insert_id($dbproc);
 
 print "\n\nNow ready to load annotation version: $annot_version\n\n";
 

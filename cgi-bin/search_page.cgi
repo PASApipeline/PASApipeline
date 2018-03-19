@@ -8,7 +8,7 @@ use CGI;
 use CGI::Pretty ":standard"; 
 use CGI::Carp qw(fatalsToBrowser);
 use Data::Dumper;
-use Mysql_connect;
+use DB_connect;
 use Ath1_cdnas;
 use Pasa_CGI; 
 

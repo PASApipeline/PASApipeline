@@ -4,7 +4,7 @@ use FindBin;
 use lib ($FindBin::Bin);
 use Pasa_init;
 use Pasa_conf;
-use Mysql_connect;
+use DB_connect;
 use strict;
 use DBI;
 use Ath1_cdnas;
@@ -62,7 +62,7 @@ my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
 my $prefix = $opt_P || fileparse($MYSQLdb);
 
 
-my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+my ($dbproc) = &DB_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
 
 ###################################################################
 ## Begin program here

@@ -4,7 +4,7 @@ use FindBin;
 use lib ($FindBin::Bin);
 use Pasa_init;
 use Pasa_conf;
-use Mysql_connect;
+use DB_connect;
 use strict;
 use DBI;
 use CDNA::CDNA_alignment;
@@ -52,7 +52,7 @@ my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
 my $DEBUG = $opt_d;
 my $genomic_seq_db = $opt_G or die $usage;
 
-my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+my ($dbproc) = &DB_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
 
 our $SEE = 0;
 my $MIN_PERCENT_OVERLAP = $opt_m;
@@ -69,7 +69,7 @@ my $fasta_retriever = new Fasta_retriever($genomic_seq_db);
 ## populate full-length cDNA listing. 
 my %FLCDNA;
 my $query = "select align_acc from cdna_info ci, align_link al where ci.id = al.cdna_info_id and is_fli = 1 and is_assembly = 0";
-my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+my @results = &DB_connect::do_sql_2D($dbproc, $query);
 foreach my $result_aref (@results) {
     my $acc = $result_aref->[0];
     $FLCDNA{$acc} = 1;
@@ -78,7 +78,7 @@ foreach my $result_aref (@results) {
 my $query = "select distinct annotdb_asmbl_id from clusters c, cdna_info ci, align_link al "
     . "where c.cluster_id = al.cluster_id and al.cdna_info_id = ci.id and ci.is_assembly = 1";
 print $query;
-my @results = &Mysql_connect::do_sql_2D ($dbproc, $query);
+my @results = &DB_connect::do_sql_2D ($dbproc, $query);
 foreach my $result (@results) {
     my $asmbl_id = $result->[0];
     print STDERR "\r$asmbl_id";  ## FIXME: add multi-threading here.
@@ -92,7 +92,7 @@ foreach my $result (@results) {
     my $query = "select distinct c.cluster_id, c.lend, c.rend "
         . " from clusters c, align_link al, cdna_info ci "
         . " where c.annotdb_asmbl_id = '$asmbl_id' and al.cluster_id = c.cluster_id and al.cdna_info_id = ci.id and ci.is_assembly = 1 ";
-    my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+    my @results = &DB_connect::do_sql_2D($dbproc, $query);
     
     my @clusters; #index to bin of clusters
     my @all_clusters; #simple unindexed list of clusters.
@@ -122,7 +122,7 @@ foreach my $result (@results) {
         my @assemblies;
         my $query = "select al.align_id from align_link al, cdna_info ci "
             . " where al.cluster_id = $cluster_id and al.cdna_info_id = ci.id and ci.is_assembly = 1";
-        my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+        my @results = &DB_connect::do_sql_2D($dbproc, $query);
         
         foreach my $result (@results) {
             push (@assemblies, $result->[0]);
@@ -234,7 +234,7 @@ foreach my $result (@results) {
                 ## get the list of composite cdnas:
                 my @composite_accs;
                 my $query = "select cdna_acc from asmbl_link where asmbl_acc = ?";
-                my @results = &Mysql_connect::do_sql_2D($dbproc, $query, $cdna_acc);
+                my @results = &DB_connect::do_sql_2D($dbproc, $query, $cdna_acc);
                 my $is_fl_containing = 0;
                 foreach my $result_ref (@results) {
                     my $acc = $result_ref->[0];

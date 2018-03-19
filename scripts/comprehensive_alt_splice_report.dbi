@@ -5,7 +5,7 @@ use FindBin;
 use lib ($FindBin::Bin);
 use Pasa_init;
 use Pasa_conf;
-use Mysql_connect;
+use DB_connect;
 use strict;
 use DBI;
 use Ath1_cdnas;
@@ -56,7 +56,7 @@ $|++;
 
 my $VERBOSE = $opt_v;
 
-my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+my ($dbproc) = &DB_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
 
 my $max_compare_id = &Ath1_cdnas::get_max_compare_id($dbproc);
 my %asmbl_to_annot;

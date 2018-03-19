@@ -6,7 +6,7 @@ use FindBin;
 use lib ($FindBin::Bin);
 use Pasa_init;
 use Pasa_conf;
-use Mysql_connect;
+use DB_connect;
 use strict;
 use DBI;
 use CDNA::CDNA_alignment;
@@ -59,20 +59,20 @@ my $BEFORE = ($after_incorp) ? 0 : 1;
 
 my ($user, $password) = split (/:/, $passwordinfo);
 
-my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+my ($dbproc) = &DB_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
 
 
 
 ## get latest annotation version:
 my $query = "select max(version_id) from annotation_admin";
-my $annot_version = &Mysql_connect::very_first_result_sql($dbproc, $query);
+my $annot_version = &DB_connect::very_first_result_sql($dbproc, $query);
 unless ($annot_version) {
     die "Sorry, no version of the annotation to compare to yet.\n";
 }
 
 #### get list of genes and compatible PASA assemblies
 $query = "select max(compare_id) from annotation_compare where annotation_version = $annot_version";
-my $compare_id = &Mysql_connect::very_first_result_sql($dbproc, $query);
+my $compare_id = &DB_connect::very_first_result_sql($dbproc, $query);
 
 
 if ($BEFORE) {
@@ -92,7 +92,7 @@ else {
 }
 
 my %model_to_cdna_accs;
-my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+my @results = &DB_connect::do_sql_2D($dbproc, $query);
 foreach my $result (@results) {
 	my ($model_id, $cdna_acc) = @$result;
 	push (@{$model_to_cdna_accs{$model_id}}, $cdna_acc);
@@ -122,7 +122,7 @@ foreach my $model_id (keys %model_to_cdna_accs) {
 		
 		## get the align_id:
         my $query = "select align_id from cdna_link where cdna_acc = '$cdna' and validate = 1";
-        my $align_id = &Mysql_connect::very_first_result_sql($dbproc, $query);
+        my $align_id = &DB_connect::very_first_result_sql($dbproc, $query);
         my $cdna_obj = &Ath1_cdnas::create_alignment_obj($dbproc, $align_id);
 		
 		my ($cdna_lend, $cdna_rend) = sort {$a<=>$b} $cdna_obj->get_coords();

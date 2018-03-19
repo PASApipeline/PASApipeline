@@ -1,6 +1,6 @@
 #!/usr/bin/env perl
 
-use Mysql_connect;
+use DB_connect;
 use DBI;
 use Getopt::Long qw(:config no_ignore_case bundling);
 use Longest_orf;
@@ -56,7 +56,7 @@ my $MYSQLstring = $opt_M or die $usage;
 my ($MYSQLdb, $MYSQLserver) = split (/:/, $MYSQLstring); 
 my $passwordinfo = $opt_p or die $usage;
 my ($user, $password) = split (/:/, $passwordinfo);
-my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+my ($dbproc) = &DB_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
 
 
 

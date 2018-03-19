@@ -8,7 +8,7 @@ use CGI::Carp qw(fatalsToBrowser);
 use Data::Dumper;
 use Gene_obj;
 use CDNA::CDNA_alignment;
-use Mysql_connect;
+use DB_connect;
 use Ath1_cdnas;
 use strict;
 use Storable qw (thaw);

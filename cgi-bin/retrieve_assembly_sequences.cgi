@@ -2,7 +2,7 @@
 
 use Pasa_init;
 use Pasa_conf;
-use Mysql_connect;
+use DB_connect;
 use strict;
 use DBI;
 use Data::Dumper;

@@ -3,7 +3,7 @@
 use FindBin;
 use lib ($FindBin::Bin);
 use Pasa_init;
-use Mysql_connect;
+use DB_connect;
 use strict;
 use DBI;
 use Ath1_cdnas;
@@ -68,7 +68,7 @@ our $SEE = $opt_V;
 
 my ($user, $password) = split (/:/, $passwordinfo);
 
-my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+my ($dbproc) = &DB_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
 
 my $query = "select annot_id, gene_id, model_id, annotdb_asmbl_id, lend, rend, orient, gene_obj, annotation_version from annotation_store";
 
@@ -88,7 +88,7 @@ if ($gene_id || $model_id || $gene_id) {
 }
 
 
-my @results = &Mysql_connect::do_sql_2D($dbproc, $query);
+my @results = &DB_connect::do_sql_2D($dbproc, $query);
 
 foreach my $result (@results) {
     my ($annot_id, $gene_id, $model_id, $annotdb_asmbl_id, $lend, $rend, $orient, $gene_blob) = @$result;

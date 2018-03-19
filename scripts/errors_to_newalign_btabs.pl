@@ -6,7 +6,7 @@ use Pasa_init;
 use strict;
 use DBI;
 use Getopt::Std;
-use Mysql_connect;
+use DB_connect;
 use Ath1_cdnas;
 use CdbTools;
 use vars qw ($opt_r $opt_N $opt_M $opt_p $opt_s $opt_e $opt_n $opt_g $opt_d $opt_v $opt_h $opt_G $opt_b);
@@ -78,7 +78,7 @@ system "touch $completebtabfile"; #create empty file, in case there aren't any a
 
 ## Query the failed searches:
 my $query = "select c.annotdb_asmbl_id, cl.cdna_acc from cluster_link cl, cdna_link cdl, clusters c where c.cluster_id = cl.cluster_id and cl.cdna_acc = cdl.cdna_acc and cdl.prog = \"$error_prog\" and cdl.validate = 0 order by c.annotdb_asmbl_id";
-my @results = &Mysql_connect::do_sql_2D ($dbproc, $query);
+my @results = &DB_connect::do_sql_2D ($dbproc, $query);
 my $current_asmbl_id;
 my $sequence = "";
 foreach my $result (@results) {

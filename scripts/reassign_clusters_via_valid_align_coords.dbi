@@ -7,7 +7,7 @@ use FindBin;
 use lib ($FindBin::Bin);
 use Pasa_init;
 use Pasa_conf;
-use Mysql_connect;
+use DB_connect;
 use DBI;
 use Getopt::Std;
 use CDNA::Overlap_assembler;
@@ -59,7 +59,7 @@ if ($opt_t) {
     $CPU = $opt_t;
 }
 
-my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+my ($dbproc) = &DB_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
 
 
 my $cluster_reassignment_dir = "__reassign_cluster_via_valid_align_coords";
@@ -91,7 +91,7 @@ foreach my $result (@results) {
 $thread_helper->wait_for_all_threads_to_complete();
 
 
-($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+($dbproc) = &DB_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
 $dbproc->{dbh}->{AutoCommit} = 0;
 
 ## load results into db.
@@ -127,8 +127,7 @@ foreach my $result (@results) {
             
             my $query = "insert into clusters (annotdb_asmbl_id, lend, rend) values (?, ?, ?)";
             &RunMod($dbproc, $query, $asmbl_id, $lend, $rend);
-            $query = ($dbproc->{dbh}->{Driver}->{Name} eq 'SQLite') ? 'select last_insert_rowid()' : "select LAST_INSERT_ID()";
-            $cluster_id = &very_first_result_sql($dbproc, $query);
+            $cluster_id = &DB_connect::get_last_insert_id($dbproc);
         }
         else {
             my ($align_id, $lend, $rend) = split(/\t/);
@@ -157,7 +156,7 @@ sub reassign_clusters_to_aligns {
 
     print STDERR "\r-reassigning clusters on scaffold: $asmbl_id                        ";
     
-    my ($dbproc) = &Mysql_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+    my ($dbproc) = &DB_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
     
     my $asmbl_id_for_filename = $asmbl_id;
     $asmbl_id_for_filename =~ s/\W/_/g;

@@ -7,7 +7,7 @@ our $SEE;
 
 package Ath1_cdnas;
 use strict;
-use Mysql_connect;
+use DB_connect;
 use CDNA::CDNA_alignment;
 use CDNA::Alignment_segment;
 use Gene_obj;
@@ -26,7 +26,7 @@ sub get_cluster_ids_via_annotdb_asmbl_id {
             and al.validate = 1
         };
     
-    my @cluster_id_refs = &Mysql_connect::do_sql_2D ($dbproc, $query, $asmbl_id);
+    my @cluster_id_refs = &DB_connect::do_sql_2D ($dbproc, $query, $asmbl_id);
     my @cluster_ids;
     foreach my $cluster_ref (@cluster_id_refs) {
         my $cluster_id = $cluster_ref->[0];
@@ -45,7 +45,7 @@ sub create_alignment_obj {
     
     
     my $query = "select c.annotdb_asmbl_id from clusters c, align_link al where al.align_id = $align_id and al.cluster_id = c.cluster_id";
-    my $genome_acc = &Mysql_connect::very_first_result_sql($dbproc, $query);
+    my $genome_acc = &DB_connect::very_first_result_sql($dbproc, $query);
 
 
     ## get the alignment segment coordinates
@@ -56,7 +56,7 @@ sub create_alignment_obj {
         . " where a.align_id = $align_id and a.align_id = al.align_id "
         . " and al.cdna_info_id = ci.id ";
     
-    my @results = &Mysql_connect::do_sql_2D ($dbproc, $query);
+    my @results = &DB_connect::do_sql_2D ($dbproc, $query);
     my @alignment_segments;
     my $cdna_length;
     my $Cdna_acc,
@@ -199,7 +199,7 @@ sub get_validating_align_ids_via_acc {
     my $acc = shift;
     my $query = "select align_id from align_link al, cdna_info ci "
         . " where ci.cdna_acc = ? and ci.id = al.cdna_info_id and al.validate = 1";
-    my @results = &Mysql_connect::do_sql_2D($dbproc, $query, $acc);
+    my @results = &DB_connect::do_sql_2D($dbproc, $query, $acc);
     
     my @align_ids;
     foreach my $result (@results) {
@@ -220,7 +220,7 @@ sub get_cdna_info_via_align_id {
         . " from align_link al, cdna_info ci "
         . " where al.align_id = ? and al.cdna_info_id = ci.id";
     
-    my $result = &Mysql_connect::first_result_sql($dbproc, $query, $align_id);
+    my $result = &DB_connect::first_result_sql($dbproc, $query, $align_id);
     my ($qalign_id, $align_acc, $prog, $validate, $spliced_orient, $num_segments, $cdna_acc, $is_fli, $header, $length, $avg_per_id, $percent_aligned, $alignment) = @$result;
     my $s = {align_id => $align_id,
              cdna_acc => $cdna_acc,
@@ -347,7 +347,7 @@ sub get_latest_annot_version {
 	
 	## get latest annotation version:
 	my $query = "select max(version_id) from annotation_admin";
-	my $annot_version = &Mysql_connect::very_first_result_sql($dbproc, $query);
+	my $annot_version = &DB_connect::very_first_result_sql($dbproc, $query);
 	unless ($annot_version) {
 	    confess "Sorry, no version of the annotation to compare to yet.\n";
 	}
@@ -510,7 +510,7 @@ sub load_CDNA_alignment_obj {
             $num_segments,
             );
     
-    my $align_id = &Mysql_connect::get_last_insert_id($dbproc);
+    my $align_id = &DB_connect::get_last_insert_id($dbproc);
         
     foreach my $segment (@segments) {
         my ($lend, $rend) = sort {$a<=>$b} $segment->get_coords();

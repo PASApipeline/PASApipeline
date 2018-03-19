@@ -4,7 +4,7 @@ use FindBin;
 use lib ($FindBin::Bin);
 use Pasa_init;
 use Pasa_conf;
-use Mysql_connect;
+use DB_connect;
 use strict;
 use DBI;
 use Ath1_cdnas;
@@ -53,13 +53,13 @@ my $mysql_rw_password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
 #$admin_db = ""; # just forcing a connection. ??? why???
 
 ## Create the database if needed
-my $dbproc = &Mysql_connect::connect_to_db($mysql_server,"",$mysql_rw_user,$mysql_rw_password);
+my $dbproc = &DB_connect::connect_to_db($mysql_server,"",$mysql_rw_user,$mysql_rw_password);
 eval {
-    &Mysql_connect::RunMod($dbproc,"drop database $mysql_db") if $opt_r;
+    &DB_connect::RunMod($dbproc,"drop database $mysql_db") if $opt_r;
 };
 
 my $query = "create database $mysql_db";
-&Mysql_connect::RunMod($dbproc, $query);
+&DB_connect::RunMod($dbproc, $query);
 $dbproc->disconnect;
 
 
