@@ -11,6 +11,7 @@ use DB_connect;
 use Ath1_cdnas;
 use strict;
 use Pasa_CGI;
+use File::Basename;
 
 $|++;
 
@@ -38,7 +39,7 @@ if ($SEE) {
 }
 
 
-my $cache_file = "$ENV{WEBSERVER_TMP}/$db.status.html";
+my $cache_file = "$ENV{WEBSERVER_TMP}/" . basename($db) . ".status.html";
 my $time1 = time();
 print $cgi->start_html(-title=>"PASA-2 status report for $db",
                        -head => style( { type => "text/css" }, $css_common_text ),
