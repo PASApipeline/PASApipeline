@@ -16,9 +16,14 @@ BEGIN {
         my $path = $FindBin::Bin;
         if (-d "$path/pasa_conf") {
             $ENV{PASAHOME} = $path;
-        } elsif (-d "$path/../pasa_conf") {
+        } 
+        elsif (-d "$path/../pasa_conf") {
             $ENV{PASAHOME} = "$path/../";
-        } else {
+        }
+        elsif (-d "$path/../../pasa_conf") {
+            $ENV{PASAHOME} = "$path/../../";
+        } 
+        else {
             ## Search the Perl Lib Path.  
             foreach my $lib (@INC) {
                 if (-d "$lib/pasa_conf") {
