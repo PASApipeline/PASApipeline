@@ -44,7 +44,8 @@ my $DEBUG = $opt_d;
 
 my $configfile = $opt_c or die $usage;
 my %config = &readConfig($configfile);
-my $mysql_db = ($config{MYSQLDB});
+
+my $mysql_db = $config{DATABASE};
 my $mysql_server = &Pasa_conf::getParam("MYSQLSERVER");
 my $mysql_rw_user = &Pasa_conf::getParam("MYSQL_RW_USER");
 my $mysql_rw_password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");

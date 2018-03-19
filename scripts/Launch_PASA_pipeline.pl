@@ -10,7 +10,8 @@ use ConfigFileReader;
 use Getopt::Long qw(:config no_ignore_case bundling pass_through);
 use Cwd;
 use File::Basename qw(fileparse);
-
+use DB_connect;
+use Data::Dumper;
 
 $ENV{PATH} = "$FindBin::Bin/../bin:$ENV{PATH}";
 
@@ -231,6 +232,9 @@ else {
 my %config = &readConfig($configfile);
 
 my $database = $config{DATABASE} or die "Error, couldn't extract DATABASE from config file " . cwd() . "/$configfile\n";
+
+&DB_connect::configure_db_driver($database);
+
 my $mysql_server = &Pasa_conf::getParam("MYSQLSERVER");
 my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
 my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
@@ -265,16 +269,16 @@ if ($CREATE_DB) {
             $schema_file = "$ENV{PASAHOME}/schema/cdna_alignment_sqliteschema";
             $prog = "$UTILDIR/create_sqlite_cdnaassembly_db.dbi";
         }
-	my $params = "-c $opt_c -S '$schema_file'";
-	$params .= ' -r' if $opt_r;
+        my $params = "-c $opt_c -S '$schema_file'";
+        $params .= ' -r' if $opt_r;
         &process_cmd(
-                     {
-                         prog => $prog,
-                         params => $params,
-                         input => undef,
-                         output => undef
-                         }
-                     );
+            {
+                prog => $prog,
+                params => $params,
+                input => undef,
+                output => undef
+            }
+            );
         
     }
 }

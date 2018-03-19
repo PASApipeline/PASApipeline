@@ -21,23 +21,41 @@ my $QUERYFAIL;
 
 ############### DATABASE CONNECTIVITY ################################
 ####
+
+sub configure_db_driver {
+    my ($db) = @_;
+    
+    if ($db =~ /^\//) {
+        # have fully qualified path:
+        $ENV{DBI_DRIVER} = 'SQLite';
+        print STDERR "-connecting to SQLite db: $db\n";
+    }
+    else {
+        $ENV{DBI_DRIVER} = 'mysql';
+        print STDERR "-connecting to MySQL db: $db\n";
+    }
+    
+    return;
+}
+
 sub connect_to_db {
     my ($server, $db, $username, $password) = @_;
+    #print Dumper([@_]);
     
-    unless ($db) {
+    unless (defined $db) {
         confess "Error, require parameters: server, db, username, password\n"
             . " If you're using sqlite, you can specify dummy values for server, username, and password\n"
             . " but the 'db' parameter must be specified as a fully qualified path. \n"
             . " ie.   /path/to/my/sqlite.db\n\n";
     }
-
-    if ($db =~ /^\//) {
-        # have fully qualified path:
-        $ENV{DBI_DRIVER} = 'SQLite';
+    
+      
+    unless($ENV{DBI_DRIVER} && $ENV{DBI_DRIVER} =~ /^(SQLite|mysql)$/) {
+        &configure_db_driver($db);
     }
-    else {
-        $ENV{DBI_DRIVER} = 'mysql';
         
+    
+    if ($ENV{DBI_DRIVER} eq 'mysql') {
         if (! (defined ($server) && defined($db) && defined($username) && defined($password)) ) {
             confess "Error, need all method parameters (server, db, username, password) for mysql ";
         }
