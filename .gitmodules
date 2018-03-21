@@ -4,3 +4,6 @@
 [submodule "PASApipeline.wiki"]
 	path = PASApipeline.wiki
 	url = https://github.com/PASApipeline/PASApipeline.wiki.git
+[submodule "pasa-plugins/transdecoder"]
+	path = pasa-plugins/transdecoder
+	url = https://github.com/TransDecoder/TransDecoder.git
