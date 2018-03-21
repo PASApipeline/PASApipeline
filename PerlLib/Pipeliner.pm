@@ -58,22 +58,33 @@ sub new {
         $VERBOSE = $params{-verbose};
     }
     my $cmds_log = $params{-cmds_log};
-    unless ($cmds_log) {
-        $cmds_log = "pipeliner.$$.cmds";
-    }
-    
-    open (my $ofh, ">$cmds_log") or confess "Error, cannot write to $cmds_log";
     
     
     my $self = { 
         cmd_objs => [],
         checkpoint_dir => undef,
-
-        cmds_log_ofh => $ofh,
+        cmds_log_ofh => undef,
         
     };
     
     bless ($self, $packagename);
+
+    if (my $checkpoint_dir = $params{-checkpoint_dir}) {
+        $self->set_checkpoint_dir($checkpoint_dir);
+    }
+
+    unless ($cmds_log) {
+        $cmds_log = "pipeliner.$$.cmds";
+
+        if (my $checkpoint_dir = $self->get_checkpoint_dir) {
+            $cmds_log = "$checkpoint_dir/$cmds_log";
+        }
+    }
+
+    # open cmds log 
+    open (my $ofh, ">$cmds_log") or confess "Error, cannot write to $cmds_log";
+    $self->{cmds_log_ofh} = $ofh; 
+    
 
     return($self);
 }
@@ -108,7 +119,7 @@ sub set_checkpoint_dir {
     my $self = shift;
     my ($checkpoint_dir) = @_;
     if (! -d $checkpoint_dir) {
-        confess "Error, cannot locate checkpointdir: $checkpoint_dir";
+        confess "Error, cannot locate checkpointdir: $checkpoint_dir ... you must create this first.";
     }
     $self->{checkpoint_dir} = $checkpoint_dir;
 }
@@ -151,10 +162,11 @@ sub run {
             if (-e $tmp_stderr) {
                 unlink($tmp_stderr);
             }
+
             unless ($VERBOSE == 2) {
                 $cmdstr .= " 2>$tmp_stderr";
             }
-            
+
             my $ret = system($cmdstr);
             if ($ret) {
                 
@@ -163,7 +175,7 @@ sub run {
                     unlink($tmp_stderr);
                 }
                                 
-                confess "Error, cmd: $cmdstr died with ret $ret";
+                confess "Error, cmd: $cmdstr died with ret $ret $!";
             }
             else {
                 `touch $checkpoint_file`;
