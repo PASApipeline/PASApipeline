@@ -48,6 +48,10 @@ if (-d "gmap_db_dir") {
 `rm -rf compreh_init_build`;
 `rm -rf __tmp_classify_alt_isoforms`;
 `rm -rf __pasa_sample_mydb_pasa.sqlite_SQLite_chkpts`;
+`rm -rf sample_mydb_pasa.sqlite.assemblies.fasta.transdecoder_dir.__checkpoints`;
+`rm -rf sample_mydb_pasa.sqlite.assemblies.fasta.transdecoder_dir`;
+`rm -rf genome_sample.fasta.gmap`;
+
 
 foreach my $file (<*>) {
 	
