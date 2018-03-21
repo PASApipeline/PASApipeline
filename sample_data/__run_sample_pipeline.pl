@@ -7,6 +7,7 @@ use Carp;
 use FindBin;
 use lib ("$FindBin::Bin/../PerlLib");
 use ConfigFileReader;
+use File::Basename;
 
 use Getopt::Long qw(:config no_ignore_case bundling pass_through);
 
@@ -86,6 +87,8 @@ unless ($align_assembly_config_file && $annot_compare_config_file) {
 
 my %config = &readConfig($align_assembly_config_file);
 my $DBname = $config{DATABASE} or die "Error, couldn't extract DATABASE from config file: $align_assembly_config_file";
+
+$DBname = basename($DBname);
 
 main: {
 

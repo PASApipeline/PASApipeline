@@ -1024,10 +1024,9 @@ unless ($PRINT_CMDS_ONLY) {
     $pipeliner->run();
     
     print "\n\n\n";
-    print "##########################################################################\n";
-    print "Finished.  Please visit the Assembly and Annotation Comparison results at:\n" 
-        . &Pasa_conf::getParam("BASE_PASA_URL") . "/status_report.cgi?db=$DBname\n";
-    print "##########################################################################\n\n\n";
+    print "###############################################################\n";
+    print "## Finished.  Consider using PasaWeb to explore the results ###\n";
+    print "###############################################################\n\n\n";
 }
 
 
