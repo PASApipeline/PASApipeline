@@ -2,20 +2,20 @@
 all: 
 	if [ ! -d bin ]; then mkdir bin; fi
 	cd pasa_cpp && $(MAKE) && cp pasa ../bin/.
-	cd slclust && $(MAKE) && cp src/slclust ../bin/.
-	cd cdbtools/cdbfasta && $(MAKE) && cp cdbfasta ../../bin/. && cp cdbyank ../../bin/.
-	cd seqclean/mdust && $(MAKE) && cp mdust ../../bin
-	cd seqclean/psx && $(MAKE) && cp psx ../../bin
-	cd seqclean/trimpoly && $(MAKE) && cp trimpoly ../../bin
-	cp seqclean/seqclean/seqclean seqclean/seqclean/cln2qual seqclean/seqclean/bin/seqclean.psx ./bin
+	cd pasa-plugins/slclust && $(MAKE) && cp src/slclust ../../bin/.
+	cd pasa-plugins/cdbtools/cdbfasta && $(MAKE) && cp cdbfasta ../../../bin/. && cp cdbyank ../../../bin/.
+	cd pasa-plugins/seqclean/mdust && $(MAKE) && cp mdust ../../../bin
+	cd pasa-plugins/seqclean/psx && $(MAKE) && cp psx ../../../bin
+	cd pasa-plugins/seqclean/trimpoly && $(MAKE) && cp trimpoly ../../../bin
+	cp pasa-plugins/seqclean/seqclean/seqclean pasa-plugins/seqclean/seqclean/cln2qual pasa-plugins/seqclean/seqclean/bin/seqclean.psx ./bin
 
 clean:
 	cd pasa_cpp && $(MAKE) clean
-	cd slclust && $(MAKE) clean
-	cd cdbtools/cdbfasta && $(MAKE) clean
-	cd seqclean/mdust && $(MAKE) clean
-	cd seqclean/psx && $(MAKE) clean
-	cd seqclean/trimpoly && $(MAKE) clean
+	cd pasa-plugins/slclust && $(MAKE) clean
+	cd pasa-plugins/cdbtools/cdbfasta && $(MAKE) clean
+	cd pasa-plugins/seqclean/mdust && $(MAKE) clean
+	cd pasa-plugins/seqclean/psx && $(MAKE) clean
+	cd pasa-plugins/seqclean/trimpoly && $(MAKE) clean
 	rm -f bin/* 
 
 ###################################################################
