@@ -4,6 +4,10 @@ use strict;
 use warnings;
 use Carp;
 
+use FindBin;
+use lib ("$FindBin::Bin/../PerlLib");
+use ConfigFileReader;
+
 use Getopt::Long qw(:config no_ignore_case bundling pass_through);
 
 my $usage = <<__EOUSAGE__;
@@ -14,8 +18,6 @@ my $usage = <<__EOUSAGE__;
 #  --align_assembly_config <string>  align_assembly.config file
 #
 #  --annot_compare_config <string>   annot_compare.config file
-#
-#  --dbtype <string>                 sqlite|mysql
 #
 # ## all optional:
 #
@@ -54,12 +56,11 @@ my $stringent_alignment_overlap;
 my $gene_overlap;
 my $align_assembly_config_file;
 my $annot_compare_config_file;
-my $dbtype;
+
 
 &GetOptions ( 'h' => \$help_flag,
               'align_assembly_config=s' => \$align_assembly_config_file,
               'annot_compare_config=s' => \$annot_compare_config_file,
-              'dbtype=s' => \$dbtype,
                             
               'CPU=i' => \$CPU,
               'TRANSDECODER' => \$TRANSDECODER,
@@ -78,14 +79,13 @@ if ($help_flag) {
     die $usage;
 }
 
-unless ($align_assembly_config_file && $annot_compare_config_file && $dbtype) {
+unless ($align_assembly_config_file && $annot_compare_config_file) {
     die $usage;
 }
 
-unless ($dbtype =~ /^(sqlite|mysql)$/) {
-    die $usage;
-}
 
+my %config = &readConfig($align_assembly_config_file);
+my $DBname = $config{DATABASE} or die "Error, couldn't extract DATABASE from config file: $align_assembly_config_file";
 
 main: {
 
@@ -191,7 +191,7 @@ main: {
     {
 
         print "***********  Finding ORFs in PASA assemblies **************\n";
-        my $cmd = "../scripts/pasa_asmbls_to_training_set.dbi --pasa_transcripts_fasta sample_mydb_pasa.$dbtype.assemblies.fasta --pasa_transcripts_gff3 sample_mydb_pasa.$dbtype.pasa_assemblies.gff3";
+        my $cmd = "../scripts/pasa_asmbls_to_training_set.dbi --pasa_transcripts_fasta $DBname.assemblies.fasta --pasa_transcripts_gff3 $DBname.pasa_assemblies.gff3";
         &process_cmd($cmd);
     }
     	
