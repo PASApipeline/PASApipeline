@@ -106,7 +106,7 @@ main: {
 		print "********* Running Alignment Assembly ************\n";
 		
 		# "-C -r" will drop db if exists
-		my $cmd = "../scripts/Launch_PASA_pipeline.pl -c $align_assembly_config_file -C -r -R -g genome_sample.fasta -t all_transcripts.fasta.clean -T -u all_transcripts.fasta -f FL_accs.txt --ALIGNERS $ALIGNERS --CPU $CPU -N $num_top_hits --TDN tdn.accs  --IMPORT_CUSTOM_ALIGNMENTS_GFF3 custom_alignments.gff3 ";
+		my $cmd = "../Launch_PASA_pipeline.pl -c $align_assembly_config_file -C -r -R -g genome_sample.fasta -t all_transcripts.fasta.clean -T -u all_transcripts.fasta -f FL_accs.txt --ALIGNERS $ALIGNERS --CPU $CPU -N $num_top_hits --TDN tdn.accs  --IMPORT_CUSTOM_ALIGNMENTS_GFF3 custom_alignments.gff3 ";
 		
         if ($TRANSDECODER) {
             $cmd .= " --TRANSDECODER ";
@@ -150,7 +150,7 @@ main: {
 		## First round, using pre-existing gene structure annotations:
 		
 		print "******** Comparing Annotations to Alignment Assemblies ***********\n";
-		my $cmd = "../scripts/Launch_PASA_pipeline.pl -c $annot_compare_config_file -g genome_sample.fasta -t all_transcripts.fasta.clean -A -L --annots_gff3 orig_annotations_sample.gff3 --CPU $CPU";
+		my $cmd = "../Launch_PASA_pipeline.pl -c $annot_compare_config_file -g genome_sample.fasta -t all_transcripts.fasta.clean -A -L --annots_gff3 orig_annotations_sample.gff3 --CPU $CPU";
 		&process_cmd($cmd);
 		
 	}
@@ -174,7 +174,7 @@ main: {
 		}
 		
 		print "******** Comparing Annotations to Alignment Assemblies ***********\n";
-		my $cmd = "../scripts/Launch_PASA_pipeline.pl -c $annot_compare_config_file -g genome_sample.fasta -t all_transcripts.fasta.clean -A -L --annots_gff3 $recent_update_file --CPU $CPU ";
+		my $cmd = "../Launch_PASA_pipeline.pl -c $annot_compare_config_file -g genome_sample.fasta -t all_transcripts.fasta.clean -A -L --annots_gff3 $recent_update_file --CPU $CPU ";
 		&process_cmd($cmd);
 	}
     
@@ -183,7 +183,7 @@ main: {
 
     {
         print "*********** Running Analysis of Alternative Splicing *******\n";
-        my $cmd = "../scripts/Launch_PASA_pipeline.pl -c $annot_compare_config_file -g genome_sample.fasta -t all_transcripts.fasta.clean --CPU $CPU --ALT_SPLICE";
+        my $cmd = "../Launch_PASA_pipeline.pl -c $annot_compare_config_file -g genome_sample.fasta -t all_transcripts.fasta.clean --CPU $CPU --ALT_SPLICE";
         &process_cmd($cmd);
         
     }

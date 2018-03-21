@@ -4,7 +4,7 @@ use strict;
 use warnings;
 use Time::localtime;
 use FindBin;
-use lib ("$FindBin::Bin/../PerlLib");
+use lib ("$FindBin::Bin/PerlLib");
 use Pasa_init;
 use ConfigFileReader;
 use Getopt::Long qw(:config no_ignore_case bundling pass_through);
@@ -15,7 +15,7 @@ use Data::Dumper;
 use Pipeliner;
 use File::Basename;
 
-$ENV{PATH} = "$FindBin::Bin/../bin:$ENV{PATH}";
+$ENV{PATH} = "$FindBin::Bin/bin:$ENV{PATH}";
 
 my ($opt_c, $opt_C, $opt_r, $opt_R, $opt_A, $opt_g, $opt_t, $opt_f, $opt_T, $opt_u, $opt_d, $opt_h, $opt_x, $opt_s, $opt_e,
 	$ALT_SPLICE, $INVALIDATE_SINGLE_EXON_ESTS, $IMPORT_CUSTOM_ALIGNMENTS_GFF3,
