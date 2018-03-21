@@ -47,6 +47,7 @@ if (-d "gmap_db_dir") {
 `rm -rf blat_out_dir/`;
 `rm -rf compreh_init_build`;
 `rm -rf __tmp_classify_alt_isoforms`;
+`rm -rf __pasa_sample_mydb_pasa.sqlite_SQLite_chkpts`;
 
 foreach my $file (<*>) {
 	

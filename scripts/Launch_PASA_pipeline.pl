@@ -12,6 +12,8 @@ use Cwd;
 use File::Basename qw(fileparse);
 use DB_connect;
 use Data::Dumper;
+use Pipeliner;
+use File::Basename;
 
 $ENV{PATH} = "$FindBin::Bin/../bin:$ENV{PATH}";
 
@@ -249,10 +251,25 @@ my $UTILDIR = "$ENV{PASAHOME}/scripts";
 my $PLUGINS_DIR = "$ENV{PASAHOME}/pasa-plugins";
 
 
+
 unless ($RUN_PIPELINE || $COMPARE_TO_ANNOT || $ALT_SPLICE || $CREATE_DB) {
     print STDERR "Sorry, nothing to do here.\n";
     exit(1);
 }
+
+
+my $checkpts_dir = "__pasa_" . basename($database) . "_$ENV{DBI_DRIVER}_chkpts";
+unless (-d $checkpts_dir) {
+    mkdir $checkpts_dir or die "Error, cannot create checkpoints dir: $checkpts_dir";
+}
+my $pipeliner = new Pipeliner(-verbose=>1,
+                              -checkpoint_dir=>$checkpts_dir,
+                              -cmds_log=> "$checkpts_dir.cmds_log",
+    );
+
+
+my @cmds; # stores all commands to be executed.
+
 
 if ($CREATE_DB) {
     
@@ -271,18 +288,18 @@ if ($CREATE_DB) {
         }
         my $params = "-c $opt_c -S '$schema_file'";
         $params .= ' -r' if $opt_r;
-        &process_cmd(
-            {
-                prog => $prog,
-                params => $params,
-                input => undef,
-                output => undef
-            }
+        
+        push (@cmds, {
+            prog => $prog,
+            params => $params,
+            input => undef,
+            output => undef,
+            chkpt => "create_db.ok",
+              }
             );
         
     }
 }
-
 
 
 ## directory to store voluminous logging info from pasa processes
@@ -354,11 +371,12 @@ if ($RUN_PIPELINE) {
         $TDN_param = "-T $TDN_file";
     }
     
-	my @cmds = ( { prog => "$UTILDIR/upload_transcript_data.dbi",
+    push (@cmds, { prog => "$UTILDIR/upload_transcript_data.dbi",
 				   params => "-M '$database' -t $transcript_db $TDN_param -f $full_length_cdna_listing ",
 				   input => undef,
 				   output => undef,
-                 }
+                   chkpt => "upload_transcripts.ok",
+          }
         );
 	
     if (@PRIMARY_ALIGNERS) {
@@ -367,6 +385,7 @@ if ($RUN_PIPELINE) {
                            . " --transcripts $transcript_db -I $MAX_INTRON_LENGTH -N $NUM_TOP_ALIGNMENTS --CPU $CPU",
                            input => undef,
                            output => undef,
+                           chkpt => "align_transcripts.ok",
               } );
         
         foreach my $aligner (@PRIMARY_ALIGNERS) {
@@ -375,6 +394,7 @@ if ($RUN_PIPELINE) {
                            params => "-M '$database'  -A $aligner -g $aligner.spliced_alignments.gff3",
                            input => undef,
                            output => undef,
+                           chkpt => "import_alignments.ok",
                   },
                 );    
         }
@@ -386,6 +406,7 @@ if ($RUN_PIPELINE) {
                        params => "-M '$database' -A custom -g $IMPORT_CUSTOM_ALIGNMENTS_GFF3",
                        input => undef,
                        output => undef,
+                       chkpt => "import_custom_alignments.ok",
               },
             );    
         
@@ -403,6 +424,7 @@ if ($RUN_PIPELINE) {
                 params => "$CUFFLINKS_GTF",
                 input => undef,
                 output => "$CUFFLINKS_GTF.gff3",
+                chkpt => "cuff_gtf_to_gff3.ok",
             },
               
               # convert to fasta format:
@@ -411,6 +433,7 @@ if ($RUN_PIPELINE) {
                   params => "$CUFFLINKS_GTF $genome_db",
                   input => undef,
                   output => "$CUFFLINKS_GTF.fasta",
+                  chkpt => "cuff_gtf_to_fasta.ok",
               },
               
               # upload fasta entries into DB
@@ -419,6 +442,7 @@ if ($RUN_PIPELINE) {
                   params => "-M '$database' -t $CUFFLINKS_GTF.fasta",
                   input => undef,
                   output => undef,
+                  chkpt => "upload_transcript_fasta.ok",
               },
 
               # upload the cufflinks transcript structures
@@ -427,6 +451,7 @@ if ($RUN_PIPELINE) {
                   params => "-M '$database' -A cufflinks -g $CUFFLINKS_GTF.gff3",
                   input => undef,
                   output => undef,
+                  chkpt => "import_cuff_gtf.ok",
               },
               
               # combine the cufflinks transcripts with the other transcripts for use in validation and other downstream studies
@@ -435,6 +460,7 @@ if ($RUN_PIPELINE) {
                   params => "$transcript_db $CUFFLINKS_GTF.fasta",
                   input => undef,
                   output => "__all_transcripts.fasta",
+                  chkpt => "merge_in_cuff_transcripts.ok",
               }
 
 
@@ -459,17 +485,26 @@ if ($RUN_PIPELINE) {
         if ($genetic_code) {
             $td_params .= " -G $genetic_code";
         }
+        my $td_longorf_params = "";
         if ($ALIGNED_IS_TRANSCRIBED_ORIENT) {
-            $td_params .= " -S ";
+            $td_longorf_params = " -S ";
         }
         
-        push (@cmds, { prog => "$PLUGINS_DIR/transdecoder/transcripts_to_best_scoring_ORFs.pl",
+        push (@cmds, { prog => "$PLUGINS_DIR/transdecoder/TransDecoder.LongOrfs",
+                       params => "$td_params $td_longorf_params",
+                       input => undef,
+                       output => undef,
+                       chkpt => "transdecoder_longorfs.ok",
+              },
+            );
+        push (@cmds, { prog => "$PLUGINS_DIR/transdecoder/TransDecoder.Predict",
                        params => $td_params,
                        input => undef,
                        output => undef,
+                       chkpt => "transdecoder_predict.ok",
               },
             );
-        
+                
         
         ## get the full-length entries
         
@@ -481,21 +516,21 @@ if ($RUN_PIPELINE) {
                        params => $transdecoder_gff3_file, 
                        input => undef,
                        output => $td_full_length_file,
+                       chkpt => "transdecoder.extract_FL.ok",
               },
-
-
+              
               ## update the full-length status
               { prog => "$UTILDIR/update_fli_status.dbi",
                 params => "-M '$database' -f $td_full_length_file",
                 input => undef,
                 output => undef,
+                chkpt => "transdecoder.update_FL_status.ok",
               },
 
             );
         
     }
-    
-	
+    	
 	push (@cmds, 
 		  
 		  
@@ -505,6 +540,7 @@ if ($RUN_PIPELINE) {
 			  params => "-M '$database' -g $genome_db -t $transcript_db --MAX_INTRON_LENGTH $MAX_INTRON_LENGTH --CPU $CPU ", # creates output file: $mysql_db.${map_program}_validations that is read in below.
 			  input => undef,
 			  output => "alignment.validations.output",
+              chkpt => "validate_alignments.ok",
 		  },
 		  
 		  # update the alignment validation results.
@@ -513,7 +549,8 @@ if ($RUN_PIPELINE) {
 			  params => "-M '$database'",
 			  input => "alignment.validations.output",
 			  output => "$PASA_LOG_DIR/alignment.validation_loading.output",
-		  },
+              chkpt => "update_align_valid_status.ok",
+          },
         );
 
 
@@ -526,7 +563,9 @@ if ($RUN_PIPELINE) {
                   prog => "$UTILDIR/PASA_transcripts_and_assemblies_to_GFF3.dbi",
                   params => "-M '$database' -v -A -P ${map_program}",
                   input => undef,
-                  output => "$DBname.valid_${map_program}_alignments.gff3"
+                  output => "$DBname.valid_${map_program}_alignments.gff3",
+                  chkpt => "$DBname.valid_${map_program}_alignments.gff3.ok",
+                      
               },
               
               # do again, but write in BED format
@@ -534,7 +573,8 @@ if ($RUN_PIPELINE) {
                   prog => "$UTILDIR/PASA_transcripts_and_assemblies_to_GFF3.dbi",
                   params => "-M '$database' -v -A -P ${map_program} -B ",
                   input => undef,
-                  output => "$DBname.valid_${map_program}_alignments.bed"
+                  output => "$DBname.valid_${map_program}_alignments.bed",
+                  chkpt => "$DBname.valid_${map_program}_alignments.bed.ok",
               },
 
               # do again, but write in GTF format
@@ -542,7 +582,8 @@ if ($RUN_PIPELINE) {
                   prog => "$UTILDIR/PASA_transcripts_and_assemblies_to_GFF3.dbi",
                   params => "-M '$database' -v -A -P ${map_program} -T ",
                   input => undef,
-                  output => "$DBname.valid_${map_program}_alignments.gtf"
+                  output => "$DBname.valid_${map_program}_alignments.gtf",
+                  chkpt => "$DBname.valid_${map_program}_alignments.gtf.ok",
               },
               
               
@@ -551,7 +592,8 @@ if ($RUN_PIPELINE) {
                   prog => "$UTILDIR/PASA_transcripts_and_assemblies_to_GFF3.dbi",
                   params => "-M '$database' -f -A -P ${map_program}",
                   input => undef,
-                  output => "$DBname.failed_${map_program}_alignments.gff3"
+                  output => "$DBname.failed_${map_program}_alignments.gff3",
+                  chkpt => "$DBname.failed_${map_program}_alignments.gff3.ok",
               },
               
               # do again, but write in BED format
@@ -559,7 +601,8 @@ if ($RUN_PIPELINE) {
                   prog => "$UTILDIR/PASA_transcripts_and_assemblies_to_GFF3.dbi",
                   params => "-M '$database' -f -A -P ${map_program} -B ",
                   input => undef,
-                  output => "$DBname.failed_${map_program}_alignments.bed"
+                  output => "$DBname.failed_${map_program}_alignments.bed",
+                  chkpt => "$DBname.failed_${map_program}_alignments.gff3.ok",
               },
               
               # do again, but write in BED format
@@ -567,7 +610,8 @@ if ($RUN_PIPELINE) {
                   prog => "$UTILDIR/PASA_transcripts_and_assemblies_to_GFF3.dbi",
                   params => "-M '$database' -f -A -P ${map_program} -T ",
                   input => undef,
-                  output => "$DBname.failed_${map_program}_alignments.gtf"
+                  output => "$DBname.failed_${map_program}_alignments.gtf",
+                  chkpt => "$DBname.failed_${map_program}_alignments.gtf.ok",
               },
               
               
@@ -583,7 +627,8 @@ if ($RUN_PIPELINE) {
 				  params => "-M '$database'",
 				  input => undef,
 				  output => "$PASA_LOG_DIR/invalidating_single_exon_alignments.output",
-				  },
+                  chkpt => "invalidate_single_exon_ESTs.ok",
+              },
 			);
 	}
 	
@@ -596,9 +641,9 @@ if ($RUN_PIPELINE) {
 						  prog => "$UTILDIR/polyA_site_transcript_mapper.dbi",
 						  params => "-M '$database' -c $untrimmed_transcript_db.cln "
 							  . "-g $genome_db -t $untrimmed_transcript_db",
-							  
-							  input => undef,
-							  output => "$PASA_LOG_DIR/polyAsite_analysis.out"
+                              input => undef,
+							  output => "$PASA_LOG_DIR/polyAsite_analysis.out",
+                              chkpt => "polyAsite_analysis.ok",
 						  },
 					  
 					  ## Summarize PolyA site findings:
@@ -607,6 +652,7 @@ if ($RUN_PIPELINE) {
 						  params => "-M '$database' -g $genome_db ",
 						  input => undef,
 						  output => "$DBname.polyAsites.fasta",
+                          chkpt => "polAsites.fasta.ok",
 					  },
 					  
 					  )
@@ -623,6 +669,7 @@ if ($RUN_PIPELINE) {
                   params => "-M '$database'",
                   input => undef,
                   output => "$PASA_LOG_DIR/setting_aligned_as_transcribed_orientation.output",
+                  chkpt => "set_spliced_orient_transcribed_orient.ok",
               },
               
               );
@@ -643,7 +690,9 @@ if ($RUN_PIPELINE) {
 				  prog => "$UTILDIR/assign_clusters_by_stringent_alignment_overlap.dbi",
 				  params => "-M $database -L $STRINGENT_ALIGNMENT_OVERLAP", # require all alignments are valid here.
 				  input => undef,
-				  output => "$PASA_LOG_DIR/cluster_reassignment_by_stringent_overlap.out"
+				  output => "$PASA_LOG_DIR/cluster_reassignment_by_stringent_overlap.out",
+                  chkpt => "cluster_reassign_stringent_overlap.ok",
+                      
 				  },
 			  );
 		
@@ -663,7 +712,8 @@ if ($RUN_PIPELINE) {
 				  prog => "$UTILDIR/assign_clusters_by_gene_intergene_overlap.dbi",
 				  params => "-M '$database' -G $ANNOTS_GFF3 -L $GENE_OVERLAP", # require all alignments are valid here.
 				  input => undef,
-				  output => "$PASA_LOG_DIR/alignment_cluster_reassignment.out"
+				  output => "$PASA_LOG_DIR/alignment_cluster_reassignment.out",
+                  chkpt => "alignment_cluster_reassignment.ok",
 				  },
 			  );
 	}
@@ -676,7 +726,8 @@ if ($RUN_PIPELINE) {
 				  prog => "$UTILDIR/reassign_clusters_via_valid_align_coords.dbi",
 				  params => "-M '$database' ", 
 				  input => undef,
-				  output => "$PASA_LOG_DIR/cluster_reassignment_by_valid_alignment_coords.default.out"
+				  output => "$PASA_LOG_DIR/cluster_reassignment_by_valid_alignment_coords.default.out",
+                  chkpt => "reassign_clusters_via_valid_align_coords.ok",
 				  },
 			  );
 	}
@@ -694,6 +745,7 @@ if ($RUN_PIPELINE) {
                   params => "-M '$database'",
                   input => undef,
                   output => "$PASA_LOG_DIR/ensuring_single_valid_alignment_per_cdna_per_cluster.log",
+                  chkpt => "ensuring_single_valid_alignment_per_cdna_cluster.ok",
               },
               );
     }
@@ -711,7 +763,8 @@ if ($RUN_PIPELINE) {
 			  prog => "$UTILDIR/assemble_clusters.dbi",
 			  params => "-G $genome_db  -M '$database' $splice_graph_assembler_flag -T $CPU ",
 			  input => undef,
-			  output => "$DBname.pasa_alignment_assembly_building.ascii_illustrations.out"
+			  output => "$DBname.pasa_alignment_assembly_building.ascii_illustrations.out",
+              chkpt => "assemble_clusters.ok",
 		  },
 		  
 		  
@@ -720,7 +773,8 @@ if ($RUN_PIPELINE) {
 			  prog => "$UTILDIR/assembly_db_loader.dbi",
 			  params => "-M '$database'",
 			  input => undef,
-			  output => "$PASA_LOG_DIR/alignment_assembly_loading.out"
+			  output => "$PASA_LOG_DIR/alignment_assembly_loading.out",
+              chkpt => "alignment_assembly_loading.ok",
 		  },
 		  
 		  
@@ -729,7 +783,9 @@ if ($RUN_PIPELINE) {
 			  prog => "$UTILDIR/subcluster_builder.dbi",
 			  params => "-G $genome_db -M '$database' ",
 			  input => undef,
-			  output => "$PASA_LOG_DIR/alignment_assembly_subclustering.out"
+			  output => "$PASA_LOG_DIR/alignment_assembly_subclustering.out",
+              chkpt => "alignment_assembly_subclustering.ok",
+                  
 		  },
 		  
 		  
@@ -738,7 +794,8 @@ if ($RUN_PIPELINE) {
 			  prog => "$UTILDIR/populate_mysql_assembly_alignment_field.dbi",
 			  params => "-M '$database' -G $genome_db",
 			  input => undef,
-			  output => undef
+			  output => undef,
+              chkpt => "populate_db_assembly_alignment_field.ok",
 			  },
 		  
 		  # populate pasa assembly sequences:
@@ -746,7 +803,8 @@ if ($RUN_PIPELINE) {
 			  prog => "$UTILDIR/populate_mysql_assembly_sequence_field.dbi",
 			  params => "-M '$database' -G $genome_db",
 			  input => undef,
-			  output => undef
+			  output => undef,
+              chkpt => "populate_db_assembly_sequence_field.ok",
 			  },
 		  
 		  
@@ -756,7 +814,8 @@ if ($RUN_PIPELINE) {
 			  prog => "$UTILDIR/subcluster_loader.dbi",
 			  params => "-M '$database' ",
 			  input => "$PASA_LOG_DIR/alignment_assembly_subclustering.out",
-			  output => undef
+			  output => undef,
+              chkpt => "alignment_assembly_subcluster_loading.ok",
 			  },
 		  
 		  # create gene models based on pasa assembies and long orfs (note, this is only used in web displays!, see documentation for more robust de novo annotation based on transcripts.)
@@ -766,7 +825,8 @@ if ($RUN_PIPELINE) {
 			  params => "-M '$database' -G $genome_db",
 			  input => undef,
 			  output => undef,
-		  },
+              chkpt => "alignment_assembly_to_gene_models.ok",
+          },
 		  
 
 		  ############################################################
@@ -779,21 +839,24 @@ if ($RUN_PIPELINE) {
 			  prog => "$UTILDIR/PASA_transcripts_and_assemblies_to_GFF3.dbi",
 			  params => "-M '$database' -a ",
 			  input => undef,
-			  output => "$DBname.pasa_assemblies.gff3"
+			  output => "$DBname.pasa_assemblies.gff3",
+              chkpt => "pasa_assemblies_to_gff3.ok",
 			  },
           
           { # bed format
 			  prog => "$UTILDIR/PASA_transcripts_and_assemblies_to_GFF3.dbi",
 			  params => "-M '$database' -a -B ",
 			  input => undef,
-			  output => "$DBname.pasa_assemblies.bed"
+			  output => "$DBname.pasa_assemblies.bed",
+              chkpt => "pasa_assemblies_to_bed.ok",
 			  },
           
           { # gtf format
 			  prog => "$UTILDIR/PASA_transcripts_and_assemblies_to_GFF3.dbi",
 			  params => "-M '$database' -a -T ",
 			  input => undef,
-			  output => "$DBname.pasa_assemblies.gtf"
+			  output => "$DBname.pasa_assemblies.gtf",
+              chkpt => "pasa_assemblies_to_gtf.ok",
 			  },
 		  
           
@@ -804,48 +867,14 @@ if ($RUN_PIPELINE) {
 			  params => "-M '$database' ",
 			  input => undef,
 			  output => "$DBname.pasa_assemblies_described.txt",
+              chkpt => "pasa_assemblies_described.ok",
 			  
 		  },
 		  		  		  
 		  );
 	
 
-	###############################
-	#  Pipeline command execution:
-	###############################
-
-    ## write them all to a log file for safe keeping:
-    {
-        open (my $ofh, ">$DBname.run.$$.cmds") or die $!;
-        print $ofh "PASA Pipeline CMD:\t$PASA_PIPELINE_CMD\n\n";
-
-        my $counter = 0;
-        foreach my $cmd (@cmds) {
-            $counter++;
-            print $ofh "CMD[$counter]:\t" . &reconstruct_cmd_line($cmd) . "\n\n";
-        }
-        close $ofh;
-    }
-    
-    
-    my $i = 1;
-    if ($STARTING_INDEX) {
-        while ($i < $STARTING_INDEX) {
-            shift @cmds;
-            $i++;
-        }
-    }
-    
-    my $total_cmds = scalar(@cmds);
-    foreach my $cmd (@cmds) {
-        if (defined($ENDING_INDEX) && $i >= $ENDING_INDEX) {
-            print STDERR "ENDING_INDEX($ENDING_INDEX) reached. Stopping here. Resume with -s ($i).\n\n";
-            exit(0);
-        }
-        
-        &process_cmd($cmd, "$i/$total_cmds");
-        $i++;
-    }
+	
 }
 
 
@@ -867,9 +896,10 @@ if ($COMPARE_TO_ANNOT) {
 			params => "-c $configfile -g $genome_db -P $ANNOTS_GFF3 ",
 			input => undef,
 			output => "$PASA_LOG_DIR/output.annot_loading.$$.out",
+            chkpt => "annot_loading.". time(),
 		};
 		
-		&process_cmd($cmd);
+		push (@cmds, $cmd);
 	}
 	
     ## compare to annotation:
@@ -878,29 +908,32 @@ if ($COMPARE_TO_ANNOT) {
         prog => "$UTILDIR/cDNA_annotation_comparer.dbi",
         params => "-G $genome_db --CPU $CPU -M '$database' $genetic_code_opt",
         input => undef,
-        output => "$PASA_LOG_DIR/$DBname.annotation_compare.$$.out"  ## TODO: use compare_id and annot_version values for file naming. Ditto for below and other relevant places.
+        output => "$PASA_LOG_DIR/$DBname.annotation_compare.$$.out",  ## TODO: use compare_id and annot_version values for file naming. Ditto for below and other relevant places.
+        chkpt => "cDNA_annot_comparer." . time(),
         };
-    
-    &process_cmd($cmd);
+
+    push (@cmds, $cmd);
 	
 	$cmd = { 
         prog => "$UTILDIR/dump_valid_annot_updates.dbi",
         params => "-M '$database' -V -R -g $genome_db",
         input => undef,
         output => "$DBname.gene_structures_post_PASA_updates.$$.gff3",
+        chkpt => "dump_valid_annot_updates." . time(),
     };
-    
-    &process_cmd($cmd);
 
-	## write it in BED format:
+    push (@cmds, $cmd);
+    
+    ## write it in BED format:
 	$cmd = {
 		prog => "$UTILDIR/../misc_utilities/gff3_file_to_bed.pl",
 		params => "$DBname.gene_structures_post_PASA_updates.$$.gff3",
 		input => undef,
 		output => "$DBname.gene_structures_post_PASA_updates.$$.bed",
+        chkpt => "gene_structures_post_PASA.bed." . time(),
 	};
 	
-	&process_cmd($cmd);
+	push (@cmds, $cmd);
     
     
 }
@@ -917,47 +950,52 @@ if ($ALT_SPLICE && !$COMPARE_TO_ANNOT) { #this has bitten me before. do alt-spli
         params => "-M '$database' -G $genome_db -T $CPU ",
         input => undef,
         output => "$PASA_LOG_DIR/alt_splicing_analysis.out",
+        chkpt => "alt_splicing_analysis.ok",
     };
     
-    &process_cmd($cmd);
+    push (@cmds, $cmd);
     
     $cmd = {
         prog => "$UTILDIR/find_alternate_internal_exons.dbi",
         params => "-M '$database' -G $genome_db",
         input => undef,
         output => "$PASA_LOG_DIR/alt_internal_exon_finding.out",
+        chkpt => "find_alternate_internal_exons.ok",
     };
     
-    &process_cmd($cmd);
+    push (@cmds, $cmd);
 
     $cmd = { 
         prog => "$UTILDIR/classify_alt_splice_as_UTR_or_protein.dbi",
         params => "-M '$database' -G $genome_db",
         input => undef,
         output => "$PASA_LOG_DIR/alt_splice_FL_FL_compare",
+        chkpt => "alt_splice_FL_FL_compare.ok",
     };
 
-    &process_cmd($cmd);
-
+    push (@cmds, $cmd);
 
     $cmd = {
         prog => "$UTILDIR/report_alt_splicing_findings.dbi",
         params => "-M '$database' ", 
         input => undef,
         output => undef,  ## actually writes the files:  indiv_splice_labels_and_coords.dat and alt_splice_label_combinations.dat
+        chkpt => "report_alt_splicing_findings.ok",
     };
 
-    &process_cmd($cmd);
 
+    push (@cmds, $cmd);
+    
 
     $cmd = {
         prog => "$UTILDIR/splicing_variation_to_splicing_event.dbi",
         params => "-M '$database' ",
         input => undef,
         output => "$DBname.alt_splicing_events_described.txt",
+        chkpt => "splicing_variation_to_splicing_event.ok",
     };
 
-    &process_cmd($cmd);
+    push (@cmds, $cmd);
     
 	
 	$cmd = {
@@ -965,51 +1003,35 @@ if ($ALT_SPLICE && !$COMPARE_TO_ANNOT) { #this has bitten me before. do alt-spli
 		params => "-M '$database' ",
 		input => undef,
 		output => "$DBname.alt_splicing_supporting_evidence.txt",
+        chkpt => "comprehensive_alt_splice_report.ok",
 	};
-	
-	&process_cmd($cmd);
-	
-	
+
+    push (@cmds, $cmd);
+    	
 }
 
+# Build pipeline:
+foreach my $cmd (@cmds) {
+    #print Dumper($cmd);
+    my $cmdstr = &reconstruct_cmd_line($cmd);
+    unless ($PRINT_CMDS_ONLY) {
+        $pipeliner->add_commands(new Command($cmdstr, $cmd->{chkpt}));
+    }
+}
 
-print "\n\n\n";
-print "##########################################################################\n";
-print "Finished.  Please visit the Assembly and Annotation Comparison results at:\n" 
-    . &Pasa_conf::getParam("BASE_PASA_URL") . "/status_report.cgi?db=$DBname\n";
-print "##########################################################################\n\n\n";
-
+unless ($PRINT_CMDS_ONLY) {
+    print STDERR "-*** Running PASA pipeine:\n";
+    $pipeliner->run();
+    
+    print "\n\n\n";
+    print "##########################################################################\n";
+    print "Finished.  Please visit the Assembly and Annotation Comparison results at:\n" 
+        . &Pasa_conf::getParam("BASE_PASA_URL") . "/status_report.cgi?db=$DBname\n";
+    print "##########################################################################\n\n\n";
+}
 
 
 exit(0);
-
-####
-sub process_cmd {
-    my $cmd = shift;
-    my $note = shift;
-    
-	unless (defined $note) {
-		$note = "";
-	}
-    
-    print "\n\n## Processing CMD: $note\n"; 
-    
-    my $construct_cmd = &reconstruct_cmd_line($cmd);
-    
-    
-    print &mytime."CMD: $construct_cmd\n";
-    
-    #print STDERR "====\nPATH SETTING CURRENTLY: " . $ENV{PATH} . "\n====\n";
-    
-    unless ($PRINT_CMDS_ONLY) {
-        
-        my $retvalue = system $construct_cmd;
-        if ($retvalue) {
-            my ($index, $total) = split(m|/|, $note);
-            die "\n\nERROR: The following command died with exit code ($retvalue):\n$construct_cmd\n\nMust re-run pipeline starting at index [$index] via running Launch_PASA_pipeline with parameter \'-s $index\' (exclude param \'-C\' since db already created)\n\n";
-        }
-    }
-}
 
 
 sub reconstruct_cmd_line {

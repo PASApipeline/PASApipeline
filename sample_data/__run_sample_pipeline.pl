@@ -15,6 +15,7 @@ my $usage = <<__EOUSAGE__;
 #
 #  --annot_compare_config <string>   annot_compare.config file
 #
+#  --dbtype <string>                 sqlite|mysql
 #
 # ## all optional:
 #
@@ -53,11 +54,13 @@ my $stringent_alignment_overlap;
 my $gene_overlap;
 my $align_assembly_config_file;
 my $annot_compare_config_file;
+my $dbtype;
 
 &GetOptions ( 'h' => \$help_flag,
               'align_assembly_config=s' => \$align_assembly_config_file,
               'annot_compare_config=s' => \$annot_compare_config_file,
-              
+              'dbtype=s' => \$dbtype,
+                            
               'CPU=i' => \$CPU,
               'TRANSDECODER' => \$TRANSDECODER,
               'ALIGNERS=s' => \$ALIGNERS,
@@ -66,14 +69,20 @@ my $annot_compare_config_file;
               'N=i' => \$num_top_hits,
               'stringent_alignment_overlap=i' => \$stringent_alignment_overlap,
               'gene_overlap=i' => \$gene_overlap,
-              );
+              
+
+    );
 
 
 if ($help_flag) {
     die $usage;
 }
 
-unless ($align_assembly_config_file && $annot_compare_config_file) {
+unless ($align_assembly_config_file && $annot_compare_config_file && $dbtype) {
+    die $usage;
+}
+
+unless ($dbtype =~ /^(sqlite|mysql)$/) {
     die $usage;
 }
 
@@ -182,7 +191,7 @@ main: {
     {
 
         print "***********  Finding ORFs in PASA assemblies **************\n";
-        my $cmd = "../scripts/pasa_asmbls_to_training_set.dbi --pasa_transcripts_fasta sample_mydb_pasa.assemblies.fasta --pasa_transcripts_gff3 sample_mydb_pasa.pasa_assemblies.gff3";
+        my $cmd = "../scripts/pasa_asmbls_to_training_set.dbi --pasa_transcripts_fasta sample_mydb_pasa.$dbtype.assemblies.fasta --pasa_transcripts_gff3 sample_mydb_pasa.$dbtype.pasa_assemblies.gff3";
         &process_cmd($cmd);
     }
     	
