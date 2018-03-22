@@ -29,7 +29,7 @@ ENV BIN /usr/local/bin
 RUN apt-get install -y sqlite lighttpd libgd-tools libgd2-xpm-dev
 
 RUN cpanm install GD
-RUN cpanm intall DBI
+RUN cpanm install DBI
 RUN cpanm install DBD::SQLite
 
 RUN apt-get install -y software-properties-common
