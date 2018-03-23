@@ -395,346 +395,346 @@ int readWords(FILE* f, GHash<int>& xhash) {
 
 //========================== MAIN ===============================
 int main(int argc, char **argv) {
-  FILE* f_read=NULL;
-  off_t fdbsize;
-  int ch;
-  char* zfilename;
-  char* fname;
-  char* marker; //record marker
-  int maxkeys=0;
-
-  int multikey;
-  strcpy(record_marker,">");
-  GArgs args(argc, argv, "mn:o:r:z:w:f:s:icvC");
-  int e=args.isError();
-  if  (e>0)
-     GError("%s Invalid argument: %s\n", USAGE, argv[e] );
-  if (args.getOpt('v')!=NULL) {
-    printf("%s\n",VERSION);
-    return 0;
+    FILE* f_read=NULL;
+    off_t fdbsize;
+    int ch;
+    char* zfilename;
+    char* fname;
+    char* marker; //record marker
+    int maxkeys=0;
+    
+    int multikey;
+    strcpy(record_marker,">");
+    GArgs args(argc, argv, "mn:o:r:z:w:f:s:icvC");
+    int e=args.isError();
+    if  (e>0)
+        GError("%s Invalid argument: %s\n", USAGE, argv[e] );
+    if (args.getOpt('v')!=NULL) {
+        printf("%s\n",VERSION);
+        return 0;
     }
-  multikey = (args.getOpt('m')!=NULL);
-  if (multikey) {
-    fields[numFields]=1;
-    numFields++;
-    fields[numFields]=MAX_UINT;
-    numFields++;  
+    multikey = (args.getOpt('m')!=NULL);
+    if (multikey) {
+        fields[numFields]=1;
+        numFields++;
+        fields[numFields]=MAX_UINT;
+        numFields++;  
     }
-  caseInsensitive = (args.getOpt('i')!=NULL);
-  compact_plus=(args.getOpt('C')!=NULL);
-  wordJunk = (char *)args.getOpt('s');
-  if (wordJunk==NULL) wordJunk=defWordJunk;
-  int compact=(args.getOpt('c')!=NULL || compact_plus);
-  if (compact && multikey) {
-    GError("%s Error: invalid flags combination.\n", USAGE);
+    caseInsensitive = (args.getOpt('i')!=NULL);
+    compact_plus=(args.getOpt('C')!=NULL);
+    wordJunk = (char *)args.getOpt('s');
+    if (wordJunk==NULL) wordJunk=defWordJunk;
+    int compact=(args.getOpt('c')!=NULL || compact_plus);
+    if (compact && multikey) {
+        GError("%s Error: invalid flags combination.\n", USAGE);
     }
-  char* s = (char*)args.getOpt('n');
-  if (s!=NULL) {
-    maxkeys = atoi(s);
-    if (maxkeys<=1 || compact || multikey)
-        GError("%s Error: invalid options (-m, -c/C, -n and -f are exclusive)\n", USAGE);
-    multikey=1;
-    numFields=maxkeys;
-    if (numFields>254) GError(ERR_TOOMANYFIELDS);
-    for (unsigned int i=1;i<=numFields;i++) fields[i-1]=i;
+    char* s = (char*)args.getOpt('n');
+    if (s!=NULL) {
+        maxkeys = atoi(s);
+        if (maxkeys<=1 || compact || multikey)
+            GError("%s Error: invalid options (-m, -c/C, -n and -f are exclusive)\n", USAGE);
+        multikey=1;
+        numFields=maxkeys;
+        if (numFields>254) GError(ERR_TOOMANYFIELDS);
+        for (unsigned int i=1;i<=numFields;i++) fields[i-1]=i;
     }
-  char* argfields = (char*)args.getOpt('f');
-  if (argfields!=NULL) { //parse all the field #s
-    char* pbrk;
-    int prevnum=0;
-    char prevsep='\0';
-    numFields=0;
-    char sep;
-    char *p=argfields;
-    do {
-     pbrk=strpbrk(p,",-");
-     if (pbrk==NULL) {
-         sep='\0';
-         pbrk=p+strlen(p);
-         if (prevsep == '-' && *p=='\0' && prevnum>0) {
-           //open ended range -- ending with '-'
-           fields[numFields]=prevnum;
-           numFields++;
-           if (numFields>253) GError(ERR_TOOMANYFIELDS);
-           fields[numFields]=MAX_UINT;
-           numFields++;
-           //GMessage("--- stored %d, %d\n",prevnum, MAX_UINT);
-           break;
-           }// ending with '-'
-         } // '\0'
-      else { sep=*pbrk; *pbrk = '\0'; }
-     int num = atoi(p);
-     if (num<=0 || num>254 )
-              GError("%s Error: invalid syntax for -f option.\n", USAGE);
-     if (prevsep == '-') { //store a range
-       for (int i=prevnum;i<=num;i++) {
-          fields[numFields]=i;
-          numFields++;
-          if (numFields>254) GError(ERR_TOOMANYFIELDS);
+    char* argfields = (char*)args.getOpt('f');
+    if (argfields!=NULL) { //parse all the field #s
+        char* pbrk;
+        int prevnum=0;
+        char prevsep='\0';
+        numFields=0;
+        char sep;
+        char *p=argfields;
+        do {
+            pbrk=strpbrk(p,",-");
+            if (pbrk==NULL) {
+                sep='\0';
+                pbrk=p+strlen(p);
+                if (prevsep == '-' && *p=='\0' && prevnum>0) {
+                    //open ended range -- ending with '-'
+                    fields[numFields]=prevnum;
+                    numFields++;
+                    if (numFields>253) GError(ERR_TOOMANYFIELDS);
+                    fields[numFields]=MAX_UINT;
+                    numFields++;
+                    //GMessage("--- stored %d, %d\n",prevnum, MAX_UINT);
+                    break;
+                }// ending with '-'
+            } // '\0'
+            else { sep=*pbrk; *pbrk = '\0'; }
+            int num = atoi(p);
+            if (num<=0 || num>254 )
+                GError("%s Error: invalid syntax for -f option.\n", USAGE);
+            if (prevsep == '-') { //store a range
+                for (int i=prevnum;i<=num;i++) {
+                    fields[numFields]=i;
+                    numFields++;
+                    if (numFields>254) GError(ERR_TOOMANYFIELDS);
+                }
+            }
+            else if (sep!='-') {
+                fields[numFields]=num;
+                numFields++;
+                if (numFields>254) GError(ERR_TOOMANYFIELDS);
+            }
+            
+            prevsep=sep;
+            prevnum=num;
+            p=pbrk+1;
+        } while (sep != '\0'); //range parsing loop
+        if (numFields<=0 || numFields>254 )
+            GError("%s Error at parsing -f option.\n", USAGE);
+        //GMessage("[%d] Fields parsed (%d values):\n", sizeof(fields[0]), numFields);
+        qsort(fields, numFields, sizeof(fields[0]), &qcmpInt);    
+        multikey=1;
+        /*-- --------debug:
+          for (unsigned int i=0;i<numFields-1;i++) {
+          GMessage("%d,", fields[i]);
           }
-       }
-      else if (sep!='-') {
-         fields[numFields]=num;
-         numFields++;
-         if (numFields>254) GError(ERR_TOOMANYFIELDS);
-         }
-      
-     prevsep=sep;
-     prevnum=num;
-     p=pbrk+1;
-     } while (sep != '\0'); //range parsing loop
-    if (numFields<=0 || numFields>254 )
-              GError("%s Error at parsing -f option.\n", USAGE);
-    //GMessage("[%d] Fields parsed (%d values):\n", sizeof(fields[0]), numFields);
-    qsort(fields, numFields, sizeof(fields[0]), &qcmpInt);    
-    multikey=1;
-    /*-- --------debug:
-    for (unsigned int i=0;i<numFields-1;i++) {
-      GMessage("%d,", fields[i]);
-      }
-    GMessage("%d\n",fields[numFields-1]);
-    exit(0); */ 
+          GMessage("%d\n",fields[numFields-1]);
+          exit(0); */ 
     } //fields
-
-  if (args.getOpt('r')!=NULL) {//non-FASTA record delimiter?
-   marker=(char*)args.getOpt('r'); //
-   int v=0;
-   if (strlen(marker)>126) 
-      GError("Error: the specified record delimiter is too long. "
-        "Maximum accepted is 126\n");
-   //special case: hex (0xXX) and octal codes (\XXX) are accepted, only if by themselves
-   if ((strlen(marker)==4 && marker[0]=='\\') || (marker[0]=='0' && (toupper(marker[1])=='X'))) {
-       if (marker[0]=='\\') {
-           marker++;
-           v=strtol(marker, NULL, 8);
-           }
-          else v=strtol(marker, NULL, 16);
-       if (v==0 || v>255)
-         GError("Invalid record delimiter: should be only one character,\n"
-                "'\\NNN' (octal value), '0xNN' (hexadecimal value)");
-       record_marker[0]=v;
-       record_marker_len=1;
-       }
-     else {
-      strcpy(record_marker, marker);
-      record_marker_len=strlen(record_marker);
-      }
-   }
- char* stopwords=(char*)args.getOpt('w'); //stop words filename given?
- if (stopwords!=NULL) {
-  FILE* fstopwords=NULL;
-  if ((fstopwords=fopen(stopwords, "r"))==NULL)
-       GError("Cannot open stop words file '%s'!\n", stopwords);
-  int c=readWords(fstopwords, stopList);
-  GMessage("Loaded %d stop words.\n", c);
-  fclose(fstopwords);
-  useStopWords=(c>0);
-  }
-  if ((zfilename=(char*)args.getOpt('z')) !=NULL) {
-    do_compress=true;
-    strcpy(fztmp,zfilename);
-    strcat(fztmp,"_ztmp");
-    zf=fopen(fztmp,"wb");
-    if (zf==NULL)
-      GError("Error creating file '%s'\n'", fztmp);
-    }
-  char* outfile=(char*) args.getOpt('o');
-  int numfiles = args.startNonOpt();
-  if (numfiles==0)
-    GError("%sError: no fasta file given.\n", USAGE);
-  fname=(char*) args.nextNonOpt(); //first fasta file given
-  if (do_compress)  { //-------- compression case -------------------
-     if (strcmp(fname, "-")==0 || strcmp(fname, "stdin")==0)
-           f_read=stdin;
-       else f_read= fopen(fname, "rb");
-     if (f_read == NULL) die_read(fname);
-     fname=zfilename; //forget the input file name, keep the output
-     }
-  else {//
-    int fdread= open(fname, O_RDONLY|O_BINARY);
-    if (fdread == -1) die_read(fname);
-    struct stat dbstat;
-    fstat(fdread, &dbstat);
-    fdbsize=dbstat.st_size;
-    close(fdread);
-    f_read= fopen(fname, "rb");
-    if (f_read == NULL) die_read(fname);
-    }
-
-  char idxfile[365];
-  if (outfile==NULL) {
-    if (do_compress) {
-      strcpy(ftmp, zfilename);
-      strcat(ftmp, ".cidx");
-      strcpy(idxfile, ftmp);
-      strcat(ftmp, "_tmp");
-      }
-    else {
-      strcpy(ftmp, fname);
-      strcat(ftmp, ".cidx");
-      strcpy(idxfile, ftmp);
-      strcat(ftmp, "_tmp");
-      }
-    //should add the process ID, time and user to make this unique?
-    }
-  else {
-    strcpy(ftmp, outfile);
-    strcpy(idxfile, outfile);
-    strcat(ftmp, "_tmp");
-    }
-
-  cdbidx=new GCdbWrite(ftmp); //test if this was successful?
-
-  if (compact)
-         addKeyFunc=&addKeyCompact;
-    else if (multikey)
-               addKeyFunc = &addKeyMulti;
-          else addKeyFunc = &addKey;
-
-  off_t recpos=0;
-  off_t r=0;
-  unsigned int recsize=0;
-  char* key=NULL;
-  bool fullDefline=(multikey || compact_plus);
-  GReadBuf *readbuf = new GReadBuf(f_read, GREADBUF_SIZE);
-  if (do_compress) { //---------------- compression case -------------
-     fdbsize=0;
-     GCdbz cdbz(zf); // zlib interface
-     recpos=cdbz.getZRecPos();
-     while ((key=cdbz.compress(readbuf,record_marker))!=NULL) {
-       recsize=cdbz.getZRecSize();
-       if (!fullDefline) {
-         //find first space after the record_marker and place a '\0' there
-         for (int i=record_marker_len; key[i]!='\0';i++) {
-           if (isspace(key[i])) { key[i]='\0';break; }
-           }
-         }
-       addKeyFunc(key, recpos, recsize);
-       recpos = cdbz.getZRecPos();
-       }
-     remove(zfilename);
-     cdbz.compress_end();
-     fclose(zf);
-     //determine the size of this file:
-     int ftmp= open(fztmp, O_RDONLY|O_BINARY);
-     if (ftmp == -1) die_read(fztmp);
-     struct stat dbstat;
-     fstat(ftmp, &dbstat);
-     fdbsize=dbstat.st_size;
-     //rename it to the intended file name
-     if (rename(fztmp,zfilename) != 0) {
-       GMessage("Error: unable to rename '%s' to '%s'\n",fztmp,zfilename);
-       perror("rename");
-       }
-    }
-  else { // not compressed -- buffered file access
-     bool defline=false;
-     int kbufsize=KBUFSIZE;
-     if (fullDefline) { GMALLOC(key, KBUFSIZE); }//large defline storage buffer, just in case
-                 else { GMALLOC(key, 1024); }
-     int kidx=-1;
-     num_recs=0;
-     num_keys=0;
-     char lastchar=0;
-     //first iteration -- for the beginning of file case
-     if (readbuf->peekCmp(record_marker, record_marker_len)==0) {
-           //new record start found (defline)
-           recpos=readbuf->getPos(); //new record pos
-           defline=true; //we're in defline
-           readbuf->skip(record_marker_len);
-           kidx=0;
-           }//new record start
-     while ((ch=readbuf->getch())>0) {
-      if (defline && kidx>=0) { //on the defline here, still parsing possible keys
-          key[kidx]=(char)ch;
-          kidx++;
-          if (kidx>=kbufsize) {
-             kbufsize+=KBUFSIZE;
-             GREALLOC(key, kbufsize);
-             }
-          if (((isspace(ch) || ch<31) && fullDefline==false) || ch=='\n' || ch=='\r') {
-               //end key here, don't care about the rest
-               key[kidx-1]='\0';
-               kidx=-1;
-               }
+    
+    if (args.getOpt('r')!=NULL) {//non-FASTA record delimiter?
+        marker=(char*)args.getOpt('r'); //
+        int v=0;
+        if (strlen(marker)>126) 
+            GError("Error: the specified record delimiter is too long. "
+                   "Maximum accepted is 126\n");
+        //special case: hex (0xXX) and octal codes (\XXX) are accepted, only if by themselves
+        if ((strlen(marker)==4 && marker[0]=='\\') || (marker[0]=='0' && (toupper(marker[1])=='X'))) {
+            if (marker[0]=='\\') {
+                marker++;
+                v=strtol(marker, NULL, 8);
+            }
+            else v=strtol(marker, NULL, 16);
+            if (v==0 || v>255)
+                GError("Invalid record delimiter: should be only one character,\n"
+                       "'\\NNN' (octal value), '0xNN' (hexadecimal value)");
+            record_marker[0]=v;
+            record_marker_len=1;
         }
-      if (ch=='\n') { // newline!
-         //check ahead if a record delimiter follows
+        else {
+            strcpy(record_marker, marker);
+            record_marker_len=strlen(record_marker);
+        }
+    }
+    char* stopwords=(char*)args.getOpt('w'); //stop words filename given?
+    if (stopwords!=NULL) {
+        FILE* fstopwords=NULL;
+        if ((fstopwords=fopen(stopwords, "r")) == NULL)
+            GError("Cannot open stop words file '%s'!\n", stopwords);
+        int c=readWords(fstopwords, stopList);
+        GMessage("Loaded %d stop words.\n", c);
+        fclose(fstopwords);
+        useStopWords=(c>0);
+    }
+    if ( (zfilename=(char*)args.getOpt('z')) != NULL) {
+        do_compress=true;
+        strcpy(fztmp,zfilename);
+        strcat(fztmp,"_ztmp");
+        zf=fopen(fztmp,"wb");
+        if (zf==NULL)
+            GError("Error creating file '%s'\n'", fztmp);
+    }
+    char* outfile=(char*) args.getOpt('o');
+    int numfiles = args.startNonOpt();
+    if (numfiles==0)
+        GError("%sError: no fasta file given.\n", USAGE);
+    fname=(char*) args.nextNonOpt(); //first fasta file given
+    if (do_compress)  { //-------- compression case -------------------
+        if (strcmp(fname, "-")==0 || strcmp(fname, "stdin")==0)
+            f_read=stdin;
+        else f_read= fopen(fname, "rb");
+        if (f_read == NULL) die_read(fname);
+        fname=zfilename; //forget the input file name, keep the output
+    }
+    else {//
+        int fdread= open(fname, O_RDONLY|O_BINARY);
+        if (fdread == -1) die_read(fname);
+        struct stat dbstat;
+        fstat(fdread, &dbstat);
+        fdbsize=dbstat.st_size;
+        close(fdread);
+        f_read= fopen(fname, "rb");
+        if (f_read == NULL) die_read(fname);
+    }
+    
+    char idxfile[365];
+    if (outfile==NULL) {
+        if (do_compress) {
+            strcpy(ftmp, zfilename);
+            strcat(ftmp, ".cidx");
+            strcpy(idxfile, ftmp);
+            strcat(ftmp, "_tmp");
+        }
+        else {
+            strcpy(ftmp, fname);
+            strcat(ftmp, ".cidx");
+            strcpy(idxfile, ftmp);
+            strcat(ftmp, "_tmp");
+        }
+        //should add the process ID, time and user to make this unique?
+    }
+    else {
+        strcpy(ftmp, outfile);
+        strcpy(idxfile, outfile);
+        strcat(ftmp, "_tmp");
+    }
+    
+    cdbidx=new GCdbWrite(ftmp); //test if this was successful?
+    
+    if (compact)
+        addKeyFunc=&addKeyCompact;
+    else if (multikey)
+        addKeyFunc = &addKeyMulti;
+    else addKeyFunc = &addKey;
+    
+    off_t recpos=0;
+    off_t r=0;
+    unsigned int recsize=0;
+    char* key=NULL;
+    bool fullDefline=(multikey || compact_plus);
+    GReadBuf *readbuf = new GReadBuf(f_read, GREADBUF_SIZE);
+    if (do_compress) { //---------------- compression case -------------
+        fdbsize=0;
+        GCdbz cdbz(zf); // zlib interface
+        recpos=cdbz.getZRecPos();
+        while ((key=cdbz.compress(readbuf,record_marker))!=NULL) {
+            recsize=cdbz.getZRecSize();
+            if (!fullDefline) {
+                //find first space after the record_marker and place a '\0' there
+                for (int i=record_marker_len; key[i]!='\0';i++) {
+                    if (isspace(key[i])) { key[i]='\0';break; }
+                }
+            }
+            addKeyFunc(key, recpos, recsize);
+            recpos = cdbz.getZRecPos();
+        }
+        remove(zfilename);
+        cdbz.compress_end();
+        fclose(zf);
+        //determine the size of this file:
+        int ftmp= open(fztmp, O_RDONLY|O_BINARY);
+        if (ftmp == -1) die_read(fztmp);
+        struct stat dbstat;
+        fstat(ftmp, &dbstat);
+        fdbsize=dbstat.st_size;
+        //rename it to the intended file name
+        if (rename(fztmp,zfilename) != 0) {
+            GMessage("Error: unable to rename '%s' to '%s'\n",fztmp,zfilename);
+            perror("rename");
+        }
+    }
+    else { // not compressed -- buffered file access
+        bool defline=false;
+        int kbufsize=KBUFSIZE;
+        if (fullDefline) { GMALLOC(key, KBUFSIZE); }//large defline storage buffer, just in case
+        else { GMALLOC(key, 1024); }
+        int kidx=-1;
+        num_recs=0;
+        num_keys=0;
+        char lastchar=0;
+        //first iteration -- for the beginning of file case
         if (readbuf->peekCmp(record_marker, record_marker_len)==0) {
-           //new record start (defline)
-           recsize = readbuf->getPos()-recpos-1; //previous recsize
-           if (recsize>off_t(record_marker_len+1) && key[0]!='\0') {
-             //add previous record, if there
-             addKeyFunc(key, recpos, recsize);
-             //GMessage("adding key=%s\n",key);
-             }
-           recpos=readbuf->getPos(); //new record pos
-           defline=true; //we're in defline
-           readbuf->skip(record_marker_len);
-           //if (r<0) die_readformat(fname);
-           kidx=0;
-           } //new record start
-        else { //after newline but not a new record start
-            if (defline) { //we just finished a defline
-                if (fullDefline) { //close the defline string
-                  if (kidx>0) key[kidx-1]='\0';
-                  kidx=-1;
-                  }
-               defline=false;
-               }
-           }
-        } // was newline 
-      lastchar=ch;
-      }//while char
-     recsize=readbuf->getPos()-recpos;
-     if (recsize>0) {//add last record, if there
-         if (lastchar=='\n') recsize--;
-         if (fullDefline && kidx>0) {//close the defline string
-               if (lastchar!='\n') kidx++;
-               key[kidx-1]='\0';
-               }
-         addKeyFunc(key, recpos, recsize);
-         //GMessage("adding key=%s\n",key);
-         }
-   delete readbuf;
-   }
-  if (f_read!=stdin) fclose(f_read);
-  if (cdbidx->finish() == -1) die_write("");
-
-  // === add some statistics at the end of the cdb index file!
-  r=lseek(cdbidx->getfd(), 0, SEEK_END);
-  cdbInfo info;
-  memcpy((void*)info.tag, (void*)"CDBX", 4);
-  info.idxflags=0;
-  if (multikey) info.idxflags |= CDBMSK_OPT_MULTI;
-  if (do_compress) {
-      info.idxflags |= CDBMSK_OPT_COMPRESS;
-      GMessage("Input data were compressed into file '%s'\n",fname);
-      }
-  if (compact) {
-      if (compact_plus)
+            //new record start found (defline)
+            recpos=readbuf->getPos(); //new record pos
+            defline=true; //we're in defline
+            readbuf->skip(record_marker_len);
+            kidx=0;
+        }//new record start
+        while ((ch=readbuf->getch())>0) {
+            if (defline && kidx>=0) { //on the defline here, still parsing possible keys
+                key[kidx]=(char)ch;
+                kidx++;
+                if (kidx>=kbufsize) {
+                    kbufsize+=KBUFSIZE;
+                    GREALLOC(key, kbufsize);
+                }
+                if (((isspace(ch) || ch<31) && fullDefline==false) || ch=='\n' || ch=='\r') {
+                    //end key here, don't care about the rest
+                    key[kidx-1]='\0';
+                    kidx=-1;
+                }
+            }
+            if (ch=='\n') { // newline!
+                //check ahead if a record delimiter follows
+                if (readbuf->peekCmp(record_marker, record_marker_len)==0) {
+                    //new record start (defline)
+                    recsize = readbuf->getPos()-recpos-1; //previous recsize
+                    if (recsize>off_t(record_marker_len+1) && key[0]!='\0') {
+                        //add previous record, if there
+                        addKeyFunc(key, recpos, recsize);
+                        //GMessage("adding key=%s\n",key);
+                    }
+                    recpos=readbuf->getPos(); //new record pos
+                    defline=true; //we're in defline
+                    readbuf->skip(record_marker_len);
+                    //if (r<0) die_readformat(fname);
+                    kidx=0;
+                } //new record start
+                else { //after newline but not a new record start
+                    if (defline) { //we just finished a defline
+                        if (fullDefline) { //close the defline string
+                            if (kidx>0) key[kidx-1]='\0';
+                            kidx=-1;
+                        }
+                        defline=false;
+                    }
+                }
+            } // was newline 
+            lastchar=ch;
+        }//while char
+        recsize=readbuf->getPos()-recpos;
+        if (recsize>0) {//add last record, if there
+            if (lastchar=='\n') recsize--;
+            if (fullDefline && kidx>0) {//close the defline string
+                if (lastchar!='\n') kidx++;
+                key[kidx-1]='\0';
+            }
+            addKeyFunc(key, recpos, recsize);
+            //GMessage("adding key=%s\n",key);
+        }
+        delete readbuf;
+    }
+    if (f_read!=stdin) fclose(f_read);
+    if (cdbidx->finish() == -1) die_write("");
+    
+    // === add some statistics at the end of the cdb index file!
+    r=lseek(cdbidx->getfd(), 0, SEEK_END);
+    cdbInfo info;
+    memcpy((void*)info.tag, (void*)"CDBX", 4);
+    info.idxflags=0;
+    if (multikey) info.idxflags |= CDBMSK_OPT_MULTI;
+    if (do_compress) {
+        info.idxflags |= CDBMSK_OPT_COMPRESS;
+        GMessage("Input data were compressed into file '%s'\n",fname);
+    }
+    if (compact) {
+        if (compact_plus)
             info.idxflags |= CDBMSK_OPT_CADD;
-         else
+        else
             info.idxflags |= CDBMSK_OPT_C;
-     }
-  info.num_records=gcvt_uint(&num_recs);
-  info.num_keys=gcvt_uint(&num_keys);
-  info.dbsize=gcvt_offt(&fdbsize);
-  info.idxflags=gcvt_uint(&info.idxflags);
-  int nlen=strlen(fname);
-  info.dbnamelen=gcvt_uint(&nlen);
-  r=write(cdbidx->getfd(), fname, nlen);
-  if (r!=nlen)
+    }
+    info.num_records=gcvt_uint(&num_recs);
+    info.num_keys=gcvt_uint(&num_keys);
+    info.dbsize=gcvt_offt(&fdbsize);
+    info.idxflags=gcvt_uint(&info.idxflags);
+    int nlen=strlen(fname);
+    info.dbnamelen=gcvt_uint(&nlen);
+    r=write(cdbidx->getfd(), fname, nlen);
+    if (r!=nlen)
         GError(ERR_W_DBSTAT);
-  r=write(cdbidx->getfd(), &info, cdbInfoSIZE);
-  if (r!=cdbInfoSIZE)
+    r=write(cdbidx->getfd(), &info, cdbInfoSIZE);
+    if (r!=cdbInfoSIZE)
         GError(ERR_W_DBSTAT);
-  delete cdbidx;
-  GFREE(key);
-  remove(idxfile);
-  if (rename(ftmp,idxfile) == -1)
-    GError("Error: unable to rename %s to %s",ftmp,idxfile);
-  GMessage("%d entries from file %s were indexed in file %s\n",
-      num_recs, fname, idxfile);
-  return 0;
+    delete cdbidx;
+    GFREE(key);
+    remove(idxfile);
+    if (rename(ftmp,idxfile) == -1)
+        GError("Error: unable to rename %s to %s",ftmp,idxfile);
+    GMessage("%d entries from file %s were indexed in file %s\n",
+             num_recs, fname, idxfile);
+    return 0;
 }

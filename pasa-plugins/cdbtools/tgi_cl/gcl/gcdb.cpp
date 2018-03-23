@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 #ifdef __WIN32__
-  #include <windows.h>
+#include <windows.h>
 /*   m m a p           ===      got from imagick sources
 %  Method mmap emulates the Unix method of the same name.
 %  The format of the mmap method is:
@@ -485,7 +485,7 @@ GCdbWrite::GCdbWrite(char* afname) {
    fd = open(afname,O_WRONLY | O_NDELAY | O_TRUNC | O_CREAT, 0664);
 #endif
   if (fd == -1)
-    GError("GCdbWrite: Error creating file '%s'\n", fname);
+    GError("GCdbWrite: Error creating file '%s'\n", afname);
     
  //check endianness :)
   gcvt_uint=(endian_test())? &uint32_sun : &uint32_x86;
