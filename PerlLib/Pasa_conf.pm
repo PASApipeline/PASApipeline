@@ -44,6 +44,10 @@ sub getParam {
     my $value = $conf{$param};
     
     if ($value) {
+        unless($ENV{PASAHOME}) {
+            confess "Error, PASAHOME env var not set";
+            # shouldn't happen, though...
+        }
         $value =~ s/__PASAHOME__/$ENV{PASAHOME}/g;
     }
     return ($value);

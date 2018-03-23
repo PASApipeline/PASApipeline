@@ -84,7 +84,7 @@ HOOK_GENE_STRUCTURE_UPDATER=GFF3::GFF3_annot_updater::get_updater_obj
 #  based on .gff3 or .gtf annotation file extensions.
 # You can, however, implement your own and override these.
 #HOOK_EXISTING_GENE_ANNOTATION_LOADER=GFF3::GFF3_annot_retriever::get_annot_retriever 
-#HOOK_EXISTING_GENE_ANNOTATION_LOADER=GTF::GTF_annot_retriever::get_annot_retriever
+#HOOK_EXISTING_GENE_ANNOTATION_LOADER=GTF::Gtf_annot_retriever::get_annot_retriever
 
 
 
