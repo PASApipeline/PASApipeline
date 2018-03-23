@@ -78,7 +78,14 @@ HOOK_GENE_STRUCTURE_UPDATER=GFF3::GFF3_annot_updater::get_updater_obj
 # hook that loads the latest gene structure annotations from an external source
 #  ie. from gff files or from a relational database.
 #  you build your adapter based on your data format preference.
-HOOK_EXISTING_GENE_ANNOTATION_LOADER=GFF3::GFF3_annot_retriever::get_annot_retriever 
+#
+#
+# These below are the examples used here and recognized by default
+#  based on .gff3 or .gtf annotation file extensions.
+# You can, however, implement your own and override these.
+#HOOK_EXISTING_GENE_ANNOTATION_LOADER=GFF3::GFF3_annot_retriever::get_annot_retriever 
+#HOOK_EXISTING_GENE_ANNOTATION_LOADER=GTF::GTF_annot_retriever::get_annot_retriever
+
 
 
 # --------------- fancy stuff used at TIGR, nowhere else -----------#

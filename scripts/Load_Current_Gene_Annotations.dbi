@@ -11,6 +11,8 @@ use Getopt::Std;
 use ConfigFileReader;
 use Storable ("nfreeze");
 use Fasta_reader;
+use Carp;
+
 
 use vars qw ($opt_v $opt_S $opt_c $opt_C $opt_D $opt_d $opt_h $opt_x $opt_V $opt_g $opt_e $opt_P);
 
@@ -28,8 +30,11 @@ my $usage =  <<_EOH_;
 # -d debug
 #
 # ## Annotation database settings:
-# -P param string for data adapter: HOOK_GENE_STRUCTURE_UPDATER
-#                             At TIGR, this would be "SYBTIGR,Sybase,user,password,annotdb[,pred_type]"
+# -P param string for data adapter: HOOK_GENE_STRUCTURE_UPDATER, as specified in the pasa_conf/conf.txt file.
+#
+#                Typically, 'param' is just either a gtf or gff3 file containing gene & transcript annotations. (ie. from Gencode)
+#
+#        (decades ago...)     At TIGR, this would be "SYBTIGR,Sybase,user,password,annotdb[,pred_type]"
 #                             Where pred_type is some prediction type (ie. genscan), or current annotations [default]
 #
 # -h print this option menu and quit
@@ -82,7 +87,29 @@ unless ($annot_version) {
 }
 
 
-my $latest_annot_retriever = &Pasa_conf::call_hook("HOOK_EXISTING_GENE_ANNOTATION_LOADER", $adapter_params);
+my $latest_annot_retriever;
+
+if (&Pasa_conf::getParam("HOOK_EXISTING_GENE_ANNOTATION_LOADER")) {
+    $latest_annot_retriever = &Pasa_conf::call_hook("HOOK_EXISTING_GENE_ANNOTATION_LOADER", $adapter_params);
+}
+elsif(-s $adapter_params) {
+    # specified an annotation file
+    my $annot_file = $adapter_params;
+    if ($annot_file =~ /\.gff3/i) {
+        &Pasa_conf::setParam("HOOK_EXISTING_GENE_ANNOTATION_LOADER", "GFF3::GFF3_annot_retriever::get_annot_retriever");
+    }
+    elsif ($annot_file =~ /\.gtf/i) {
+        &Pasa_conf::setParam("HOOK_EXISTING_GENE_ANNOTATION_LOADER", "GTF::GTF_annot_retriever::get_annot_retriever");
+    }
+    else {
+        confess "Error, not sure how to handle file $annot_file, as recognize .gtf or .gff3 files only by default.";
+    }
+    $latest_annot_retriever = &Pasa_conf::call_hook("HOOK_EXISTING_GENE_ANNOTATION_LOADER", $annot_file);
+}
+else {
+    confess "Error, not sure how to process adapter params [$adapter_params].  Not a .gtf or .gff3 file, and no custom data adapter found";
+}
+
 
 my $fasta_reader = new Fasta_reader($genomeDB);
 while (my $seqobj = $fasta_reader->next() ) {
@@ -94,21 +121,17 @@ while (my $seqobj = $fasta_reader->next() ) {
     
     print "// Retrieving genes for asmbl: $asmbl_id\n";
     
-    
     my @genes = $latest_annot_retriever->retrieve_gene_models_for_contig($asmbl_id);
     
     foreach my $gene_obj (@genes) {
         
         foreach my $isoform ($gene_obj, $gene_obj->get_additional_isoforms()) {
 
-
             my $gene = $isoform; # calling the isoform simply gene below. (legacy code)
-            
             
             ## don't store a bundled gene if it has isoforms bundled within it.
             $gene->delete_isoforms();
             
-
             ## Load each isoform in separately. Unbundle any bundled genes.
             
             my ($lend, $rend) = sort {$a<=>$b} $gene->get_coords();
@@ -121,7 +144,6 @@ while (my $seqobj = $fasta_reader->next() ) {
                 print STDERR "Gene is not contained within the sequence $asmbl_id length $genome_seq_length\n" . $gene->toString();
                 next; 
             }
-            
             print "Loading persistent obj: $gene_id, $model_id, $lend, $rend, $orient\n";
             
             my $blob = nfreeze($gene);

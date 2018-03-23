@@ -49,12 +49,20 @@ sub getParam {
     return ($value);
 }
 
+sub setParam {
+    my ($param_name, $param_value) = @_;
+
+    $conf{$param_name} = $param_value;
+
+    return;
+}
+
+
 sub dumpParams {
     foreach my $param (keys %conf) {
         print "$param = $conf{$param}\n";
     }
 }
-
 
 
 sub call_hook {

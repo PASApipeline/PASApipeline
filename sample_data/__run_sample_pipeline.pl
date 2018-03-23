@@ -8,6 +8,7 @@ use FindBin;
 use lib ("$FindBin::Bin/../PerlLib");
 use ConfigFileReader;
 use File::Basename;
+use Pipeliner;
 
 use Getopt::Long qw(:config no_ignore_case bundling pass_through);
 
@@ -90,18 +91,25 @@ my $DBname = $config{DATABASE} or die "Error, couldn't extract DATABASE from con
 
 $DBname = basename($DBname);
 
-main: {
+ main: {
 
-    if (-s "genome_sample.fasta.gz" && ! -s "genome_sample.fasta") {
-        &process_cmd("gunzip -c genome_sample.fasta.gz > genome_sample.fasta");
-    }
-
+     my $checkpoints_dir = "__chkpts_$DBname";
+     my $pipeliner = new Pipeliner(-verbose=>1,
+                                   -checkpoint_dir=>$checkpoints_dir,
+                                   -cmds_log=> "$checkpoints_dir.cmds_log",
+         );
+     
+     
+     if (-s "genome_sample.fasta.gz" && ! -s "genome_sample.fasta") {
+         &process_cmd("gunzip -c genome_sample.fasta.gz > genome_sample.fasta");
+     }
+     
     
   # goto annot_compare;
   #  goto annot_compare_R2;
   
-  alignment_assembly: 
-	{
+   alignment_assembly: 
+     {
 		
 		print "********* Running Alignment Assembly ************\n";
 		
@@ -123,82 +131,94 @@ main: {
             $cmd .= " --gene_overlap $gene_overlap --annots orig_annotations_sample.gff3 ";
         }
         
-		&process_cmd($cmd);
+		$pipeliner->add_commands(new Command($cmd, "align_assembly.ok"));
 	}
 
-
+     $pipeliner->run();
+     
+     
     
   comprehensive_transcriptome_build:
-    {
-        print "********** Building comprehensive transcriptome database ***********\n";
-        my $cmd = "../scripts/build_comprehensive_transcriptome.dbi -c $align_assembly_config_file -t all_transcripts.fasta.clean";
-        &process_cmd($cmd);
-    }
-    
-    
-    if ($JUST_ALIGN_ASSEMBLY) {
-        print STDERR "-stopping now, after alignment assembly.\n";
-        exit(0);
-    }
+     {
+         print "********** Building comprehensive transcriptome database ***********\n";
+         my $cmd = "../scripts/build_comprehensive_transcriptome.dbi -c $align_assembly_config_file -t all_transcripts.fasta.clean";
+         $pipeliner->add_commands(new Command($cmd, "build_compreh.ok"));
+     }
 
+     $pipeliner->run();
+     
+     if ($JUST_ALIGN_ASSEMBLY) {
+         print STDERR "-stopping now, after alignment assembly.\n";
+         exit(0);
+     }
+     
 
 
 	
-  annot_compare_R1:
-	{ ## Annotation comparisons:
-		
-		## First round, using pre-existing gene structure annotations:
-		
-		print "******** Comparing Annotations to Alignment Assemblies ***********\n";
-		my $cmd = "../Launch_PASA_pipeline.pl -c $annot_compare_config_file -g genome_sample.fasta -t all_transcripts.fasta.clean -A -L --annots_gff3 orig_annotations_sample.gff3 --CPU $CPU";
-		&process_cmd($cmd);
-		
-	}
+   annot_compare_R1:
+     { ## Annotation comparisons:
+         
+         ## First round, using pre-existing gene structure annotations:
+         
+         print "******** Comparing Annotations to Alignment Assemblies ***********\n";
+         my $cmd = "../Launch_PASA_pipeline.pl -c $annot_compare_config_file -g genome_sample.fasta -t all_transcripts.fasta.clean -A -L --annots orig_annotations_sample.gff3 --CPU $CPU";
+         $pipeliner->add_commands(new Command($cmd, "annot_compare_R1.ok"));
+         
+     }
 	
-	
-	
-  annot_compare_R2:
-	{
-		
-		## Run it again, using the output of updated genes from the first round.
-		## maybe capture a few more updates, and at the very least, verify that the inital update worked!
-		
-		
-		print "********** Loading Updated Gene Annotations ************\n";
-		# get the file containing the updates:
-		my @update_files = grep { /gene_structures_post_PASA_updates.\d+.gff3/ } `ls -t`;
-        chomp @update_files;
-		my $recent_update_file = shift @update_files;
-		unless ($recent_update_file) { 
-			die "Error, couldn't identify the gff3 file containing the pasa-based annotation updates!"; 
-		}
-		
-		print "******** Comparing Annotations to Alignment Assemblies ***********\n";
-		my $cmd = "../Launch_PASA_pipeline.pl -c $annot_compare_config_file -g genome_sample.fasta -t all_transcripts.fasta.clean -A -L --annots_gff3 $recent_update_file --CPU $CPU ";
-		&process_cmd($cmd);
-	}
+     $pipeliner->run();
+     
+   annot_compare_R2:
+     {
+         
+         ## Run it again, using the output of updated genes from the first round.
+         ## maybe capture a few more updates, and at the very least, verify that the inital update worked!
+         
+         
+         print "********** Loading Updated Gene Annotations ************\n";
+         # get the file containing the updates:
+         my @update_files = grep { /gene_structures_post_PASA_updates.\d+.gff3/ } `ls -t`;
+         chomp @update_files;
+         my $recent_update_file = shift @update_files;
+         unless ($recent_update_file) { 
+             die "Error, couldn't identify the gff3 file containing the pasa-based annotation updates!"; 
+         }
+         
+         print "******** Comparing Annotations to Alignment Assemblies ***********\n";
+         my $cmd = "../Launch_PASA_pipeline.pl -c $annot_compare_config_file -g genome_sample.fasta -t all_transcripts.fasta.clean -A -L --annots $recent_update_file --CPU $CPU ";
+
+         $pipeliner->add_commands(new Command($cmd, "annot_compare_R2.ok"));
+     }
     
+     $pipeliner->run();
+     
+   alt_splice_analysis:
+     
+     {
+         print "*********** Running Analysis of Alternative Splicing *******\n";
+         my $cmd = "../Launch_PASA_pipeline.pl -c $annot_compare_config_file -g genome_sample.fasta -t all_transcripts.fasta.clean --CPU $CPU --ALT_SPLICE";
+         $pipeliner->add_commands(new Command($cmd, "alt_splicing.ok"));
+         
+     }
 
-  alt_splice_analysis:
+     $pipeliner->run();
+     
+     
+   find_orfs_in_pasa_assemblies:
+     
+     {
+         
+         print "***********  Finding ORFs in PASA assemblies **************\n";
+         my $cmd = "../scripts/pasa_asmbls_to_training_set.dbi --pasa_transcripts_fasta $DBname.assemblies.fasta --pasa_transcripts_gff3 $DBname.pasa_assemblies.gff3";
+         $pipeliner->add_commands(new Command($cmd, "find_orfs_in_pasa.ok"));
+         
+     }
 
-    {
-        print "*********** Running Analysis of Alternative Splicing *******\n";
-        my $cmd = "../Launch_PASA_pipeline.pl -c $annot_compare_config_file -g genome_sample.fasta -t all_transcripts.fasta.clean --CPU $CPU --ALT_SPLICE";
-        &process_cmd($cmd);
-        
-    }
-    
-    
-  find_orfs_in_pasa_assemblies:
+     $pipeliner->run();
+     
+     
+     exit(0);
 
-    {
-
-        print "***********  Finding ORFs in PASA assemblies **************\n";
-        my $cmd = "../scripts/pasa_asmbls_to_training_set.dbi --pasa_transcripts_fasta $DBname.assemblies.fasta --pasa_transcripts_gff3 $DBname.pasa_assemblies.gff3";
-        &process_cmd($cmd);
-    }
-    	
-	exit(0);
 }
 
 

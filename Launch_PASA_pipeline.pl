@@ -21,7 +21,7 @@ my ($opt_c, $opt_C, $opt_r, $opt_R, $opt_A, $opt_g, $opt_t, $opt_f, $opt_T, $opt
 	$ALT_SPLICE, $INVALIDATE_SINGLE_EXON_ESTS, $IMPORT_CUSTOM_ALIGNMENTS_GFF3,
 	$splice_graph_assembler_flag,
     $ALIGNED_IS_TRANSCRIBED_ORIENT,
-	$ANNOTS_GFF3, $opt_L, $STRINGENT_ALIGNMENT_OVERLAP, $GENE_OVERLAP,
+	$ANNOTS_FILE, $opt_L, $STRINGENT_ALIGNMENT_OVERLAP, $GENE_OVERLAP,
     $SIM4_CHASER, $genetic_code, $TRANSDECODER, @PRIMARY_ALIGNERS,
     $PASACONF,
     );
@@ -81,7 +81,7 @@ my $CUFFLINKS_GTF;
 
 			  ## Annotation compare opts
 			  'L' => \$opt_L,
-			  'annots_gff3=s' => \$ANNOTS_GFF3,
+			  'annots=s' => \$ANNOTS_FILE,
               'GENETIC_CODE=s' => \$genetic_code,
 
 
@@ -123,7 +123,7 @@ my $usage =  <<_EOH_;
 # -C               flag, create database
 # -r               flag, drop database if -C is also given. This will DELETE all your data and it is irreversible.
 # -R               flag, run alignment/assembly pipeline.
-# -A               (see section below; can use with opts -L and --annots_gff3)  compare to annotated genes.
+# -A               (see section below; can use with opts -L and --annots)  compare to annotated genes.
 # --ALT_SPLICE     flag, run alternative splicing analysis
 
 # // input files
@@ -166,7 +166,7 @@ my $usage =  <<_EOH_;
 #        --stringent_alignment_overlap <float>  (suggested: 30.0)  overlapping transcripts must have this min % overlap to be clustered.
 #
 #        --gene_overlap <float>  (suggested: 50.0)  transcripts overlapping existing gene annotations are clustered.  Intergenic alignments are clustered by default mechanism.
-#               * if --gene_overlap, must also specify --annots_gff3  with annotations in gff3 format (just examines 'gene' rows, though).
+#               * if --gene_overlap, must also specify --annots  with annotations in recognizable format (gtf, gff3, or data adapted) (just examines 'gene' rows, though).
 #
 #
 #
@@ -180,8 +180,8 @@ my $usage =  <<_EOH_;
 #
 #  // Annotation comparison options (used in conjunction with -A at top).
 #   
-#  -L   load annotations (use in conjunction with --annots_gff3)
-#  --annots_gff3 <filename>  existing gene annotations in gff3 format.
+#  -L   load annotations (use in conjunction with --annots)
+#  --annots <filename>  existing gene annotations in recognized format (gtf, gff3, or custom adapted).
 #  --GENETIC_CODE (default: universal, options: Euplotes, Tetrahymena, Candida, Acetabularia)
 #
 ###################### Process Args and Options #####################
@@ -702,15 +702,15 @@ if ($RUN_PIPELINE) {
 		# define transcript overlap clusters based on mapping to overlapping annotated gene models (annotation-informed).
 		## transcripts in intergenic regions are clustered using the default method.
 	
-		unless ($ANNOTS_GFF3) {
-			die "Error, need --annots_gff3 specified for clustering genes based on gene overlaps.    ";
+		unless ($ANNOTS_FILE) {
+			die "Error, need --annots specified for clustering genes based on gene overlaps.    ";
 		}
 		
 	
 		push (@cmds, 
 			  { 
 				  prog => "$UTILDIR/assign_clusters_by_gene_intergene_overlap.dbi",
-				  params => "-M '$database' -G $ANNOTS_GFF3 -L $GENE_OVERLAP", # require all alignments are valid here.
+				  params => "-M '$database' -G $ANNOTS_FILE -L $GENE_OVERLAP", # require all alignments are valid here.
 				  input => undef,
 				  output => "$PASA_LOG_DIR/alignment_cluster_reassignment.out",
                   chkpt => "alignment_cluster_reassignment.ok",
@@ -887,13 +887,13 @@ if ($COMPARE_TO_ANNOT) {
 
 	if ($opt_L) {
 
-		unless ($ANNOTS_GFF3) {
-			die "Error, must set --annots_gff3 for auto-loading of gene annotations";
+		unless ($ANNOTS_FILE) {
+			die "Error, must set --annots for auto-loading of gene annotations";
 		}
 
 		my $cmd = { 
 			prog => "$UTILDIR/Load_Current_Gene_Annotations.dbi",
-			params => "-c $configfile -g $genome_db -P $ANNOTS_GFF3 ",
+			params => "-c $configfile -g $genome_db -P $ANNOTS_FILE ",
 			input => undef,
 			output => "$PASA_LOG_DIR/output.annot_loading.$$.out",
             chkpt => "annot_loading.". time(),

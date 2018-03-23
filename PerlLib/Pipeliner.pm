@@ -119,7 +119,7 @@ sub set_checkpoint_dir {
     my $self = shift;
     my ($checkpoint_dir) = @_;
     if (! -d $checkpoint_dir) {
-        confess "Error, cannot locate checkpointdir: $checkpoint_dir ... you must create this first.";
+        mkdir($checkpoint_dir) or die "Error, cannot mkdir $checkpoint_dir";
     }
     $self->{checkpoint_dir} = $checkpoint_dir;
 }
