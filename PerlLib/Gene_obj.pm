@@ -3054,7 +3054,36 @@ sub to_GTF_format {
 	$com_name =~ s/[\"\']//g if $com_name;
 	
 	my $name_txt = ($com_name) ? "Name \"$com_name\";" : "";
-	
+
+
+    ## Gene record
+    unless ($preferences{'gene_record_already_done'}) {
+        
+        my ($gene_lend, $gene_rend) = sort {$a<=>$b} $gene_obj->get_gene_span();
+        
+        push (@gtf_text, [$seqname,
+                          $source,
+                          "gene",
+                          $gene_lend,
+                          $gene_rend,
+                          "0",
+                          $orientation,
+                          ".",
+                          "gene_id \"$gene_id\"; $name_txt"]);
+    }
+    
+    ## Transcript record
+    my ($trans_lend, $trans_rend) = sort {$a<=>$b} $gene_obj->get_transcript_span();
+    push (@gtf_text, [$seqname,
+                      $source,
+                      "transcript",
+                      $trans_lend,
+                      $trans_rend,
+                      "0",
+                      $orientation,
+                      ".",
+                      "gene_id \"$gene_id\"; transcript_id \"$transcript_id\"; $name_txt"]);
+    
     unless ($is_pseudogene) {
         $gene_obj->set_CDS_phases($genome_seq_ref);
     
@@ -3117,8 +3146,22 @@ sub to_GTF_format {
     
     }
     
-    ## report the CDS regions:
+    ## report the exons and CDS regions:
     foreach my $exon ($gene_obj_for_gtf->get_exons()) {
+
+        my ($exon_lend, $exon_rend) = sort {$a<=>$b} $exon->get_coords();
+        
+        push (@gtf_text, [$seqname,
+                          $source,
+                          "exon",
+                          $exon_lend,
+                          $exon_rend,
+                          "0",
+                          $orientation,
+                          ".",
+                          "gene_id \"$gene_id\"; transcript_id \"$transcript_id\"; $name_txt"]);
+        
+
         
         my $cds = ($is_pseudogene) ? $exon : $exon->get_CDS_exon_obj();
         
@@ -3191,7 +3234,9 @@ sub to_GTF_format {
     }
     
     foreach my $isoform ($gene_obj->get_additional_isoforms()) {
-        $GTF .= "\n" . $isoform->to_GTF_format($genome_seq_ref, %preferences);
+        my %iso_pref = %preferences;
+        $iso_pref{'gene_record_already_done'} = 1;
+        $GTF .= "\n" . $isoform->to_GTF_format($genome_seq_ref, %iso_pref);
     }
     
     return ($GTF);
