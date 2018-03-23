@@ -53,6 +53,9 @@ main: {
             foreach my $gene_obj ($gene_obj_ref, $gene_obj_ref->get_additional_isoforms()) {
                 
                 if (my $com_name = $gene_obj->{com_name}) {
+                    
+                    $com_name =~ s/\s/_/g;
+                    
                     $gene_obj->{TU_feat_name} = "$com_name|" . $gene_obj->{TU_feat_name};
                     $gene_obj->{Model_feat_name} = "$com_name|" . $gene_obj->{Model_feat_name};
                 }

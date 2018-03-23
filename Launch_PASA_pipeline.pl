@@ -39,13 +39,13 @@ my $PASA_PIPELINE_CMD = join(" ", $0, @ARGV);
 my $CUFFLINKS_GTF;
 
 
-&GetOptions ( 'c=s' => \$opt_c,
-              'C' => \$opt_C,
-              'r' => \$opt_r,
-              'R' => \$opt_R,
-              'A' => \$opt_A,
-              'g=s' => \$opt_g,
-              't=s' => \$opt_t,
+&GetOptions ( 'config|c=s' => \$opt_c,
+              'create|C' => \$opt_C,
+              'replace|r' => \$opt_r,
+              'run|R' => \$opt_R,
+              'annot_compare|A' => \$opt_A,
+              'genome|g=s' => \$opt_g,
+              'transcripts|t=s' => \$opt_t,
               'f=s' => \$opt_f,
               'T' => \$opt_T,
               'u=s' => \$opt_u,
@@ -120,15 +120,15 @@ my $usage =  <<_EOH_;
 #
 #
 # // actions
-# -C               flag, create database
-# -r               flag, drop database if -C is also given. This will DELETE all your data and it is irreversible.
-# -R               flag, run alignment/assembly pipeline.
-# -A               (see section below; can use with opts -L and --annots)  compare to annotated genes.
+# --create|-C               flag, create database
+# --replace|-r               flag, drop database if -C is also given. This will DELETE all your data and it is irreversible.
+# --run|-R               flag, run alignment/assembly pipeline.
+# --annot_compare|-A               (see section below; can use with opts -L and --annots)  compare to annotated genes.
 # --ALT_SPLICE     flag, run alternative splicing analysis
 
 # // input files
-# -g * <filename>  genome sequence FASTA file (should contain annot db asmbl_id as header accession.)
-# -t * <filename>  transcript db 
+# --genome|-g * <filename>  genome sequence FASTA file (should contain annot db asmbl_id as header accession.)
+# --transcripts|-t * <filename>  transcript db 
 # -f <filename>    file containing a list of fl-cdna accessions.
 # --TDN <filename> file containing a list of accessions corresponding to Trinity (full) de novo assemblies (not genome-guided)
 #
