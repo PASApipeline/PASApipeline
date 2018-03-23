@@ -19,6 +19,8 @@ our @EXPORT = qw (do_sql_2D connect_to_db RunMod first_result_sql very_first_res
 
 my $QUERYFAIL;
 
+my $CONNECTED_FLAG = 0; # set to 1 on first db connection. Mostly for logging info.
+
 ############### DATABASE CONNECTIVITY ################################
 ####
 
@@ -28,12 +30,13 @@ sub configure_db_driver {
     if ($db =~ /^\//) {
         # have fully qualified path:
         $ENV{DBI_DRIVER} = 'SQLite';
-        print STDERR "-connecting to SQLite db: $db\n";
+        print STDERR "-connecting to SQLite db: $db\n" unless $CONNECTED_FLAG;
     }
     else {
         $ENV{DBI_DRIVER} = 'mysql';
-        print STDERR "-connecting to MySQL db: $db\n";
+        print STDERR "-connecting to MySQL db: $db\n" unless $CONNECTED_FLAG;
     }
+    
     
     return;
 }
@@ -79,6 +82,10 @@ sub connect_to_db {
         $dbproc->{__db} = $db;
         $dbproc->{__username} = $username;
         $dbproc->{__password} = $password;
+    }
+
+    unless ($CONNECTED_FLAG) {
+        $CONNECTED_FLAG = 1;
     }
     
     return($dbproc);
