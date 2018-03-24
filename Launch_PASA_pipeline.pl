@@ -15,6 +15,10 @@ use Data::Dumper;
 use Pipeliner;
 use File::Basename;
 
+
+my $VERSION = "__BLEEDING_EDGE__";
+
+
 $ENV{PATH} = "$FindBin::Bin/bin:$ENV{PATH}";
 
 my ($opt_c, $opt_C, $opt_r, $opt_R, $opt_A, $opt_g, $opt_t, $opt_f, $opt_T, $opt_u, $opt_d, $opt_h, $opt_x, $opt_s, $opt_e,
@@ -23,7 +27,8 @@ my ($opt_c, $opt_C, $opt_r, $opt_R, $opt_A, $opt_g, $opt_t, $opt_f, $opt_T, $opt
     $ALIGNED_IS_TRANSCRIBED_ORIENT,
 	$ANNOTS_FILE, $opt_L, $STRINGENT_ALIGNMENT_OVERLAP, $GENE_OVERLAP,
     $SIM4_CHASER, $genetic_code, $TRANSDECODER, @PRIMARY_ALIGNERS,
-    $PASACONF,
+    $PASACONF, 
+    $SHOW_VERSION_INFO
     );
 
 
@@ -89,7 +94,8 @@ my $CUFFLINKS_GTF;
 			  'stringent_alignment_overlap=f' => \$STRINGENT_ALIGNMENT_OVERLAP,
 			  'gene_overlap=f' => \$GENE_OVERLAP,
 			  
-			  
+              'version' => \$SHOW_VERSION_INFO,
+              
 			  );
 
 if (@ARGV) {
@@ -196,6 +202,12 @@ _EOH_
 
 
 if ($opt_h) {die $usage;}
+
+if ($SHOW_VERSION_INFO) {
+    print STDERR "PASA version: $VERSION\n";
+    exit(0);
+}
+
 
 if ($PASACONF) {
     $ENV{PASACONF} = $PASACONF;
