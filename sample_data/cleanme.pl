@@ -28,6 +28,7 @@ my @files_to_keep = qw (genome_sample.fasta.gz
                         extract_introns_from_pasa_assemblies.sh
 						tdn.accs
                         custom_alignments.gff3
+orig_annotations_sample.gtf
 runMe.SQLite.sh
 runMe.MySQL.sh
 __run_sample_pipeline.pl

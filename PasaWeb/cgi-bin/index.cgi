@@ -80,7 +80,7 @@ print $javascript_code;
 
 ## use cached data whenever possible.  It takes some serious time to generate this file for large data sets.
 if (-s $cache_file && ! $no_cache) {
-    print "<p id='refreshLink'>Click <a href=\"status_report.cgi?db=$db&NOCACHE=1\">here</a> to freshly reload the data only as needed. This page was cached.</p>\n";
+    print "<p id='refreshLink'>Click <a href=\"index.cgi?db=$db&NOCACHE=1\">here</a> to freshly reload the data only as needed. This page was cached.</p>\n";
     system "cat $cache_file";
     print $cgi->end_html();
     exit(0);

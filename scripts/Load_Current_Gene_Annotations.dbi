@@ -99,7 +99,7 @@ elsif(-s $adapter_params) {
         &Pasa_conf::setParam("HOOK_EXISTING_GENE_ANNOTATION_LOADER", "GFF3::GFF3_annot_retriever::get_annot_retriever");
     }
     elsif ($annot_file =~ /\.gtf/i) {
-        &Pasa_conf::setParam("HOOK_EXISTING_GENE_ANNOTATION_LOADER", "GTF::GTF_annot_retriever::get_annot_retriever");
+        &Pasa_conf::setParam("HOOK_EXISTING_GENE_ANNOTATION_LOADER", "GTF::Gtf_annot_retriever::get_annot_retriever");
     }
     else {
         confess "Error, not sure how to handle file $annot_file, as recognize .gtf or .gff3 files only by default.";
