@@ -1,9 +1,22 @@
+
+<html>
+<body>
 <h1>Welcome to PasaWeb!</h1>
 
 <img src="images/PASA_logo.jpg" />
 
 
 <form action="cgi-bin/index.cgi" method="get">
-  PASA database: <input type="text" name="db" size=100 />
-  <input type="submit" value="Launch PasaWeb">
+  PASA database:
+  <br>
+  <input type="text" name="db" size=100 />
+  <br>
+  <input type="submit" value="Launch PasaWeb" />
 </form>    	
+
+<p>For mysql users: provide the name of the PASA mysql database. (ex. sample_mydb_pasa)
+<p>For sqlite users: provide the /full/path/to/your/database.sqlite  (eg.  /tmp/sample_mydb_pasa.sqlite)
+
+  
+</body>
+</html>
