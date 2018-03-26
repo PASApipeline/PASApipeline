@@ -2309,14 +2309,43 @@ sub has_UTRs {
 ####
 sub has_5prime_UTR {
     my $self = shift;
-    return (scalar ($self->get_5prime_UTR_coords()));
+    return ($self->get_5prime_UTR_length() > 2);
 }
 
 ####
 sub has_3prime_UTR {
     my $self = shift;
-    return(scalar ($self->get_3prime_UTR_coords()));
+    return($self->get_3prime_UTR_length() > 2);
 }
+
+
+####
+sub get_5prime_UTR_length {
+    my $self = shift;
+    my @prime5_UTR_coords = $self->get_5prime_UTR_coords();
+    
+    my $len = 0;
+    for my $coordset (@prime5_UTR_coords) {
+        my ($lend, $rend) = sort {$a<=>$b} @$coordset;
+        $len += ($rend - $lend) + 1;
+    }
+    return($len);
+}
+
+
+####
+sub get_3prime_UTR_length {
+    my $self = shift;
+    my @prime3_UTR_coords = $self->get_3prime_UTR_coords();
+    
+    my $len = 0;
+    for my $coordset (@prime3_UTR_coords) {
+        my ($lend, $rend) = sort {$a<=>$b} @$coordset;
+        $len += ($rend - $lend) + 1;
+    }
+    return($len);
+}
+    
 
 
 =over 4
@@ -3620,7 +3649,7 @@ sub to_GFF3_format {
             
             
             ## annotate 5' utr
-            if ($gene_obj->has_CDS()) {
+            if ($gene_obj->has_CDS() && $gene_obj->has_5prime_UTR()) {
                 my @prime5_utr = $gene_obj->get_5prime_UTR_coords();
                 if (@prime5_utr) {
                     my $utr_count = 0;
@@ -3688,7 +3717,7 @@ sub to_GFF3_format {
             }
             
             ## annotate 3' utr
-            if ($gene_obj->has_CDS()) {
+            if ($gene_obj->has_CDS() && $gene_obj->has_3prime_UTR()) {
                 my @prime3_utr = $gene_obj->get_3prime_UTR_coords();
                 if (@prime3_utr) {
                     my $utr_count = 0;
