@@ -72,7 +72,7 @@ my $CUFFLINKS_GTF;
               
               'ALIGNERS=s' => \@PRIMARY_ALIGNERS,
               
-              'cufflinks_gtf=s' => \$CUFFLINKS_GTF,
+              'trans_gtf=s' => \$CUFFLINKS_GTF,
 
               'PASACONF=s' => \$PASACONF,
               
@@ -122,7 +122,7 @@ my $usage =  <<_EOH_;
 # -N <int>              max number of top scoring alignments (default: 1)
 # --MAX_INTRON_LENGTH|-I  <int>         (max intron length parameter passed to GMAP or BLAT)  (default: 100000)
 # --IMPORT_CUSTOM_ALIGNMENTS_GFF3 <filename> :only using the alignments supplied in the corresponding GFF3 file.
-# --cufflinks_gtf <filename>      :incorporate cufflinks-generated transcripts
+# --trans_gtf <filename>      :incorporate cufflinks or stringtie--generated transcripts
 #
 #
 # // actions
