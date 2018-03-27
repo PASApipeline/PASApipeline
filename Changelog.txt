@@ -1,4 +1,45 @@
 
+#####################################
+## PASA Release v2.3.0
+
+-Integration of SQLite (by Nathan Weeks)
+-GTF and GFF3 annotation support.
+-PasaWeb updates for using SQLite and lighttpd
+
+
+####################################
+## PASA Release v2.2.0  Oct 13, 2017
+
+bugfix - split genes are now assigned unique gene identifiers.
+
+The env var PASACONF can be used to point PASA towards a user-specific 'conf.txt' file for user-specific mysql login info.
+
+#####################################
+## PASA Release v2.1.0   Feb 28, 2017
+
+Maintenance release
+
+updates for improved compatibility with latest version of mysql and the gmap alignment software.
+
+###################################
+## PASA release v2.0.2  May 9, 2015
+
+Minor bugfixes, and the sample data set now runs through properly if the sample mysql db doesn't already exist.
+
+
+
+######################
+## PASA v2.0.1 Release
+
+compatibility with Trinity 2.0 accessions in comprehensive transcriptome build process (thanks to pull request from Evan Ernst)
+
+
+######################################
+## PASA v2.0.0 Release   Feb 23, 2015
+
+PASA is now moved here to github. Much has changed since the original PASA release back in 2003, and so we're going to start this release off with the 2.0.0 version and use semantic versioning from here out.
+
+
 
 -GFF3_utils.pm:  allow for multiple parent transcript features assigned to a given exon or CDS feature.
 
