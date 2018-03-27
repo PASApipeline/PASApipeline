@@ -16,8 +16,8 @@ use Pipeliner;
 use File::Basename;
 
 
-my $VERSION = "__BLEEDING_EDGE__";
-
+#my $VERSION = "__BLEEDING_EDGE__";
+my $VERSION = "2.3.0";
 
 $ENV{PATH} = "$FindBin::Bin/bin:$ENV{PATH}";
 
