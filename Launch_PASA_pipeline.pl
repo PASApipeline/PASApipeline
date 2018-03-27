@@ -801,7 +801,8 @@ if ($RUN_PIPELINE) {
 		  },
 		  
 		  
-		  # populate the alignment field for assemblies:
+		  # populate the alignment field for assemblies
+          # and write the PASA assembly fasta file.
 		  {
 			  prog => "$UTILDIR/populate_mysql_assembly_alignment_field.dbi",
 			  params => "-M '$database' -G $genome_db",
