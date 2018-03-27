@@ -5,6 +5,12 @@
 -Integration of SQLite (by Nathan Weeks)
 -GTF and GFF3 annotation support.
 -PasaWeb updates for using SQLite and lighttpd
+-upgraded TransDecoder, now including as a submodule
+-restructured build process, relocating cdbtools to pasa-plugins
+-option --cufflinks_gtf changed to --trans_gtf to be more generic (ie. use stringtie or other)
+-docker now supported for PASA
+-pipeliner overhauled, now auto-resume integrated.
+
 
 
 ####################################
