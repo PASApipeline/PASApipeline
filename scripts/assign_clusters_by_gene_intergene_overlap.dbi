@@ -326,9 +326,18 @@ sub parse_genes_from_gff3 {
 		my @x = split(/\t/);
 		
 		if ($x[2] eq 'gene') {
-			$x[8] =~ /ID=([^;\s]+)/;
-			my $id = $1 or die "Error, cannot parse gene id from $_";
-			my $strand = $x[6];
+            my $id;
+			if ($x[8] =~ /ID=([^;\s]+)/) { # gff3 style
+                $id = $1;
+            }
+            elsif ($x[8] =~ /gene_id \"([^\"]+)\"/) {
+                $id = $1;
+            }
+            else {
+                die "Error, cannot parse gene identifier from $_";
+            }
+            
+            my $strand = $x[6];
 			my $lend = $x[3];
 			my $rend = $x[4];
 			my $contig = $x[0];
