@@ -1,6 +1,6 @@
 
 #####################################
-## PASA Release v2.3.0
+## PASA Release v2.3.0 Mar 27, 2018
 
 -Integration of SQLite (by Nathan Weeks)
 -GTF and GFF3 annotation support.
@@ -10,7 +10,7 @@
 -option --cufflinks_gtf changed to --trans_gtf to be more generic (ie. use stringtie or other)
 -docker now supported for PASA
 -pipeliner overhauled, now auto-resume integrated.
-
+-added Docker support
 
 
 ####################################
