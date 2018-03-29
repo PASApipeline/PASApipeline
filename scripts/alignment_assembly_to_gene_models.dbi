@@ -18,9 +18,11 @@ use CDNA::Alternative_splice_comparer;
 use CDNA::PASA_alignment_assembler;
 use Carp;
 use Data::Dumper;
-use CdbTools;
+#use CdbTools;
 use Nuc_translator;
 use Storable qw (nfreeze);
+use Fasta_retriever;
+
 
 use vars qw ($opt_M $opt_v $opt_G $opt_d $opt_h);
 
@@ -85,11 +87,14 @@ $dbproc->{dbh}->{AutoCommit} = 0;
 my $ids_to_assembly = scalar(@asmbl_ids);
 my $progress = 0;
 
+my $fasta_retriever = new Fasta_retriever($genomic_db);
 
 foreach my $asmbl_id (@asmbl_ids) {
+
+    my $genome_seq = $fasta_retriever->get_seq($asmbl_id);
     
-    my $genome_seq_fasta = cdbyank($asmbl_id, $genomic_db);
-    my ($acc, $header, $genome_seq) = linearize($genome_seq_fasta);
+    #my $genome_seq_fasta = cdbyank($asmbl_id, $genomic_db);
+    #my ($acc, $header, $genome_seq) = linearize($genome_seq_fasta);
     
     ## process each pasa assembly, FL and non-FL
     ## provide diff settings for partial allowances
