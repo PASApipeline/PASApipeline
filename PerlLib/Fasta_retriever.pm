@@ -36,7 +36,8 @@ sub _init {
     my $self = shift;
     
     my $filename = $self->{filename};
-        
+    print STDERR "-Fasta_retriever:: begin initializing for $filename\n";
+    
     open (my $fh, $filename) or die $!;
     $self->{fh} = $fh;
     while (<$fh>) {
@@ -46,6 +47,7 @@ sub _init {
             $self->{acc_to_pos_index}->{$acc} = $file_pos;
         }
     }
+    print STDERR "-Fasta_retriever:: done initializing for $filename\n";
     
     return;
 }
