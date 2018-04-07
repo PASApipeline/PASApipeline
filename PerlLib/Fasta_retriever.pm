@@ -6,6 +6,10 @@ use Carp;
 use threads;
 use threads::shared;
 
+
+my $LOCKVAR :shared;
+our $DEBUG = 0;
+
 sub new {
     my ($packagename) = shift;
     my $filename = shift;
@@ -58,7 +62,7 @@ sub refresh_fh {
     open (my $fh, $self->{filename}) or die "Error, cannot open file : " . $self->{filename};
     $self->{fh} = $fh;
     
-    return;
+    return $fh;
 }
 
 
@@ -70,21 +74,31 @@ sub get_seq {
         confess "Error, need acc as param";
     }
 
-    my $file_pos = $self->{acc_to_pos_index}->{$acc} or confess "Error, no seek pos for acc: $acc";
-    
-    my $fh = $self->{fh};
-    seek($fh, $file_pos, 0);
-    
+
     my $seq = "";
-    while (<$fh>) {
-        if (/^>/) {
-            last;
+
+    {
+        lock $LOCKVAR;
+    
+        my $file_pos = $self->{acc_to_pos_index}->{$acc} or confess "Error, no seek pos for acc: $acc";
+        
+        my $fh = $self->refresh_fh();
+        seek($fh, $file_pos, 0);
+
+        print STDERR "seeking $acc -> $file_pos\n" if $DEBUG;
+        
+        while (<$fh>) {
+            if (/^>/) {
+                print STDERR "   reached $_, stopping\n" if $DEBUG;
+                last;
+            }
+            $seq .= $_;
         }
-        $seq .= $_;
+        print STDERR "-done seeking $acc\n\n" if $DEBUG;
     }
-
+    
     $seq =~ s/\s+//g;
-
+        
     return($seq);
 }
     
