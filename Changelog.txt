@@ -1,4 +1,9 @@
 
+########
+## PASA Release v2.3.1 April 12, 2018
+-bugfix:  if users specified both gmap and blat alignments, only blat was being uploaded. This is unique to v2.3.0 and had to do w/ the new pipeliner and checkpointing system.  This is now fixed, and both gmap and blat will be leveraged together as in earlier versions of PASA.
+
+
 #####################################
 ## PASA Release v2.3.0 Mar 27, 2018
 
