@@ -392,7 +392,7 @@ if ($RUN_PIPELINE) {
                            params => "-M '$database'  -A $aligner -g $aligner.spliced_alignments.gff3",
                            input => undef,
                            output => undef,
-                           chkpt => "import_alignments.ok",
+                           chkpt => "import_alignments.$aligner.ok",
                   },
                 );    
         }
