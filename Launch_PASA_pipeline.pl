@@ -17,7 +17,7 @@ use File::Basename;
 
 
 #my $VERSION = "__BLEEDING_EDGE__";
-my $VERSION = "2.3.0";
+my $VERSION = "2.3.1";
 
 $ENV{PATH} = "$FindBin::Bin/bin:$ENV{PATH}";
 
@@ -392,7 +392,7 @@ if ($RUN_PIPELINE) {
                            params => "-M '$database'  -A $aligner -g $aligner.spliced_alignments.gff3",
                            input => undef,
                            output => undef,
-                           chkpt => "import_alignments.ok",
+                           chkpt => "import_alignments.$aligner.ok",
                   },
                 );    
         }
