@@ -10,7 +10,7 @@ use DBI;
 use Getopt::Std;
 use Ath1_cdnas;
 use CDNA::CDNA_alignment;
-
+use Fasta_retriever;
 
 use vars qw ($opt_M $opt_G $opt_d $opt_h);
 open (STDERR, "&>STDOUT");
@@ -45,6 +45,9 @@ my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
 our $DEBUG = $opt_d;
 my $genomic_db = $opt_G or die $usage;
 
+my $fasta_retriever = new Fasta_retriever($genomic_db);
+
+
 my ($dbproc) = &connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
 
 my $query = "select c.annotdb_asmbl_id, al.align_acc, al.align_id from clusters c, align_link al, cdna_info ci "
@@ -60,8 +63,8 @@ my $process = 0;
 foreach my $result (@results) {
     my ($asmbl_id, $cdna_acc, $align_id) = @$result;
     if ($asmbl_id ne $curr_asmbl_id) {
-	$curr_asmbl_id = $asmbl_id;
-	$sequence = &Ath1_cdnas::get_seq_from_fasta($asmbl_id, $genomic_db);
+        $curr_asmbl_id = $asmbl_id;
+        $sequence = $fasta_retriever->get_seq($asmbl_id); #&Ath1_cdnas::get_seq_from_fasta($asmbl_id, $genomic_db);
     }
 
     my $cdna_alignment = &Ath1_cdnas::create_alignment_obj($dbproc, $align_id, \$sequence);

@@ -412,6 +412,12 @@ sub get_before_gene {
 ####
 sub get_seq_from_fasta {
     my ($acc, $fasta_db) = @_;
+
+    #################
+    confess "Error, Ath1_cdnas::get_seq_from_fasta is now deprecated";
+    ################
+
+    
     unless (-s "$fasta_db.cidx") {
         my $cdbfasta = $ENV{CDBFASTA} || "cdbfasta";
         my $ret = system ("$cdbfasta $fasta_db");

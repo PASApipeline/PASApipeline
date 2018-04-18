@@ -12,6 +12,7 @@ use Getopt::Std;
 use Ath1_cdnas;
 use CDNA::CDNA_alignment;
 use File::Basename qw(fileparse);
+use Fasta_retriever;
 
 use vars qw ($opt_G $opt_h $opt_M $opt_b $opt_d $opt_S $opt_X);
 open (STDERR, "&>STDOUT");
@@ -47,6 +48,8 @@ my $DEBUG = $opt_d;
 my ($dbproc) = &connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
 my $genomic_seq_db = $opt_G or die $usage;
 
+my $fasta_retriever = new Fasta_retriever($genomic_seq_db);
+
 open (FASTA, ">" . fileparse($MYSQLdb) . ".assemblies.fasta") or die "Cannot open fasta file for assembly output.\n";
 
 
@@ -65,7 +68,7 @@ foreach my $result (@results) {
     my ($asmbl_id, $cdna_acc, $align_id) = @$result;
     if ($asmbl_id ne $curr_asmbl_id) {
         $curr_asmbl_id = $asmbl_id;
-        $sequence = &Ath1_cdnas::get_seq_from_fasta($asmbl_id, $genomic_seq_db);
+        $sequence = $fasta_retriever->get_seq($asmbl_id); #&Ath1_cdnas::get_seq_from_fasta($asmbl_id, $genomic_seq_db);
     }
     
     my $cdna_alignment = &Ath1_cdnas::create_alignment_obj($dbproc, $align_id, \$sequence);

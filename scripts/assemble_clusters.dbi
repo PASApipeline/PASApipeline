@@ -17,6 +17,7 @@ use File::Basename;
 use threads;
 use Thread_helper;
 use Carp;
+use Fasta_retriever;
 
 use vars qw ($opt_h $opt_D $opt_X $opt_p $opt_d $DEBUG $opt_S $opt_M $opt_G $opt_v $opt_T $opt_n);
 
@@ -73,9 +74,13 @@ my $NUM_THREADS = $opt_T || 2;
 
 
 
-unless (-s "$genomic_seq_db.cidx") {
-    system ("cdbfasta $genomic_seq_db");
-}
+#unless (-s "$genomic_seq_db.cidx") {
+#    system ("cdbfasta $genomic_seq_db");
+#}
+
+
+my $fasta_retriever = new Fasta_retriever($genomic_seq_db);
+
 
 ## check for 'pasa' binary
 my $pasa = `which pasa`;
@@ -158,7 +163,7 @@ sub assemble_transcripts_on_scaffold {
     my ($dbproc) = &DB_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password); # refresh it per thread
 
     my @all_assemblies;
-    my $sequence = &Ath1_cdnas::get_seq_from_fasta ($asmbl_id, $genomic_seq_db);
+    my $sequence = $fasta_retriever->get_seq($asmbl_id); #&Ath1_cdnas::get_seq_from_fasta ($asmbl_id, $genomic_seq_db);
     
     ## Get clusters based on that chromo
     my @cluster_ids = Ath1_cdnas::get_cluster_ids_via_annotdb_asmbl_id($dbproc, $asmbl_id);

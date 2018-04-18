@@ -25,6 +25,7 @@ use Nuc_translator;
 use Data::Dumper;
 use Carp;
 use Thread_helper;
+use Fasta_retriever;
 
 #use warnings;
 
@@ -161,6 +162,9 @@ my $user = &Pasa_conf::getParam("MYSQL_RW_USER");
 my $password = &Pasa_conf::getParam("MYSQL_RW_PASSWORD");
 
 my ($dbproc) = &DB_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
+
+
+my $fasta_retriever = new Fasta_retriever($genomic_seq_db);
 
 $TRUST_FL_STATUS = ($TRUST_FL_STATUS) ? 1:0;
 $STOMP_HIGH_PERCENTAGE_OVERLAPPING_GENE = ($STOMP_HIGH_PERCENTAGE_OVERLAPPING_GENE) ? 1:0;
@@ -364,7 +368,7 @@ sub process_contig {
     my @FL_matching_multiple_genes; ## after processing everything else, examine the matching-multiple gene category
     my @non_FL_matching_multiple_genes; 
     
-    my $sequence = &Ath1_cdnas::get_seq_from_fasta($asmbl_id, $genomic_seq_db);
+    my $sequence = $fasta_retriever->get_seq($asmbl_id); #&Ath1_cdnas::get_seq_from_fasta($asmbl_id, $genomic_seq_db);
     my $seq_ref = \$sequence;
     ## Identify All sets of overlapping assemblies and annotations:
     
