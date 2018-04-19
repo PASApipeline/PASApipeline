@@ -12,6 +12,11 @@ use Carp;
 use strict;
 use Data::Dumper;
 
+use threads;
+use threads::shared;
+my $LOCKVAR :shared;
+
+
 our @ISA = qw(Exporter);
 
 ## export the following for general use
@@ -144,7 +149,9 @@ sub do_sql_2D {
     my ($dbproc,$query, @values) = @_;
     my ($statementHandle,@x,@results);
     my ($i,$result,@row);
-   
+
+    
+    
     ## Use $QUERYFAIL Global variable to detect query failures.
     $QUERYFAIL = 0; #initialize
     print "QUERY: $query\tVALUES: @values\n" if($::DEBUG||$::DB_SEE);
@@ -165,9 +172,13 @@ sub do_sql_2D {
         do {
             $QUERYFAIL = 0; #initialize
             eval {
-                $statementHandle->execute(@values);
-                while ( @row = $statementHandle->fetchrow_array() ) {
-                    push(@results,[@row]);
+                {
+                    lock $LOCKVAR;
+                    
+                    $statementHandle->execute(@values);
+                    while ( @row = $statementHandle->fetchrow_array() ) {
+                        push(@results,[@row]);
+                    }
                 }
             };
             ## exception handling code:
@@ -195,15 +206,20 @@ sub do_sql_2D {
     return(@results);
 }
 
+
 sub RunMod {
     my ($dbproc,$query, @values) = @_;
     my ($result);
+
     if($::DEBUG||$::DB_SEE) {print "QUERY: $query\tVALUES: @values\n";}
     if($::DEBUG) {
         $result = "NOT READY";
     } else {
         eval {
-            $dbproc->{dbh}->do($query, undef, @values);
+            {
+                lock $LOCKVAR;
+                $dbproc->{dbh}->do($query, undef, @values);
+            }
         };
         if ($@) { #error occurred
             
