@@ -101,10 +101,9 @@ if (@ARGV) {
 }
 
 
-$|=1;
+
 our $SEE = 0;
 
-open (STDERR, "&>STDOUT");
 
 my $usage =  <<_EOH_;
 

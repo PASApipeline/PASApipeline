@@ -16,6 +16,7 @@ use CDNA::Alignment_segment;
 use Getopt::Std;
 use CdbTools;
 use Carp;
+use Fasta_retriever;
 
 use vars qw ($opt_M $opt_g $opt_v $opt_c $opt_P $opt_d $opt_h $opt_t);
 
@@ -73,6 +74,10 @@ my $uncleaned_transcript_db = $opt_t or die $usage;
 my ($dbproc) = &DB_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
 
 &clear_polyA_db_tables();
+
+
+my $genomic_fasta_retriever = new Fasta_retriever($genomic_db);
+my $transcript_fasta_retriever = new Fasta_retriever($uncleaned_transcript_db);
 
 ## Get polyA info from the seqclean trimpoly output.
 
@@ -181,7 +186,7 @@ foreach my $align_id (sort {$cdna_to_asmbl_id{$a} cmp $cdna_to_asmbl_id{$b}} key
     if ($annot_asmbl_id ne $curr_annot_asmbl_id) {
         $curr_annot_asmbl_id = $annot_asmbl_id;
         print STDERR "getting sequence: $annot_asmbl_id from $genomic_db\n" if $SEE;
-        $genomic_seq = cdbyank_linear($annot_asmbl_id, $genomic_db);
+        $genomic_seq = $genomic_fasta_retriever->get_seq($annot_asmbl_id); #cdbyank_linear($annot_asmbl_id, $genomic_db);
         print STDERR "Loaded sequence.\n" if $SEE;
     }
     
@@ -345,7 +350,7 @@ sub generate_seq_illustration {
     my $polyA_offset = ($offset) ? "<offset: $offset>" : "";
    
     
-    my $cdna_seq = &Ath1_cdnas::get_seq_from_fasta($cdna_acc, $uncleaned_transcript_db);
+    my $cdna_seq = $transcript_fasta_retriever->get_seq($cdna_acc); #&Ath1_cdnas::get_seq_from_fasta($cdna_acc, $uncleaned_transcript_db);
     unless ($cdna_seq) { die "Couldn't extract $cdna_acc from $uncleaned_transcript_db";}
     my $cdna_seq_length = length($cdna_seq);
  
