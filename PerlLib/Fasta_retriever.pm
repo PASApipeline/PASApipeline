@@ -40,18 +40,35 @@ sub _init {
     my $self = shift;
     
     my $filename = $self->{filename};
-    print STDERR "-Fasta_retriever:: begin initializing for $filename\n";
     
-    open (my $fh, $filename) or die $!;
-    $self->{fh} = $fh;
-    while (<$fh>) {
-        if (/>(\S+)/) {
-            my $acc = $1;
-            my $file_pos = tell($fh);
+    # use a samtools faidx index if available
+    my $index_file = "$filename.fai";
+    if (-s $index_file) {
+        open(my $fh, $index_file) or die "Error, cannot open file: $index_file";
+        while(<$fh>) {
+            chomp;
+            my @x = split(/\t/);
+            my $acc = $x[0];
+            my $file_pos = $x[2];
             $self->{acc_to_pos_index}->{$acc} = $file_pos;
         }
+        close $fh;
     }
-    print STDERR "-Fasta_retriever:: done initializing for $filename\n";
+    else {
+        print STDERR "-missing faidx file: $index_file, extracting positions directly.\n";
+        print STDERR "-Fasta_retriever:: begin initializing for $filename\n";
+    
+        open (my $fh, $filename) or die $!;
+        $self->{fh} = $fh;
+        while (<$fh>) {
+            if (/>(\S+)/) {
+                my $acc = $1;
+                my $file_pos = tell($fh);
+                $self->{acc_to_pos_index}->{$acc} = $file_pos;
+            }
+        }
+        print STDERR "-Fasta_retriever:: done initializing for $filename\n";
+    }
     
     return;
 }

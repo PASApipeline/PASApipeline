@@ -299,6 +299,7 @@ if ($CREATE_DB) {
 }
 
 
+
 ## directory to store voluminous logging info from pasa processes
 my $PASA_LOG_DIR = "pasa_run.log.dir";
 if (! -d $PASA_LOG_DIR) {
@@ -344,6 +345,24 @@ if ($POLYA_IDENTIFICATION) {
     }
 }
 
+
+unless (-s "$genome_db.fai") {
+    push (@cmds, { prog => "samtools",
+				   params => "faidx $genome_db",
+				   input => undef,
+				   output => undef,
+                   chkpt => "samtools_faidx_genome.ok",
+          });
+}
+
+unless (-s "$transcript_db.fai") {
+    push (@cmds, { prog => "samtools",
+				   params => "faidx $transcript_db",
+				   input => undef,
+				   output => undef,
+                   chkpt => "samtools_faidx_transcriptome.ok",
+          });
+}
 
 
 if ($RUN_PIPELINE) {

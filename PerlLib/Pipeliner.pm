@@ -166,10 +166,10 @@ sub run {
                 unlink($tmp_stderr);
             }
 
-            unless ($VERBOSE == 2) {
+            if ($VERBOSE < 2) {
                 $cmdstr .= " 2>$tmp_stderr";
             }
-
+            
             print STDERR $msg if $msg;
             
             my $ret = system($cmdstr);

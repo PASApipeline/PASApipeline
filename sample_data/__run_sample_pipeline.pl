@@ -94,7 +94,7 @@ $DBname = basename($DBname);
  main: {
 
      my $checkpoints_dir = "__chkpts_$DBname";
-     my $pipeliner = new Pipeliner(-verbose=>1,
+     my $pipeliner = new Pipeliner(-verbose=>2,
                                    -checkpoint_dir=>$checkpoints_dir,
                                    -cmds_log=> "$checkpoints_dir.cmds_log",
          );
