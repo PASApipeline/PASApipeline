@@ -260,7 +260,7 @@ my $checkpts_dir = "__pasa_" . basename($database) . "_$ENV{DBI_DRIVER}_chkpts";
 unless (-d $checkpts_dir) {
     mkdir $checkpts_dir or die "Error, cannot create checkpoints dir: $checkpts_dir";
 }
-my $pipeliner = new Pipeliner(-verbose=>1,
+my $pipeliner = new Pipeliner(-verbose=>2,
                               -checkpoint_dir=>$checkpts_dir,
                               -cmds_log=> "$checkpts_dir.cmds_log",
     );
@@ -1013,7 +1013,10 @@ if ($ALT_SPLICE && !$COMPARE_TO_ANNOT) { #this has bitten me before. do alt-spli
 foreach my $cmd (@cmds) {
     #print Dumper($cmd);
     my $cmdstr = &reconstruct_cmd_line($cmd);
-    unless ($PRINT_CMDS_ONLY) {
+    if ($PRINT_CMDS_ONLY) {
+        print "CMD: $cmdstr\n";
+    }
+    else {
         $pipeliner->add_commands(new Command($cmdstr, $cmd->{chkpt}));
     }
 }
