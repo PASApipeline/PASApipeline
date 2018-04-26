@@ -69,7 +69,7 @@ RUN wget http://faculty.virginia.edu/wrpearson/fasta/fasta36/fasta-36.3.8g.tar.g
 ## PASA installation
 WORKDIR $SRC
 
-ENV PASA_CO c7fd670
+ENV PASA_CO 6ea07cd
 
 RUN git clone https://github.com/PASApipeline/PASApipeline.git && \
     cd PASApipeline && \
