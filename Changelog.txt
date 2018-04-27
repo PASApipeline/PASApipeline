@@ -1,4 +1,17 @@
 
+#######################################
+## PASA release v2.3.3,  April 27, 2018
+
+bugfix release. If using seqclean for transcript cleaning and for polyA-site identification, this patch release should work for you.
+
+Also updated TransDecoder to latest release v5.2.0
+Pipeliner updates to better follow operations
+
+maybe a little more than a bugfix release, but intended to be mostly a bugfix release.
+
+
+
+
 #############
 ## PASA Release v2.3.2 April 19, 2018
 
