@@ -79,5 +79,7 @@ RUN git clone https://github.com/PASApipeline/PASApipeline.git && \
 
 ENV PASAHOME /usr/local/src/PASApipeline
 
+RUN apt-get install -y samtools && apt-get clean
+
 
 
