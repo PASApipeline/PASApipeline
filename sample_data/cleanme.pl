@@ -58,6 +58,7 @@ if (-d "gmap_db_dir") {
 `rm -rf __chkpts_sample_mydb_pasa.sqlite`;
 `rm -rf ./all_transcripts.fasta.clean.transdecoder_dir*`;
 `rm -rf ./__chkpts_sample_mydb_pasa`;
+`rm -rf ./sample_mydb_pasa.sqlite.assemblies.fasta.transdecoder_dir.__checkpoints_longorfs`;
 
 foreach my $file (<*>) {
 	
