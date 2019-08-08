@@ -30,9 +30,17 @@ sub new {
 ####
 sub _init {
 	my ($self) = @_;
-
-	open ($self->{_fh}, $self->{filename}) or confess "Error, cannot open file " . $self->{filename};
-	
+    
+    if ($self->{filename} =~ /\.bam$/) {
+        open ($self->{_fh}, "samtools view $self->{filename} |") or confess "Error, cannot open file " . $self->{filename};
+    }
+    elsif ($self->{filename} =~ /\.gz$/) {
+        open ($self->{_fh}, "gunzip -c $self->{filename} | ") or confess "Error, cannot open file " . $self->{filename};
+    }
+    else {
+        open ($self->{_fh}, $self->{filename}) or confess "Error, cannot open file " . $self->{filename};
+    }
+    
 	$self->_advance();
 
 	return;
@@ -45,7 +53,7 @@ sub _advance {
 	my $fh = $self->{_fh};
 
 	my $next_line = <$fh>;
-	while (defined ($next_line) && $next_line =~ /^\@/) {  ## skip over sam headers
+	while (defined ($next_line) && ($next_line =~ /^\@/ || $next_line !~ /\w/)) {  ## skip over sam headers
 		$next_line = <$fh>;
 	}
 	
