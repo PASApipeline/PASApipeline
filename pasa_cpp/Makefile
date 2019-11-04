@@ -4,8 +4,8 @@
 PROJECTDIR = .
 BINDIR = .
 
-CC = g++
-CPPC = ${CC}
+#CC = g++
+#CPPC = ${CC}
 #CFLAGS = -g -Wall -O3
 #CFLAGS = -ggdb 
 #  add -xloopinfo to get feedback about -xautopar
@@ -35,12 +35,12 @@ OBJECTS = alignment_segment.o cdna_alignment.o common_subs.o  cdna_alignment_ass
 	$(CC) $(CFLAGS) -c $*.c -o $*.o 
 
 .cpp.o:
-	$(CPPC) $(CFLAGS) -c $*.cpp -o $*.o 
+	$(CXX) $(CFLAGS) -c $*.cpp -o $*.o 
 
 all:    $(ALL)
 
 pasa: ${OBJECTS} pasa.o
-	$(CPPC) -o $(BINDIR)/$@ $(OBJECTS) $(LDFLAGS)
+	$(CXX) -o $(BINDIR)/$@ $(OBJECTS) $(LDFLAGS)
 
 
 clean:
