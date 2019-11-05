@@ -7,7 +7,7 @@ HEADERS = psx.h
 
 CFLAGS  = -O2
 
-CC	= gcc
+#CC	= gcc
 
 all:	psx
 

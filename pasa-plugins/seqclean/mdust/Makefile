@@ -2,7 +2,7 @@
 
 #SYSTYPE :=     $(shell uname)
 
-CC      := gcc
+#CC      := gcc
 CFLAGS  = -O2 -Wall
 
 %.o : %.c
@@ -30,7 +30,7 @@ LOADLIBES :=
 all:    mdust
 
 mdust:  ./mdust.o ./dust.o ./fastafile.o
-	${LINKER} ${LDFLAGS} -o $@ ${filter-out %.a %.so, $^} ${LOADLIBES}
+	${CC} ${LDFLAGS} -o $@ ${filter-out %.a %.so, $^} ${LOADLIBES}
 
 # target for removing all object files
 
