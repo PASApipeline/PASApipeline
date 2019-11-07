@@ -184,7 +184,6 @@ CREATE TABLE annotation_updates (
   PRIMARY KEY  (update_id),
   KEY is_valid_idx (is_valid),
   KEY alt_splice_idx (alt_splice_flag),
-  KEY lotsastuff_idx (gene_id,model_id,is_valid,alt_splice_flag),
   KEY modelidx (model_id)
 ) ;
 
@@ -340,7 +339,7 @@ CREATE TABLE status (
   status_descr varchar(255) default NULL,
   requires_update tinyint(1) unsigned default '0',
   fails_incorporation tinyint(1) unsigned default '0',
-  rank float default '0',
+  rankval FLOAT(3) default '0.00',
   PRIMARY KEY  (status_id),
   KEY status_id_idx (status_id)
 ) ;

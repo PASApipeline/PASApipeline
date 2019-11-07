@@ -249,7 +249,7 @@ foreach my $result (@results) {
     
     my %status_summary;
     
-    my $query = "select s.status_id, s.requires_update, s.fails_incorporation, s.status_descr from status s order by s.rank";
+    my $query = "select s.status_id, s.requires_update, s.fails_incorporation, s.status_descr from status s order by s.rankval";
     
     my @results = &do_sql_2D($dbproc, $query);
     
