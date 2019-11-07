@@ -218,7 +218,7 @@ CREATE TABLE status (
   status_descr TEXT DEFAULT NULL,
   requires_update BOOLEAN DEFAULT 0 CHECK(requires_update IN (0,1)),
   fails_incorporation BOOLEAN DEFAULT 0 CHECK(fails_incorporation IN (0,1)),
-  rank NUMERIC DEFAULT 0.0
+  rankval NUMERIC DEFAULT 0.0
 ) ;
 
 CREATE TABLE status_link (

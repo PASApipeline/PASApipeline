@@ -183,7 +183,8 @@ sub get_alignment_coords {
 
 
 	$genome_lend--; # move pointer just before first position.
-	
+
+    #print "Alignment: $alignment\n";
 	while ($alignment =~ /(\d+)([A-Z])/g) {
 		my $len = $1;
 		my $code = $2;
@@ -192,7 +193,7 @@ sub get_alignment_coords {
 			confess "Error, cannot parse cigar code [$code] " . $self->toString();
 		}
 		
-		# print "parsed $len,$code\n";
+		#print "parsed $len,$code\n";
 		
 		if ($code eq 'M') { # aligned bases match or mismatch
 			

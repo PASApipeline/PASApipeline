@@ -12,6 +12,8 @@ my $usage = "usage: $0 file.sam\n\n";
 
 my $sam_file = $ARGV[0] or die $usage;
 
+my $DEBUG = 0;
+
 main: {
 
     my %PATH_COUNTER;
@@ -33,6 +35,11 @@ main: {
         }
         
         my $sam_line = $sam_entry->get_original_line();
+
+        if ($DEBUG) {
+            print "$sam_line\n";
+        }
+        
         my $num_mismatches = 0;
         if ($sam_line =~ /NM:i:(\d+)/) {
             $num_mismatches = $1;
@@ -54,16 +61,27 @@ main: {
         my $align_len = 0;
         {
             foreach my $coordset (@$genome_coords_aref) {
-                $align_len += abs($coordset->[1] - $coordset->[0]) + 1;
+                my $seglen = abs($coordset->[1] - $coordset->[0]) + 1;
+                $align_len += $seglen;
+
+                if ($DEBUG) {
+                    print STDERR join("\t", $coordset->[0], $coordset->[1], "seglen: $seglen") . "\n";
+                }
             }
         }
-        my $per_id = sprintf("%.1f", 100 - $num_mismatches/$align_len * 100); 
+        
+        if ($DEBUG) {
+            print STDERR "num_mismatches: $num_mismatches, align_length: $align_len\n";
+        }
+        
+        #my $per_id = sprintf("%.1f", 100 - $num_mismatches/$align_len * 100); 
 
         my $align_counter = "$read_name.p" . ++$PATH_COUNTER{$read_name};
 
 
         my @genome_n_trans_coords;
-        
+
+                
         while (@$genome_coords_aref) {
             my $genome_coordset_aref = shift @$genome_coords_aref;
             my $trans_coordset_aref = shift @$query_coords_aref;
@@ -103,6 +121,14 @@ main: {
             }
         }
 
+        my $trans_align_len = 0;
+        foreach my $coordset_ref (@merged_coords) {
+            my ($genome_lend, $genome_rend, $trans_lend, $trans_rend) = @$coordset_ref;
+            $trans_align_len += $trans_rend - $trans_lend + 1;
+        }
+
+        my $per_id = sprintf("%.2f", 100 - ($num_mismatches / $trans_align_len * 100));
+        
         foreach my $coordset_ref (@merged_coords) {
             my ($genome_lend, $genome_rend, $trans_lend, $trans_rend) = @$coordset_ref;
             
