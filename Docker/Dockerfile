@@ -81,5 +81,6 @@ ENV PASAHOME /usr/local/src/PASApipeline
 
 RUN apt-get install -y samtools && apt-get clean
 
+RUN cp $PASAHOME/bin/* /usr/local/bin/
 
 
