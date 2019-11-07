@@ -224,7 +224,7 @@ sub RunMod {
         if ($@) { #error occurred
             
             ## check for mysql gone away:
-            if ($DBI::errstr =~ /server has gone away/) {
+            if ($DBI::errstr =~ /server has gone away|Lost connection/) {
                 ## reestablish connection and try again:
                 &reconnect_to_server($dbproc);
                 return (&RunMod($dbproc, $query, @values));
