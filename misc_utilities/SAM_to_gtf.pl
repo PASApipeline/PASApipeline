@@ -8,11 +8,11 @@ use lib ("$FindBin::RealBin/../PerlLib");
 use SAM_reader;
 use SAM_entry;
 
-my $usage = "usage: $0 file.sam\n\n";
+my $usage = "usage: $0 file.sam [debug_flag=0]\n\n";
 
 my $sam_file = $ARGV[0] or die $usage;
 
-my $DEBUG = 0;
+my $DEBUG = $ARGV[1];
 
 main: {
 
@@ -127,6 +127,10 @@ main: {
             $trans_align_len += $trans_rend - $trans_lend + 1;
         }
 
+        if ($DEBUG) {
+            print "interval-based alignment length: $trans_align_len\n";
+        }
+        
         my $per_id = sprintf("%.2f", 100 - ($num_mismatches / $trans_align_len * 100));
         
         foreach my $coordset_ref (@merged_coords) {
