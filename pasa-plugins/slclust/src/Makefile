@@ -35,18 +35,14 @@ INCLUDE       = ${PROJECT_ROOT}/include
 
 DEBUG         = DEBUG
 CFLAGS        = -I${INCLUDE} ${LOCAL_CFLAGS}
-CC            = g++ ${CFLAGS}
 
 MAKEFILE      = Makefile
 
 
 # Suffix rules
 
-.cc.o:
-	${CC} -c $<
-
 .cpp.o:
-	${CC} -c $<
+	${CXX} ${CFLAGS} -c $<
 
 # Target dependencies
 
@@ -65,6 +61,6 @@ clean :
 ${OBJ} : ${MAKEFILE}
 
 ${EXECUTABLE} : ${OBJS}
-	${CC} ${OBJS} ${LIBS} -o ${EXECUTABLE}	
+	${CXX} ${OBJS} ${LIBS} -o ${EXECUTABLE}	
 	chmod 755 ${EXECUTABLE}
 
