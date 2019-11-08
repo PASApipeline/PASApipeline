@@ -1,4 +1,9 @@
 
+## If wanting to build on mac osx using gcc instead of clang:
+## run make like so:
+##
+##   make CC=gcc CXX=g++
+
 all: 
 	if [ ! -d bin ]; then mkdir bin; fi
 	cd pasa_cpp && $(MAKE) && cp pasa ../bin/.
