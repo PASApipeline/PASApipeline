@@ -39,7 +39,7 @@ server.modules              = (
 ## server.virtual-* options
 server.document-root        = "__DOCUMENT_ROOT__"
 
-setenv.add-environment = ( "LOCAL_JS" => "1" ) 
+setenv.add-environment = ( "LOCAL_JS" => "1", __PERL5LIB__) 
     
 ## where to send error-messages to
 #server.errorlog             = "/Users/bhaas/BioIfx/LIGHTTPD/logs/lighttpd.error.log"

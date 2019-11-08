@@ -4,6 +4,7 @@ use strict;
 use warnings;
 
 use FindBin;
+use lib("$FindBin::Bin/PasaWeb/cgi-bin/");
 
 my $usage = "usage: $0 port_no[eg.=8080]\n\n";
 
@@ -38,17 +39,23 @@ my $port_no = $ARGV[0] or die $usage;
      my $conf_file_template = "$FindBin::RealBin/PasaWeb.conf/lighttpd.conf.template";
      
      my $conf_file = "$FindBin::RealBin/PasaWeb.conf/lighttpd.conf.port$port_no";
-     unless (-s $conf_file) {
-         my $template = `cat $conf_file_template`;
-         $template =~ s/__DOCUMENT_ROOT__/$document_root/ or die "Error, could not replace __DOCUMENT_ROOT__ in $conf_file_template";
-         $template =~ s/__PORT_NO__/$port_no/ or die "Error, could not replace __PORT_NO__ in $conf_file_template";
+     
+     my $template = `cat $conf_file_template`;
+     $template =~ s/__DOCUMENT_ROOT__/$document_root/ or die "Error, could not replace __DOCUMENT_ROOT__ in $conf_file_template";
+     $template =~ s/__PORT_NO__/$port_no/ or die "Error, could not replace __PORT_NO__ in $conf_file_template";
+     
+     $template =~ s/__PERL_PATH__/$perl_path/g or die "Error, could not replace __PERL_PATH__ in $conf_file_template with $perl_path";
 
-         $template =~ s/__PERL_PATH__/$perl_path/g or die "Error, could not replace __PERL_PATH__ in $conf_file_template with $perl_path";
-         
-         open (my $ofh, ">$conf_file") or die "Error, cannot write to $conf_file";
-         print $ofh $template;
-         close $ofh;
-     }
+
+     my $PERL5LIB = join(":", @INC);
+     $PERL5LIB = "\"PERL5LIB\" => \"$PERL5LIB\"";
+     $template =~ s/__PERL5LIB__/$PERL5LIB/;
+     
+     
+     open (my $ofh, ">$conf_file") or die "Error, cannot write to $conf_file";
+     print $ofh $template;
+     close $ofh;
+     
      
      my $cmd = "$lighttpd_prog -D -f $conf_file";
      print STDERR "$cmd\n";
