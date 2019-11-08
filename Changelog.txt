@@ -1,3 +1,15 @@
+#################
+## PASA release v2.4.0,  Nov. 8, 2019
+
+-mysql schema updates for compatibility with latest mysql
+-pasaweb updates to leverage user perl @INC environment - finds user installed modules.
+-plugin compilation updates for macs
+-docker adds pasa binary to /usr/local/bin
+-datetime printed for each step of the pipeline execution
+-transdecoder updated to current version
+-db connection updates for mysql to catch 'lost server'
+
+
 
 #######################################
 ## PASA release v2.3.3,  April 27, 2018
