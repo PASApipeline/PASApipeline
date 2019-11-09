@@ -159,14 +159,15 @@ sub run {
             print STDERR "-- Skipping CMD: $cmdstr, checkpoint [$checkpoint_file] exists.\n" if $VERBOSE;
         }
         else {
-            print STDERR "* Running CMD: $cmdstr\n" if $VERBOSE;
+            my $datestamp = localtime();
+            print STDERR "* [$datestamp] Running CMD: $cmdstr\n" if $VERBOSE;
             
             my $tmp_stderr = "tmp.$$." . time() . ".stderr";
             if (-e $tmp_stderr) {
                 unlink($tmp_stderr);
             }
 
-            if ($VERBOSE < 2) {
+            if ($VERBOSE < 2 && $cmdstr !~ /2\s*>/ ) {
                 $cmdstr .= " 2>$tmp_stderr";
             }
             
@@ -178,7 +179,7 @@ sub run {
                 if (-e $tmp_stderr) {
                     my $errmsg = `cat $tmp_stderr`;
                     if ($errmsg =~ /\w/) {
-                        print STDERR "\n\nError encountered::  <!----\n$errmsg\n--->\n\n";
+                        print STDERR "\n\nError encountered::  <!----\nCMD: $cmdstr\n\nErrmsg:\n$errmsg\n--->\n\n";
                     }
                     unlink($tmp_stderr);
                 }

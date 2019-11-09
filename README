@@ -1,5 +1,8 @@
-All PASA documentation, including usage and installation is provided at:
+PASA pipeline documentation is provided at: https://github.com/PASApipeline/PASApipeline/wiki
 
-http://pasa.sf.net
+See the [code releases](https://github.com/PASApipeline/PASApipeline/releases) for the latest software.
+
+If you clone the repo, use 'git clone --recursive git@github.com:PASApipeline/PASApipeline.git'
+
 
 

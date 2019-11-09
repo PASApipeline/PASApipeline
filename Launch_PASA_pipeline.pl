@@ -17,7 +17,7 @@ use File::Basename;
 
 
 #my $VERSION = "__BLEEDING_EDGE__";
-my $VERSION = "2.3.3";
+my $VERSION = "2.4.0";
 
 $ENV{PATH} = "$FindBin::Bin/bin:$ENV{PATH}";
 
@@ -372,7 +372,7 @@ if ($RUN_PIPELINE) {
     @PRIMARY_ALIGNERS = split(/,/,join(',',@PRIMARY_ALIGNERS)); # unpack list of aligners in case commas are used.
     
     unless (@PRIMARY_ALIGNERS || $IMPORT_CUSTOM_ALIGNMENTS_GFF3) {
-        die "Error, must specify at least one primary aligner via --ALIGNER or imported via --IMPORT...";
+        die "Error, must specify at least one primary aligner via --ALIGNERS or imported via --IMPORT...";
     }
     foreach my $aligner (@PRIMARY_ALIGNERS) {
         unless ($SUPPORTED_PRIMARY_ALIGNERS{$aligner}){

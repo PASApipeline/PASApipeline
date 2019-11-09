@@ -13,7 +13,9 @@ main: {
     while (<$fh>) {
         chomp;
         unless (/\w/) { next; }
+        if (/^\#/) { next; } #comment line
         my @x = split(/\t/);
+        
         if ($x[2] eq "gene" && $x[8] =~ /complete/) {
             print "$x[0]\n";
         }
