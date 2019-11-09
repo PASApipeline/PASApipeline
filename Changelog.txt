@@ -1,5 +1,5 @@
 #################
-## PASA release v2.4.0,  Nov. 8, 2019
+## PASA release v2.4.1,  Nov. 9, 2019
 
 -mysql schema updates for compatibility with latest mysql
 -pasaweb updates to leverage user perl @INC environment - finds user installed modules.
@@ -8,7 +8,7 @@
 -datetime printed for each step of the pipeline execution
 -transdecoder updated to current version
 -db connection updates for mysql to catch 'lost server'
-
+-including SAM_to_gtf.pl for potential minimap2 integration
 
 
 #######################################
