@@ -72,7 +72,7 @@ RUN apt-get install -y samtools && apt-get clean
 WORKDIR $SRC
 
 # pasapipeline v2.4.1
-ENV PASA_CO a039107cc6e9ab849e37df3fac7ab196140dc5e8
+ENV PASA_CO eebd6223e1a7aa008c8aa63c8969296a0285bd8b
 
 RUN git clone https://github.com/PASApipeline/PASApipeline.git && \
     cd PASApipeline && \
