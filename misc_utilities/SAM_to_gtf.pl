@@ -7,6 +7,7 @@ use FindBin;
 use lib ("$FindBin::RealBin/../PerlLib");
 use SAM_reader;
 use SAM_entry;
+use Carp;
 
 my $usage = "usage: $0 file.sam [debug_flag=0]\n\n";
 
@@ -39,15 +40,29 @@ main: {
         if ($DEBUG) {
             print "$sam_line\n";
         }
-        
-        my $num_mismatches = 0;
+
+
+        my $NM = 0; # full edit distance (includes mismatches and indels)
+                
         if ($sam_line =~ /NM:i:(\d+)/) {
-            $num_mismatches = $1;
+            $NM = $1;
         }
         else {
             die "Error, couldn't extract num mismatches from sam line: $sam_line";
         }
+        my $cigar_align = $sam_entry->get_cigar_alignment();
+        my $num_indel_nts = 0;
+        while($cigar_align =~ /(\d+)[DI]/g) {
+            $num_indel_nts += $1;
+        }
 
+        my $num_mismatches = $NM - $num_indel_nts;
+
+        if ($num_mismatches < 0) {
+            confess "Error, calculated negative mismatch count from: NM:$NM, indel:$num_indel_nts, cigar: $cigar_align";
+        }
+
+        
         
 		my $read_name = $sam_entry->get_read_name();
 		my $scaff_name = $sam_entry->get_scaffold_name();
@@ -74,7 +89,7 @@ main: {
             print STDERR "num_mismatches: $num_mismatches, align_length: $align_len\n";
         }
         
-        #my $per_id = sprintf("%.1f", 100 - $num_mismatches/$align_len * 100); 
+        my $per_id = sprintf("%.1f", 100 - $num_mismatches/$align_len * 100); 
 
         my $align_counter = "$read_name.p" . ++$PATH_COUNTER{$read_name};
 
@@ -121,17 +136,17 @@ main: {
             }
         }
 
-        my $trans_align_len = 0;
-        foreach my $coordset_ref (@merged_coords) {
-            my ($genome_lend, $genome_rend, $trans_lend, $trans_rend) = @$coordset_ref;
-            $trans_align_len += $trans_rend - $trans_lend + 1;
-        }
-
-        if ($DEBUG) {
-            print "interval-based alignment length: $trans_align_len\n";
-        }
+        #my $trans_align_len = 0;
+        #oreach my $coordset_ref (@merged_coords) {
+        #    my ($genome_lend, $genome_rend, $trans_lend, $trans_rend) = @$coordset_ref;
+        #    $trans_align_len += $trans_rend - $trans_lend + 1;
+        #}
+        #
+        #if ($DEBUG) {
+        #    print "interval-based alignment length: $trans_align_len\n";
+        #
         
-        my $per_id = sprintf("%.2f", 100 - ($num_mismatches / $trans_align_len * 100));
+        
         
         foreach my $coordset_ref (@merged_coords) {
             my ($genome_lend, $genome_rend, $trans_lend, $trans_rend) = @$coordset_ref;
