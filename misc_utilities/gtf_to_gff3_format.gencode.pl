@@ -87,6 +87,7 @@ main: {
                 }
             }
             
+            $gene_obj_ref->refine_gene_object();
             my $gff3_text = $gene_obj_ref->to_GFF3_format();
             
             print "$gff3_text\n";
