@@ -73,7 +73,7 @@ sub perform_fasta_align {
     }
     die "Cannot find program fasta\n" unless $prog && -s $prog && -x $prog;
     
-    my $cmd = "$prog $file1 $file2 > $result_file";
+    my $cmd = "$prog -p $file1 $file2 > $result_file";
     my $ret = system ($cmd);
     if ($ret) {
 		die "Error: couldn't perform alignment using prog $prog.\n";
