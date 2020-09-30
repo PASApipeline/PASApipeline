@@ -45,12 +45,12 @@ _EOH_
 if ($opt_h) {die $usage;}
 my $MYSQLstring = $opt_M or die "Must indicate MySQL parameters.\n\n$usage";
 
-my ($MYSQLdb, $MYSQLserver) = split (/:/, $MYSQLstring); 
+my ($MYSQLdb, $MYSQLserver) = split (/:/, $MYSQLstring,2); 
 my $passwordinfo = $opt_p or die "Must specify password info.\n\n\n$usage";
 my $DEBUG = $opt_d;
 
 our $SEE = $opt_v;
-my ($user, $password) = split (/:/, $passwordinfo);
+my ($user, $password) = split (/:/, $passwordinfo,2);
 my $type = $opt_t || "both";
 
 my ($allow_5prime_partial, $allow_3prime_partial) = (1,1);
