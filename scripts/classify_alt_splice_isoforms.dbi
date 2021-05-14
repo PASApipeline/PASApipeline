@@ -111,6 +111,7 @@ my ($dbproc) = &connect_to_db($MYSQLserver,$MYSQLdb,$user,$password);
 
 if ($ENV{DBI_DRIVER} eq 'SQLite') {
     # turn off multi-threading... not working w/ sqlite here, only mysql
+    print STDERR "-in SQLite mode, disabling multithreading\n";
     $NUM_THREADS = 1;
 }
 
@@ -137,7 +138,8 @@ main: {
     ## Get list of subclusters containing multiple assemblies
     my $query = "select subcluster_id, count(*) from subcluster_link group by subcluster_id having count(*)>1";
     my @results = &do_sql_2D($dbproc, $query);
-
+    $dbproc->disconnect();
+    
 
     my @subcluster_ids;
     foreach my $result_aref (@results) {
@@ -178,9 +180,10 @@ main: {
         close (OUT);
     }
     
-    &summarize_labels();
-
-    $dbproc->disconnect;
+    my ($dbproc) = &DB_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password); # refresh it per thread
+    &summarize_labels($dbproc);
+    
+    $dbproc->disconnect();
     
     `rm -rf $outdir`;
 
@@ -211,6 +214,9 @@ sub init_alt_splice_tables {
 
 ####
 sub summarize_labels() {
+    
+    my ($dbproc) = @_;
+    
     my $query = "select distinct cdna_acc from splice_variation order by cdna_acc";
     my @results = &do_sql_2D($dbproc, $query);
     
@@ -240,7 +246,7 @@ sub summarize_labels() {
 
         my $token_id = $label_to_token_id{$label};
         unless ($token_id) {
-            $token_id = $label_to_token_id{$label} = &get_splice_token($label);
+            $token_id = $label_to_token_id{$label} = &get_splice_token($dbproc, $label);
         }
 
         my $query = "insert into alt_splice_token_assignment (cdna_acc, token_id) values (?,?)";
@@ -258,7 +264,7 @@ sub summarize_labels() {
 
 ####
 sub get_splice_token {
-    my $label = shift;
+    my ($dbproc, $label) = @_;
 
     my $query = "insert into alt_splice_tokens (alt_splice_token) values (?)";
     &RunMod($dbproc, $query, $label);
@@ -272,7 +278,7 @@ sub get_splice_token {
 sub process_subcluster(){
     my $subcluster_id = shift;
     my $outfile = shift;
-    my ($dbproc) = &DB_connect::connect_to_db($MYSQLserver,$MYSQLdb,$user,$password); # refresh it per thread
+    
     # had to redirect output to each file to make it thread safe
     #cmd if are skipping files: make sure it has really finished?
     #       my $cmd = $FindBin::Bin . "/classify_alt_splice_isoforms_per_subcluster.dbi -M $opt_M -s $subcluster_id > $outfile.temp";
