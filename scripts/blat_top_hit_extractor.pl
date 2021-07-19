@@ -54,7 +54,7 @@ my $scores_file = "$filename.scores";
         $line_num++;
         my @x = split (/\t/);
         unless ($x[0] =~ /^\d/) {next;}
-        my ($matches, $mismatches, $q_gap_num, $t_gap_num, $q_insert, $t_insert) = ($x[0], $x[1], $x[4], $x[6], $x[5], abs($x[7]));
+        my ($matches, $mismatches, $q_gap_num, $t_gap_num, $q_insert, $t_insert) = ($x[0], $x[1], $x[4], $x[6], abs($x[5]), abs($x[7]) );
         
         my $score = &calculate_score($matches, $mismatches, $q_gap_num, $t_gap_num, $q_insert, $t_insert);
         
