@@ -1,78 +1,62 @@
-FROM ubuntu:16.04
-MAINTAINER bhaas@broadinstitute.org
-
-RUN apt-get update && apt-get install -y gcc g++ perl python automake make \
-                                       wget git curl libdb-dev \
-                                       zlib1g-dev bzip2 libncurses5-dev \
-                                       texlive-latex-base \
-                                       default-jre \
-                                       python-pip python-dev \
-                                       gfortran \
-                                       build-essential libghc-zlib-dev libncurses-dev libbz2-dev liblzma-dev libpcre3-dev libxml2-dev \
-                                       libblas-dev gfortran git unzip ftp libzmq3-dev nano ftp fort77 libreadline-dev \
-                                       libcurl4-openssl-dev libx11-dev libxt-dev \
-                                       x11-common libcairo2-dev libpng12-dev libreadline6-dev libjpeg8-dev pkg-config libtbb-dev \
-                   && apt-get clean
-
-RUN curl -L https://cpanmin.us | perl - App::cpanminus
-
-RUN cpanm install DB_File
-
-RUN cpanm install URI::Escape
-
+FROM ubuntu:20.04
+LABEL maintainer="bhaas@broadinstitute.org" # Original file from Brian Hass 
+LABEL maintainer="tamu.anand@gmail.com" # Anand Venkatraman made edits to reflect GMAP related changes
+ARG DEBIAN_FRONTEND=noninteractive
+ENV LANG C.UTF-8
+ENV TZ 'America/Indiana/Indianapolis'
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone  && \
+    apt-get update && \
+    apt-get install --yes --no-install-recommends ca-certificates netbase \
+    samtools libdb-dev wget curl git \
+    build-essential gcc-multilib \
+    pkg-config \
+    libgd-gd2-perl \
+    libgd-dev \
+    gcc g++ make cpanminus \
+    sqlite3 mysql-server mysql-client libdbd-mysql-perl libssl-dev \
+    software-properties-common && \
+    rm -rf /var/lib/apt/lists/*
 
 ## set up tool config and deployment area:
-
 ENV SRC /usr/local/src
 ENV BIN /usr/local/bin
 
-RUN apt-get install -y sqlite lighttpd libgd-tools libgd2-xpm-dev
-
-RUN cpanm install GD
-RUN cpanm install DBI
-RUN cpanm install DBD::SQLite
-
-RUN apt-get install -y software-properties-common
-
-RUN add-apt-repository 'deb http://archive.ubuntu.com/ubuntu trusty universe' && \
-    apt-get update && \
-    apt install -y mysql-server-5.6 && \
-    apt install -y mysql-client-5.6 && \
-    apt-get install -y libdbd-mysql-perl
-
-
+RUN cpanm install DB_File \
+                  URI::Escape \
+		              GD \
+    	  	        DBI \
+		              DBD::SQLite
 
 ## GMAP installation
 WORKDIR $SRC
-RUN wget http://research-pub.gene.com/gmap/src/gmap-gsnap-2017-11-15.tar.gz && \
-        tar xvf gmap-gsnap-2017-11-15.tar.gz && \
-        cd gmap-2017-11-15 && \
+ENV GSNAP_VER 2021-07-23
+RUN wget http://research-pub.gene.com/gmap/src/gmap-gsnap-${GSNAP_VER}.tar.gz && \
+        tar xvf gmap-gsnap-${GSNAP_VER}.tar.gz && \
+        cd gmap-${GSNAP_VER} && \
         ./configure && \
         make && \
-        make install
+        make install && \
+	rm $SRC/gmap-gsnap-${GSNAP_VER}.tar.gz
 
 ## BLAT
 WORKDIR $BIN
 RUN wget http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64/blat/blat && \
         chmod 755 ./blat
 
-
 ## Fasta3
 WORKDIR $SRC
-RUN wget http://faculty.virginia.edu/wrpearson/fasta/fasta36/fasta-36.3.8g.tar.gz && \
-        tar zxvf fasta-36.3.8g.tar.gz && \
-        cd ./fasta-36.3.8g/src && \
+RUN wget https://github.com/wrpearson/fasta36/archive/refs/tags/v36.3.8h_04-May-2020.tar.gz && \
+        tar zxvf v36.3.8h_04-May-2020.tar.gz && \
+        cd ./fasta36-36.3.8h_04-May-2020/src && \
         make -f ../make/Makefile.linux_sse2 all && \
-        cp ../bin/fasta36 /usr/local/bin/fasta
-
-
-RUN apt-get install -y samtools && apt-get clean
+        cp ../bin/fasta36 /usr/local/bin/fasta && \
+	rm $SRC/v36.3.8h_04-May-2020.tar.gz
 
 ## PASA installation
 WORKDIR $SRC
 
 # pasapipeline v2.4.1
-ENV PASA_CO eebd6223e1a7aa008c8aa63c8969296a0285bd8b
+ENV PASA_CO 3dc9f50a54d669a0b883afd85b635c5872004985
 
 RUN git clone https://github.com/PASApipeline/PASApipeline.git && \
     cd PASApipeline && \
@@ -80,10 +64,9 @@ RUN git clone https://github.com/PASApipeline/PASApipeline.git && \
     git submodule init && git submodule update && \
     make
 
+RUN perl -p -i -e 's#-T \$genomeBaseDir#  #g' /usr/local/src/PASApipeline/scripts/process_GMAP_alignments_gff3_chimeras_ok.pl
+
 ENV PASAHOME /usr/local/src/PASApipeline
 
-
-
 RUN cp $PASAHOME/bin/* /usr/local/bin/
-
-
+COPY conf/conf.txt /usr/local/src/PASApipeline/pasa_conf/
