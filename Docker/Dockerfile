@@ -69,4 +69,4 @@ RUN perl -p -i -e 's#-T \$genomeBaseDir#  #g' /usr/local/src/PASApipeline/script
 ENV PASAHOME /usr/local/src/PASApipeline
 
 RUN cp $PASAHOME/bin/* /usr/local/bin/
-COPY conf/conf.txt /usr/local/src/PASApipeline/pasa_conf/
+COPY conf.txt /usr/local/src/PASApipeline/pasa_conf/
