@@ -1,0 +1,63 @@
+#####################################
+#### MANDATORY SETTINGS #############
+#####################################
+
+# This file is not used if SQLITEDB is set in the alignment assembly configuration file
+## MySQL settings:
+
+# server actively running MySQL
+# MYSQLSERVER=server.com
+MYSQLSERVER=localhost
+# Pass socket connections through Perl DBI syntax e.g. MYSQLSERVER=mysql_socket=/tmp/mysql.sock
+
+# read-only username and password
+MYSQL_RO_USER=root
+MYSQL_RO_PASSWORD=
+
+# read-write username and password
+MYSQL_RW_USER=root
+MYSQL_RW_PASSWORD=
+
+#### END OF MANDATORY SETTINGS ######
+
+
+#########################################
+#### WEB INTERFACE (OPTIONAL) SETTINGS ##
+#########################################
+
+# read-only username and password
+MYSQL_RO_USER=xxxxx
+MYSQL_RO_PASSWORD=xzxxxx
+
+## PASA admin settings
+
+# At TIGR, we setup the PASA mysql databases under separate project quotas in different areas of the
+# file system, and then provide a symlink under the mysql data or lib area.
+# see below for info on setting up hooks.  By default, simply keep the value below at false.
+USE_PASA_DB_SETUP_HOOK=false
+
+
+## Hooks
+
+#  Hooks are provided to allow custom code to be called for the following
+#  routines.
+#  The methods must be fully qualified with their module name as static methods.
+#  Before calling the method, the HOOK_PERL_LIBS path listing is added to the Perl Lib path.
+#  The first parameter value provided to the methods is the PASA_conf hash reference, that provides
+#  the key value pairs for all entries in this conf file.
+#  A single custom parameter value can be added as the value to the
+#  {Package::method}~EXTRA_PARAM key (see example below).  This single param
+#  can be packed with any delimiter so that the user can encode several attributes.
+#  the special variable __PASAHOME__ can be used and will be replaced by the PASA installation directory value.
+#  To access the hooks, use the &Pasa_conf::call_hook() method.
+
+
+# comma delimit paths to be added to the perl lib path so the hook modules can be found.
+HOOK_PERL_LIBS=__PASAHOME__/SAMPLE_HOOKS
+
+############
+# hook that commits updated gene structures to the annotation database
+HOOK_GENE_STRUCTURE_UPDATER=GFF3::GFF3_annot_updater::get_updater_obj
+
+
+###############################
