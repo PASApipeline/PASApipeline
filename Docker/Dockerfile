@@ -1,6 +1,6 @@
 FROM ubuntu:20.04
-LABEL maintainer="bhaas@broadinstitute.org" # Original file from Brian Hass 
-LABEL maintainer="tamu.anand@gmail.com" # Anand Venkatraman made edits to reflect GMAP related changes
+LABEL maintainer="bhaas@broadinstitute.org"
+
 ARG DEBIAN_FRONTEND=noninteractive
 ENV LANG C.UTF-8
 ENV TZ 'America/Indiana/Indianapolis'
@@ -55,8 +55,8 @@ RUN wget https://github.com/wrpearson/fasta36/archive/refs/tags/v36.3.8h_04-May-
 ## PASA installation
 WORKDIR $SRC
 
-# pasapipeline v2.4.1
-ENV PASA_CO 3dc9f50a54d669a0b883afd85b635c5872004985
+## pasapipeline v2.5.0-dev
+ENV PASA_CO e68b3d7f036f8d01b10bc239cde199b0c9ad8c25
 
 RUN git clone https://github.com/PASApipeline/PASApipeline.git && \
     cd PASApipeline && \
@@ -64,7 +64,6 @@ RUN git clone https://github.com/PASApipeline/PASApipeline.git && \
     git submodule init && git submodule update && \
     make
 
-RUN perl -p -i -e 's#-T \$genomeBaseDir#  #g' /usr/local/src/PASApipeline/scripts/process_GMAP_alignments_gff3_chimeras_ok.pl
 
 ENV PASAHOME /usr/local/src/PASApipeline
 
