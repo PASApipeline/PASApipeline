@@ -66,18 +66,20 @@ main: {
     my $thread_helper = new Thread_helper($CPU);
     
     if ($aligners =~ /gmap/i) {
-
         my $thread = threads->create('run_gmap');
         $thread_helper->add_thread($thread);
-    
     }
     if ($aligners =~ /blat/i) {
         $thread_helper->wait_for_open_thread();
         my $thread = threads->create('run_blat');
         $thread_helper->add_thread($thread);
     }
+    if ($aligners =~ /minimap2/i) {
+        $thread_helper->wait_for_open_thread();
+        my $thread = threads->create('run_minimap2');
+        $thread_helper->add_thread($thread);
+    }
     
-
     $thread_helper->wait_for_all_threads_to_complete();
     
     my @failed_threads = $thread_helper->get_failed_threads();
@@ -117,7 +119,7 @@ sub run_gmap {
 ####
 sub run_blat {
 
-    my $cmd = "$FindBin::Bin/process_BLAT_alignments.pl -g $genome_db "
+    my $cmd = "$FindBin::Bin/process_PBLAT_alignments.pl -g $genome_db "
         . " -t $transcripts_db -I $max_intron_length -o blat.spliced_alignments -N $num_top_hits --CPU $CPU ";
 
     ## checkpoints built-in to the blat runner already
