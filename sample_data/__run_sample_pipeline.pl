@@ -23,7 +23,7 @@ my $usage = <<__EOUSAGE__;
 #
 # ## all optional:
 #
-# --ALIGNERS <string>   "blat", "gmap", or "blat,gmap" (default: blat,gmap)
+# --ALIGNERS <string>   "blat", "gmap", or "minimap2" (default: blat,gmap,minimap2)
 #
 # --CPU <int>      number of threads to use (default: 2)
 #
@@ -48,7 +48,7 @@ __EOUSAGE__
 
 my $help_flag;
 
-my $ALIGNERS = "blat,gmap";
+my $ALIGNERS = "blat,gmap,minimap2";
 my $CPU = 2;
 my $TRANSDECODER;
 my $JUST_ALIGN_ASSEMBLY;
