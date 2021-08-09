@@ -32,6 +32,7 @@ orig_annotations_sample.gtf
 runMe.SQLite.sh
 runMe.MySQL.sh
 __run_sample_pipeline.pl
+Makefile
 
 );
 
