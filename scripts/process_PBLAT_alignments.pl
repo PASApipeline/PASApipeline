@@ -18,6 +18,7 @@ use vars qw ($DEBUG $opt_h $opt_g $opt_t $opt_c $opt_o $opt_B $opt_I);
 my $CPU = 1;
 my $num_top_hits = 1;
 my $KEEP_PSLX = 0;
+my $output_filename = "";
 
 &GetOptions( 'g=s' => \$opt_g,
              'd' => \$DEBUG,
@@ -28,6 +29,7 @@ my $KEEP_PSLX = 0;
              'N=i' => \$num_top_hits,
              'CPU=i' => \$CPU,
              'KEEP_PSLX' => \$KEEP_PSLX,
+             "o=s" => \$output_filename,
              );
 
 our $SEE = 0;
@@ -46,6 +48,7 @@ Script chunks EST alignments into more manageable data sets.
 # -t <string>       transcripts database
 # -I <int>          maximum intron length (default: 100000)
 # -N <int>          number of top hits (default: $num_top_hits)
+# -o <string>       output filename 
 #
 # --CPU <int>       number of threads (default: 1)
 #
@@ -129,6 +132,10 @@ else {
     print STDERR "-removing $pslx_file to conserve disk space\n";
     unlink($pslx_file); # these files can be huge. Once have top hits, no longer need all hits (hopefully).
 }
+
+$cmd = "ln -sf $tophits_file.gff3 $output_filename";
+&Pipeliner::process_cmd($cmd);
+
 
 print STDERR "done.\n";
 

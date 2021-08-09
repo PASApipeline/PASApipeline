@@ -6,6 +6,7 @@ use Carp;
 use Getopt::Long qw(:config no_ignore_case bundling pass_through);
 use FindBin;
 use threads;
+use File::Basename;
 
 use lib ("$FindBin::Bin/../PerlLib");
 use Thread_helper;
@@ -120,8 +121,8 @@ sub run_gmap {
 sub run_blat {
 
     my $cmd = "$FindBin::Bin/process_PBLAT_alignments.pl -g $genome_db "
-        . " -t $transcripts_db -I $max_intron_length -o blat.spliced_alignments -N $num_top_hits --CPU $CPU ";
-
+        . " -t $transcripts_db -I $max_intron_length -o blat.spliced_alignments.gff3 -N $num_top_hits --CPU $CPU ";
+    
     ## checkpoints built-in to the blat runner already
     
     &process_cmd($cmd);
@@ -130,3 +131,27 @@ sub run_blat {
     
 }
     
+####
+sub run_minimap2 {
+
+    my $transcripts_basename = basename($transcripts_db);
+
+    my $chckpt = "$transcripts_basename.mm2.bam.ok";
+    my $cmd = "$FindBin::Bin/process_minimap2_alignments.pl --genome $genome_db --transcripts $transcripts_db --CPU $CPU -o $transcripts_basename.mm2.bam";
+
+    if (! -e $chckpt) {
+        &process_cmd($cmd);
+        &process_cmd("touch $chckpt");
+    }
+             
+    $cmd = "$FindBin::Bin/../misc_utilities/SAM_to_gff3.minimap2_path1only.pl $transcripts_basename.mm2.bam > minimap2.spliced_alignments.gff3";
+    $chckpt = "minimap2.splice_alignments.gff3.ok";
+    
+    if (! -e $chckpt) {
+        &process_cmd($cmd);
+        &process_cmd("touch $chckpt");
+    }
+
+    return;
+}
+

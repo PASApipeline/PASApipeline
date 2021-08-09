@@ -38,7 +38,7 @@ my $NUM_TOP_ALIGNMENTS = 1;
 
 my $TDN_file; # file containing list of Trinity (full) de novo transcriptome assemblies. (used to find 'missing' genes in genome, among other types)
 
-my %SUPPORTED_PRIMARY_ALIGNERS = map { + $_ => 1 } qw (gmap blat);
+my %SUPPORTED_PRIMARY_ALIGNERS = map { + $_ => 1 } qw (gmap blat minimap2);
 
 my $PASA_PIPELINE_CMD = join(" ", $0, @ARGV);
 my $CUFFLINKS_GTF;
@@ -115,7 +115,7 @@ my $usage =  <<_EOH_;
 # --config|-c * <filename>  alignment assembly configuration file
 #
 # // spliced alignment settings
-# --ALIGNERS <string>   aligners (available options include: gmap, blat... can run both using 'gmap,blat')
+# --ALIGNERS <string>   aligners (available options include: gmap, blat, minimap2... can run using several, ie. 'gmap,blat,minimap2')
 # -N <int>              max number of top scoring alignments (default: 1)
 # --MAX_INTRON_LENGTH|-I  <int>         (max intron length parameter passed to GMAP or BLAT)  (default: 100000)
 # --IMPORT_CUSTOM_ALIGNMENTS_GFF3 <filename> :only using the alignments supplied in the corresponding GFF3 file.
@@ -396,9 +396,14 @@ if ($RUN_PIPELINE) {
         );
 	
     if (@PRIMARY_ALIGNERS) {
+
+        # split the threads among the different aligners.
+        my $num_aligners = scalar(@PRIMARY_ALIGNERS);
+        my $cpu_per_aligner = int($CPU / $num_aligners + 0.5); 
+                
         push (@cmds, { prog => "$UTILDIR/run_spliced_aligners.pl",
                        params => "--aligners " . join(",", @PRIMARY_ALIGNERS) . " --genome $genome_db"
-                           . " --transcripts $transcript_db -I $MAX_INTRON_LENGTH -N $NUM_TOP_ALIGNMENTS --CPU $CPU",
+                           . " --transcripts $transcript_db -I $MAX_INTRON_LENGTH -N $NUM_TOP_ALIGNMENTS --CPU $cpu_per_aligner",
                            input => undef,
                            output => undef,
                            chkpt => "align_transcripts.ok",
