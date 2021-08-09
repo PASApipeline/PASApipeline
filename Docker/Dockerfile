@@ -41,7 +41,23 @@ RUN wget http://research-pub.gene.com/gmap/src/gmap-gsnap-${GSNAP_VER}.tar.gz &&
 ## BLAT
 WORKDIR $BIN
 RUN wget http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64/blat/blat && \
-        chmod 755 ./blat
+    chmod 755 ./blat
+
+
+## PBLAT
+WORKDIR $SRC
+RUN wget https://github.com/icebert/pblat/archive/refs/tags/2.5.tar.gz && \
+    tar xvf 2.5.tar.gz && \
+    cd pblat-2.5 && \
+    make && \
+    cp pblat $BIN/
+
+
+## minimap2
+RUN wget https://github.com/lh3/minimap2/releases/download/v2.22/minimap2-2.22_x64-linux.tar.bz2 && \
+    tar xvf minimap2-2.22_x64-linux.tar.bz2 && \
+    cd minimap2-2.22_x64-linux && \
+    cp k8 minimap2 paftools.js $BIN/
 
 ## Fasta3
 WORKDIR $SRC
