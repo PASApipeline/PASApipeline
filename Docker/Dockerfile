@@ -72,7 +72,7 @@ RUN wget https://github.com/wrpearson/fasta36/archive/refs/tags/v36.3.8h_04-May-
 WORKDIR $SRC
 
 ## pasapipeline v2.5.0-dev
-ENV PASA_CO 52c5618d9b109240270d19d014e5f8eb8dbcda62
+ENV PASA_CO daf0c1045c6cd9c272c8c5f5b0d6206e3e68cf93
 
 RUN git clone https://github.com/PASApipeline/PASApipeline.git && \
     cd PASApipeline && \

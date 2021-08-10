@@ -3694,7 +3694,7 @@ sub to_GFF3_format {
                     }
 
 					
-					my $cds_ID_string = "cds.$model_id";
+					my $cds_ID_string = "$model_id.cds.$exon_counter";
 					
 					# according to the GFF3 spec, CDS segments from the same coding region should have the same identifier.
 					#if (my $cds_feat_name = $cds_obj->{feat_name}) {
