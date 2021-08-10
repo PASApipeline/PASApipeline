@@ -33,7 +33,7 @@ my $usage = <<__EOUSAGE__;
 #
 # -s <int>                 resume alignAssembly run at step
 #
-# -N <int>              number of top scoring spliced alignments (default: 2)
+# -N <int>              number of top scoring spliced alignments (default: 1)
 #
 # --stringent_alignment_overlap <int>     (suggested: 30.0)  overlapping transcripts must have this min % overlap to be clustered.
 # --gene_overlap <int>     (suggested: 50.0)  transcripts overlapping existing gene annotations are clustered.  Intergenic alignments are clustered by default mechanism.                
@@ -53,7 +53,7 @@ my $CPU = 2;
 my $TRANSDECODER;
 my $JUST_ALIGN_ASSEMBLY;
 my $resume_step;
-my $num_top_hits = 2;
+my $num_top_hits = 1;
 my $stringent_alignment_overlap;
 my $gene_overlap;
 my $align_assembly_config_file;

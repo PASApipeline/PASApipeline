@@ -5,7 +5,7 @@ use warnings;
 
 use FindBin;
 
-my $base_dir = "$FindBin::Bin/../";
+my $base_dir = "$FindBin::Bin/..";
 
 
 my $version = `cat VERSION.txt`;
