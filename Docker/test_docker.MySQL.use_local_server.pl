@@ -14,7 +14,7 @@ chomp $version;
 my $cmd = "docker run --rm -it "
     . " -v /var/run/mysqld/mysqld.sock:/var/run/mysqld/mysqld.sock "
     . " -v $base_dir:$base_dir pasapipeline/pasapipeline:$version "
-    . " bash -c 'service mysql start && cd $base_dir/sample_data && ./runMe.MySQL.sh' ";
+    . " bash -c 'cd $base_dir/sample_data && ./runMe.MySQL.sh' ";
 
 print "CMD: $cmd\n";
 
