@@ -112,6 +112,8 @@ if ($blat_thr) {
 ###############################
 my @pslx_files;
 
+my $BLAT_CUSTOM_OPTS = $ENV{BLAT_CUSTOM_OPTS} || "";
+
 {
 
     my $thread_helper = new Thread_helper($CPU);
@@ -122,7 +124,7 @@ my @pslx_files;
         
         ## process blat search:
         my $cmd = "$blat_path $genome_db $transcript_file -q=rna -dots=100 "
-            . " -maxIntron=$MAX_INTRON -out=pslx -ooc=11.ooc $transcript_file.pslx";
+            . " -maxIntron=$MAX_INTRON $BLAT_CUSTOM_OPTS -out=pslx -ooc=11.ooc $transcript_file.pslx";
         
         
         my $checkpoint_file = "$transcript_file.pslx.completed";

@@ -12,6 +12,8 @@ use lib ("$FindBin::Bin/../PerlLib");
 use Thread_helper;
 use Process_cmd;
 
+my $max_intron_length = 100000;
+
 my $usage =  <<__EOUSAGE__;
 
 ########################################################################
@@ -23,7 +25,7 @@ my $usage =  <<__EOUSAGE__;
 #
 # --genome <string>          genome database in fasta format
 #
-# -I <int>                   maximum intron length
+# -I <int>                   maximum intron length (default: $max_intron_length)
 #
 # --CPU <int>                max threads for each tool (default: 1)
 #
@@ -40,7 +42,6 @@ my $help_flag;
 my $aligners;
 my $transcripts_db;
 my $genome_db;
-my $max_intron_length;
 my $CPU = 1;
 my $num_top_hits = 1;
 
@@ -99,13 +100,9 @@ main: {
 sub run_gmap {
     
     my $cmd = "$FindBin::Bin/process_GMAP_alignments_gff3_chimeras_ok.pl --genome $genome_db "
-        . " --transcripts $transcripts_db --CPU $CPU -N $num_top_hits ";
-    if ($max_intron_length) {
-        $cmd .= " -I $max_intron_length ";
-    }
-
-    $cmd .= " > gmap.spliced_alignments.gff3";
-
+        . " --transcripts $transcripts_db --CPU $CPU -N $num_top_hits  -I $max_intron_length "
+        . " > gmap.spliced_alignments.gff3";
+    
     my $checkpoint = "gmap.spliced_alignments.gff3.completed";
     
     unless (-e $checkpoint) {
@@ -137,7 +134,7 @@ sub run_minimap2 {
     my $transcripts_basename = basename($transcripts_db);
 
     my $chckpt = "$transcripts_basename.mm2.bam.ok";
-    my $cmd = "$FindBin::Bin/process_minimap2_alignments.pl --genome $genome_db --transcripts $transcripts_db --CPU $CPU -o $transcripts_basename.mm2.bam";
+    my $cmd = "$FindBin::Bin/process_minimap2_alignments.pl --genome $genome_db --transcripts $transcripts_db --CPU $CPU -I $max_intron_length -o $transcripts_basename.mm2.bam";
 
     if (! -e $chckpt) {
         &process_cmd($cmd);

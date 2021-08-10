@@ -60,6 +60,8 @@ unless ($genome && $transcriptDB) {
 }
 
 
+my $GMAP_CUSTOM_OPTS = $ENV{GMAP_CUSTOM_OPTS} || "";
+
 main: {
 	
 	my $genomeName = basename($genome);
@@ -89,7 +91,7 @@ main: {
 
     my $gmap_prog = (-s $genome > 2**32 ) ? "gmapl" : "gmap";
     
-	my $cmd = "$gmap_prog -D $genomeBaseDir -d $genomeDir -f $format -n $num_gmap_top_hits -x 50 -t $CPU -B 5 ";
+	my $cmd = "$gmap_prog -D $genomeBaseDir -d $genomeDir ${GMAP_CUSTOM_OPTS} -f $format -n $num_gmap_top_hits -x 50 -t $CPU -B 5 ";
 	if ($max_intron) {
         $cmd .= " --intronlength=$max_intron ";
     }

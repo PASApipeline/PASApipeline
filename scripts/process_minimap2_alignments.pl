@@ -11,6 +11,8 @@ use Carp;
 use Getopt::Long qw(:config no_ignore_case bundling pass_through);
 
 
+my $max_intron_length = 100000;
+
 my $usage = <<__EOUSAGE__;
 
 ######################################################################
@@ -20,6 +22,7 @@ my $usage = <<__EOUSAGE__;
 #  --transcripts <string>      cdna sequences to align
 #
 #  Optional:
+#  -I <int>                    maximum intron length (default: $max_intron_length)
 #  --gtf <string>              gene structure annotations in gtf format
 #  --CPU <int>                 number of threads (default: 2)
 #  -o|--output <string>        bam output filename (default: basename(transcripts).mm2.bam)
@@ -45,6 +48,7 @@ my $output;
              'gtf=s' => \$gtf,
              'CPU=i' => \$CPU,
              'o|output=s' => \$output,
+             'I=i' => \$max_intron_length,
     );
 
 
@@ -60,6 +64,10 @@ unless ($genome && $transcripts) {
 unless ($output) {
     $output = basename($transcripts) . ".mm2.bam";
 }
+
+
+my $MINIMAP2_CUSTOM_OPTS = $ENV{MINIMAP2_CUSTOM_OPTS} || "";
+
 
 main: {
 
@@ -103,7 +111,7 @@ main: {
         $splice_param = "--junc-bed $splice_file";
     }
 
-    my $cmd = "minimap2 -ax splice $splice_param --secondary=no -O6,24 -B4 -L -t $CPU -cs -ub $mm2_idx $transcripts | samtools view -Sb | samtools sort -o $output && samtools index $output";
+    my $cmd = "set -o pipefail && minimap2 -ax splice $splice_param --secondary=no -O6,24 -B4 -L -t $CPU -cs -ub -G $max_intron_length ${MINIMAP2_CUSTOM_OPTS}  $mm2_idx $transcripts | samtools view -Sb | samtools sort -o $output && samtools index $output";
     &process_cmd($cmd);
     
     
