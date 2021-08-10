@@ -1,3 +1,11 @@
+#########
+## PASA release v2.5.0, Aug 10, 2021
+-added minimap2 support
+-uses latest gmap software
+-uses gmapl for large genomes (bigger than 2^32)
+-support for mysql in docker
+-using pblat in place of regular blat
+
 #################
 ## PASA release v2.4.1,  Nov. 9, 2019
 
