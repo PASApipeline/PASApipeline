@@ -87,17 +87,13 @@ main: {
     
     my $format = ($SAM_flag) ? "samse" : "3";
 
-	my $cmd = "gmap -D $genomeBaseDir -d $genomeDir -f $format -n $num_gmap_top_hits -x 50 -t $CPU -B 5 ";
+    my $gmap_prog = (-s $genome > 2**32 ) ? "gmapl" : "gmap";
+    
+	my $cmd = "$gmap_prog -D $genomeBaseDir -d $genomeDir -f $format -n $num_gmap_top_hits -x 50 -t $CPU -B 5 ";
 	if ($max_intron) {
-		my $gmapv=`gmap --version 2>&1 | head -1`;
-		chomp($gmapv);
-		$gmapv=~/GMAP\s+version\s+(\d{4})-(\d{2})-.*/;
-		if( ($1 == 2016 && $2 >= 5) || $1 > 2016){
-			$cmd .= " --max-intronlength-middle=$max_intron --max-intronlength-ends=$max_intron ";
-		}else{
-			$cmd .= " --intronlength=$max_intron ";
-		}
-	}
+        $cmd .= " --intronlength=$max_intron ";
+    }
+	
     $cmd .= "$transcriptDB";
 	&process_cmd($cmd);
 
