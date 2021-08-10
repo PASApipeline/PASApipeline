@@ -111,7 +111,7 @@ main: {
         $splice_param = "--junc-bed $splice_file";
     }
 
-    my $cmd = "set -o pipefail && minimap2 -ax splice $splice_param --secondary=no -O6,24 -B4 -L -t $CPU -cs -ub -G $max_intron_length ${MINIMAP2_CUSTOM_OPTS}  $mm2_idx $transcripts | samtools view -Sb | samtools sort -o $output && samtools index $output";
+    my $cmd = "bash -c \'set -o pipefail && minimap2 -ax splice $splice_param --secondary=no -O6,24 -B4 -L -t $CPU -cs -ub -G $max_intron_length ${MINIMAP2_CUSTOM_OPTS}  $mm2_idx $transcripts | samtools view -Sb | samtools sort -o $output && samtools index $output \'";
     &process_cmd($cmd);
     
     
