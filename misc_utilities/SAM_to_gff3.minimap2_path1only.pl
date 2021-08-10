@@ -121,29 +121,6 @@ main: {
 
         }
 
-        print join("\t",
-                   $scaff_name,
-                   "genome",
-                   "gene",
-                   $min_coord, $max_coord,
-                   $per_id,
-                   $strand,
-                   ".",
-                   "ID=$align_counter.gene;Target=$read_name $min_coord $max_coord") . "\n";
-
-        print join("\t",
-                   $scaff_name,
-                   "genome",
-                   "mRNA",
-                   $min_coord, $max_coord,
-                   $per_id,
-                   $strand,
-                   ".",
-                   "ID=$align_counter.mrna;Parent=$align_counter.gene;Target=$read_name $min_coord $max_coord") . "\n";
-
-        #use Data::Dumper;
-        #print Dumper(\@genome_n_trans_coords);
-        
         ## merge neighboring features if within a short distance unlikely to represent an intron.
         my @merged_coords;
         push (@merged_coords, shift @genome_n_trans_coords);
@@ -186,22 +163,13 @@ main: {
             
             print join("\t",
                        $scaff_name,
-                       "genome",
-                       "exon",
+                       "minimap2",
+                       "cDNA_match",
                        $genome_lend, $genome_rend,
                        $per_id,
                        $strand,
                        ".",
                        "ID=$align_counter;Parent=$align_counter.mrna;Target=$read_name $trans_lend $trans_rend") . "\n";
-            # print join("\t",
-            #            $scaff_name,
-            #            "genome",
-            #            "CDS",
-            #            $genome_lend, $genome_rend,
-            #            $per_id,
-            #            $strand,
-            #            ".",
-            #            "ID=$align_counter;Target=$read_name $trans_lend $trans_rend") . "\n";
         }
         print "\n";
         
