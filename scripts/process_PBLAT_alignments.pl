@@ -88,7 +88,7 @@ my $pipeliner = new Pipeliner("-checkpoint_dir" => $checkpt_dir, "-verbose" => 2
 
 
 
-my $ooc_cmd = "$blat_path $genome_db $transcript_db -q=rna -dots=100 -maxIntron=$MAX_INTRON  -makeOoc=11.ooc /dev/null";
+my $ooc_cmd = "$blat_path $genome_db $transcript_db -q=rna -dots=100 -maxIntron=$MAX_INTRON -threads=$CPU  -makeOoc=11.ooc /dev/null";
 my $ooc_chckpt = "11.ooc.ok";
 $pipeliner->add_commands(new Command($ooc_cmd, $ooc_chckpt));
 
@@ -100,7 +100,7 @@ my $transcript_file = basename($transcript_db);
 my $pslx_file = "$output_dir/$transcript_file.pslx";
 
 my $cmd = "$blat_path $genome_db $transcript_db -q=rna -dots=100 "
-    . " -maxIntron=$MAX_INTRON -out=pslx -ooc=11.ooc $pslx_file";
+    . " -maxIntron=$MAX_INTRON -out=pslx -ooc=11.ooc -threads=$CPU $pslx_file";
         
 my $checkpoint_file = basename("$pslx_file.completed");
 $pipeliner->add_commands(new Command($cmd, $checkpoint_file));
