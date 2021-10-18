@@ -164,6 +164,7 @@ CREATE INDEX align_id_idx ON align_link(align_id);
 CREATE INDEX cdna_info_id_idx ON align_link(cdna_info_id);
 CREATE INDEX cluster_id_idx ON align_link(cluster_id);
 CREATE INDEX progvalididx ON align_link(prog,validate);
+CREATE INDEX al_clid_lend_rend_idx on align_link(cluster_id, lend, rend);
 
 CREATE TABLE cdna_sequence (
   accession TEXT PRIMARY KEY,
