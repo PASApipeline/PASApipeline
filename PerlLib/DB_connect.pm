@@ -32,8 +32,8 @@ my $CONNECTED_FLAG = 0; # set to 1 on first db connection. Mostly for logging in
 sub configure_db_driver {
     my ($db) = @_;
     
-    if ($db =~ /^\//) {
-        # have fully qualified path:
+    if ($db =~ /\//) {
+        # have a qualified path (fully qualified or relative):
         $ENV{DBI_DRIVER} = 'SQLite';
         print STDERR "-connecting to SQLite db: $db\n" unless $CONNECTED_FLAG;
     }

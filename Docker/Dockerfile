@@ -24,7 +24,7 @@ ENV BIN /usr/local/bin
 RUN cpanm install DB_File \
                   URI::Escape \
 		              GD \
-    	  	        DBI \
+                              DBI \
 		              DBD::SQLite
 
 ## GMAP installation
@@ -71,8 +71,8 @@ RUN wget https://github.com/wrpearson/fasta36/archive/refs/tags/v36.3.8h_04-May-
 ## PASA installation
 WORKDIR $SRC
 
-## pasapipeline v2.5.0
-ENV PASA_CO 5aaeead0aadeda3123592700f7f0c3118421cdcc
+## pasapipeline v2.5.1
+ENV PASA_CO 15f2b9365c393f0068a269eb00b3acb2bc06983a
 
 RUN git clone https://github.com/PASApipeline/PASApipeline.git && \
     cd PASApipeline && \
