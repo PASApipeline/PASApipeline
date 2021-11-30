@@ -87,8 +87,8 @@ if (! -d $checkpt_dir) {
 my $pipeliner = new Pipeliner("-checkpoint_dir" => $checkpt_dir, "-verbose" => 2);
 
 
-
-my $ooc_cmd = "$blat_path $genome_db $transcript_db -q=rna -dots=100 -maxIntron=$MAX_INTRON -threads=$CPU  -makeOoc=11.ooc /dev/null";
+my $ooc_cmd_tmp_out = "tmp-$$-" . int(rand(100000)) . "-out";
+my $ooc_cmd = "$blat_path $genome_db $transcript_db -q=rna -dots=100 -maxIntron=$MAX_INTRON -threads=$CPU  -makeOoc=11.ooc $ooc_cmd_tmp_out";
 my $ooc_chckpt = "11.ooc.ok";
 $pipeliner->add_commands(new Command($ooc_cmd, $ooc_chckpt));
 
