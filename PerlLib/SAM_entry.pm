@@ -230,6 +230,12 @@ sub get_alignment_coords {
         unless ($read_len) {
             confess "Error, no read length obtained from entry: " . $self->get_original_line();
         }
+	if($alignment =~ /^(\d+)H/){
+            $read_len += $1
+        }
+        if($alignment =~ /(\d+)H$/){
+            $read_len += $1
+        }
 
         my @revcomp_coords;
         foreach my $coordset (@query_coords) {
