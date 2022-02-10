@@ -5,7 +5,7 @@ use warnings;
 use Carp;
 use Getopt::Long qw(:config no_ignore_case bundling pass_through);
 use FindBin;
-use threads;
+#use threads;
 use File::Basename;
 
 use lib ("$FindBin::Bin/../PerlLib");
@@ -19,7 +19,7 @@ my $usage =  <<__EOUSAGE__;
 ########################################################################
 #
 # --aligners <string>        comma-delimited list of aligners to execute
-#                            Currently supported: gmap, blat
+#                            Currently supported: gmap, blat, minimap2
 #
 # --transcripts <string>     transcript database in fasta format
 #
@@ -27,7 +27,7 @@ my $usage =  <<__EOUSAGE__;
 #
 # -I <int>                   maximum intron length (default: $max_intron_length)
 #
-# --CPU <int>                max threads for each tool (default: 1)
+# --CPU <int>                max threads for each tool
 #
 # -N <int>                   number of top hits (default: 1)
 #
@@ -45,7 +45,7 @@ my $genome_db;
 my $CPU = 1;
 my $num_top_hits = 1;
 
-my %SUPPORTED_ALIGNERS = map { + $_ => 1 } qw(blat gmap);
+my %SUPPORTED_ALIGNERS = map { + $_ => 1 } qw(blat gmap minimap2);
 
 &GetOptions ( 'h' => \$help_flag,
               'aligners=s' => \$aligners,
@@ -65,35 +65,44 @@ unless ($aligners && $transcripts_db && $genome_db) {
 
 main: {
 
-    my $thread_helper = new Thread_helper($CPU);
+    #my $thread_helper = new Thread_helper($CPU);
     
     if ($aligners =~ /gmap/i) {
-        my $thread = threads->create('run_gmap');
-        $thread_helper->add_thread($thread);
+        #my $thread = threads->create('run_gmap');
+        #$thread_helper->add_thread($thread);
+        print STDERR "-running gmap\n";
+        &run_gmap();
     }
     if ($aligners =~ /blat/i) {
-        $thread_helper->wait_for_open_thread();
-        my $thread = threads->create('run_blat');
-        $thread_helper->add_thread($thread);
+        #$thread_helper->wait_for_open_thread();
+        #my $thread = threads->create('run_blat');
+        #$thread_helper->add_thread($thread);
+        print STDERR "-running pblat\n";
+        &run_blat();
     }
     if ($aligners =~ /minimap2/i) {
-        $thread_helper->wait_for_open_thread();
-        my $thread = threads->create('run_minimap2');
-        $thread_helper->add_thread($thread);
+        #$thread_helper->wait_for_open_thread();
+        #my $thread = threads->create('run_minimap2');
+        #$thread_helper->add_thread($thread);
+        print STDERR "-running minimap2\n";
+        &run_minimap2();
     }
     
-    $thread_helper->wait_for_all_threads_to_complete();
-    
-    my @failed_threads = $thread_helper->get_failed_threads();
-    if (@failed_threads) {
-        die "Error, " . scalar(@failed_threads) . " threads failed.\n";
-        exit(1);
-    }
-    else {
-        print STDERR "processes completed successfully.\n";
-        exit(0);
-    }
-       
+    #$thread_helper->wait_for_all_threads_to_complete();
+    #
+    #my @failed_threads = $thread_helper->get_failed_threads();
+    #if (@failed_threads) {
+    #    die "Error, " . scalar(@failed_threads) . " threads failed.\n";
+    #    exit(1);
+    #}
+    #else {
+    #    print STDERR "processes completed successfully.\n";
+    #    exit(0);
+    #}
+
+    print STDERR "-** done aligning transcripts **\n";
+
+    exit(0);
 }
 
 ####

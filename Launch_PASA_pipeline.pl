@@ -17,7 +17,7 @@ use File::Basename;
 
 
 #my $VERSION = "__BLEEDING_EDGE__";
-my $VERSION = "2.5.1";
+my $VERSION = "2.5.2";
 
 $ENV{PATH} = "$FindBin::Bin/bin:$ENV{PATH}";
 
@@ -398,12 +398,10 @@ if ($RUN_PIPELINE) {
     if (@PRIMARY_ALIGNERS) {
 
         # split the threads among the different aligners.
-        my $num_aligners = scalar(@PRIMARY_ALIGNERS);
-        my $cpu_per_aligner = int($CPU / $num_aligners + 0.5); 
                 
         push (@cmds, { prog => "$UTILDIR/run_spliced_aligners.pl",
                        params => "--aligners " . join(",", @PRIMARY_ALIGNERS) . " --genome $genome_db"
-                           . " --transcripts $transcript_db -I $MAX_INTRON_LENGTH -N $NUM_TOP_ALIGNMENTS --CPU $cpu_per_aligner",
+                           . " --transcripts $transcript_db -I $MAX_INTRON_LENGTH -N $NUM_TOP_ALIGNMENTS --CPU $CPU",
                            input => undef,
                            output => undef,
                            chkpt => "align_transcripts.ok",

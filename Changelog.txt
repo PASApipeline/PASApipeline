@@ -1,3 +1,10 @@
+
+############
+## PASA release v2.5.2  Feb 10, 2022
+-bufix and reconfigured CPU propagation to aligners. Each aligner is run individually/sequentially at the full --CPU setting.
+
+
+
 ############
 ## PASA release v2.5.1
 -bugfix - now passing on multithreading parameters to pblat execution
