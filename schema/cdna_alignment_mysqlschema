@@ -252,7 +252,8 @@ CREATE TABLE align_link (
   KEY align_id_idx (align_id),
   KEY cdna_info_id_idx (cdna_info_id),
   KEY cluster_id_idx (cluster_id),
-  KEY progvalididx (prog,validate)
+  KEY progvalididx (prog,validate),
+  KEY al_clid_lend_rend_idx (cluster_id, lend, rend)
 ) ;
 
 --
