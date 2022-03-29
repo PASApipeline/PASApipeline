@@ -49,7 +49,7 @@ __EOUSAGE__
 my $help_flag;
 
 my $ALIGNERS = "blat,gmap,minimap2";
-my $CPU = 2;
+my $CPU = 4;
 my $TRANSDECODER;
 my $JUST_ALIGN_ASSEMBLY;
 my $resume_step;

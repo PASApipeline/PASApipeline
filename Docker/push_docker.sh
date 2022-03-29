@@ -2,7 +2,7 @@
 
 VERSION=`cat VERSION.txt`
 
-#docker push pasapipelinpasapipeline:${VERSION} 
+docker push pasapipeline/pasapipeline:${VERSION} 
 docker push pasapipeline/pasapipeline:latest 
 
 
