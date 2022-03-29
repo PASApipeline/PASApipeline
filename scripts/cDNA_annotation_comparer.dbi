@@ -1735,7 +1735,25 @@ sub validate_FLcdna_inferred_geneObjs {
                 $assembly_wrapper->{comment} .= $comment;
             }
         }
-        
+
+        if (! $errors) {
+
+            # ensure alignment spliced orient is consistent with gene obj orient.
+            my $alignment_obj = $assembly_wrapper->{alignmentObj};
+            my $align_spliced_orient = $alignment_obj->get_spliced_orientation();
+            my $gene_obj_transcribed_orient = $gene_obj->get_orientation();
+            if ($align_spliced_orient ne "?") {
+                if ($align_spliced_orient ne $gene_obj_transcribed_orient) {
+                    $errors .= "Failed validation: alignment spliced orient != derived gene_obj strand";
+                }
+            }
+            else {
+                # set the alignment spliced orient to the gene obj transcribed orient
+                $alignment_obj->set_spliced_orientation($gene_obj_transcribed_orient);
+            }
+
+        }
+                
         if (!$errors) {
             print "$gene_obj->{acc} Validates. :)\n";
             $validating_FL_cdnas{$cdna_acc} = 1;
