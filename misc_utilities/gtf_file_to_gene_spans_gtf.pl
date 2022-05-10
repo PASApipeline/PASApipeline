@@ -65,8 +65,8 @@ foreach my $asmbl_id (sort keys %contig_to_gene_list) {
     
     foreach my $gene_id (@gene_ids) {
         my $gene_obj_ref = $gene_obj_indexer->get_gene($gene_id);
-
-        my ($gene_lend, $gene_rend) = $gene_obj_ref->get_coords();
+        
+        my ($gene_lend, $gene_rend) = sort {$a<=>$b} $gene_obj_ref->get_coords();
         my $strand = $gene_obj_ref->get_orientation();
         
 
