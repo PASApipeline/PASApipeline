@@ -350,14 +350,14 @@ sub get_TDN_component {
         # orig style of trin accessions
         $component = $1;
     }
-    elsif ($cdna_acc =~ /^(c\d+_g\d+)/) {
+    elsif ($cdna_acc =~ /^(.*c\d+_g\d+)/) {
         $component = $1;
     }
-    elsif ($cdna_acc =~ /^(TR\d+\|c\d+_g\d+)/) {
+    elsif ($cdna_acc =~ /^(.*TR\d+\|.*c\d+_g\d+)/) {
         # trinity de novo 2.0.0+ style
         $component = $1;
     }
-    elsif ($cdna_acc =~ /^(TRINITY\S+_c\d+_g\d+)/) {
+    elsif ($cdna_acc =~ /^(.*TRINITY\S+_c\d+_g\d+)/) {
         $component = $1;
     }
     else {

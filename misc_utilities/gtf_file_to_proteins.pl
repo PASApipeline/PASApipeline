@@ -7,7 +7,6 @@ use lib ("$FindBin::Bin/../PerlLib");
 use Gene_obj;
 use Gene_obj_indexer;
 use GTF_utils;
-use CdbTools;
 use Carp;
 
 my $usage = "\n\nusage: $0 gtf_file genome_db [prot|CDS|cDNA|gene,default=prot]\n\n";
@@ -67,7 +66,7 @@ foreach my $gene_id (@all_gene_ids) {
 
 foreach my $asmbl_id (sort keys %contig_to_gene_list) {
     
-    my $genome_seq = cdbyank_linear($asmbl_id, $fasta_db);
+    my $genome_seq  = &get_seq($asmbl_id, $fasta_db);
     
     my @gene_ids = @{$contig_to_gene_list{$asmbl_id}};
     
@@ -128,4 +127,21 @@ foreach my $asmbl_id (sort keys %contig_to_gene_list) {
 
 
 exit(0);
+
+
+
+####
+sub get_seq {
+    my ($asmbl_id, $fasta_file) = @_;
+
+    my $cmd = "samtools faidx $fasta_file $asmbl_id";
+    my $result = `$cmd`;
+    if ($?) {
+        die "Error, cmd: $cmd died with ret $?";
+    }
+    my @pts = split(/\n/, $result);
+    shift @pts;
+    my $seq = join("", @pts);
+    return($seq);
+}
 
