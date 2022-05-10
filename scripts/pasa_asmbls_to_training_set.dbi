@@ -83,9 +83,6 @@ main: {
         
     my $transdecoder_params = "-t $pasa_transcripts_fasta_file ";
         
-    if ($min_prot_length) {
-        $transdecoder_params .= " -m $min_prot_length ";
-    }
     if ($genetic_code) {
         $transdecoder_params .= " -G $genetic_code ";
     }
@@ -107,6 +104,11 @@ main: {
     &process_cmd($cmd);
 
 
+
+    if ($min_prot_length) {
+        $transdecoder_params .= " -m $min_prot_length ";
+    }
+    
     $cmd = "$transdecoder_dir/TransDecoder.Predict $transdecoder_params";
     &process_cmd($cmd);
 
