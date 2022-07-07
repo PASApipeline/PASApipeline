@@ -86,3 +86,5 @@ ENV PASAHOME /usr/local/src/PASApipeline
 RUN cp $PASAHOME/bin/* /usr/local/bin/
 COPY conf.txt /usr/local/src/PASApipeline/pasa_conf/
 
+RUN apt-get update && apt-get install -y lighttpd
+
