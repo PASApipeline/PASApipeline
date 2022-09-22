@@ -312,8 +312,11 @@ my $genome_db = $opt_g or die "Must specify genome_db.\n\n$usage\n";
 unless (-s $genome_db) {
     die "Can't find $genome_db\n\n";
 }
-my $transcript_db = $opt_t or die "Must specify transcript_db.\n\n$usage\n";
-unless (-s $transcript_db) {
+my $transcript_db = $opt_t;
+if ( (! $transcript_db) && (! $CUFFLINKS_GTF) ) { 
+    die "Must specify transcript_db.\n\n$usage\n";
+}
+if ($transcript_db && ! -s $transcript_db) {
     die "Can't find $transcript_db\n";
 }
 
@@ -388,35 +391,37 @@ if ($RUN_PIPELINE) {
         $TDN_param = "-T $TDN_file";
     }
     
-    push (@cmds, { prog => "$UTILDIR/upload_transcript_data.dbi",
-				   params => "-M '$database' -t $transcript_db $TDN_param -f $full_length_cdna_listing ",
-				   input => undef,
-				   output => undef,
-                   chkpt => "upload_transcripts.ok",
-          }
-        );
-	
-    if (@PRIMARY_ALIGNERS) {
-
-        # split the threads among the different aligners.
-                
-        push (@cmds, { prog => "$UTILDIR/run_spliced_aligners.pl",
-                       params => "--aligners " . join(",", @PRIMARY_ALIGNERS) . " --genome $genome_db"
-                           . " --transcripts $transcript_db -I $MAX_INTRON_LENGTH -N $NUM_TOP_ALIGNMENTS --CPU $CPU",
-                           input => undef,
-                           output => undef,
-                           chkpt => "align_transcripts.ok",
-              } );
-        
-        foreach my $aligner (@PRIMARY_ALIGNERS) {
+    if ($transcript_db) {
+        push (@cmds, { prog => "$UTILDIR/upload_transcript_data.dbi",
+                       params => "-M '$database' -t $transcript_db $TDN_param -f $full_length_cdna_listing ",
+                       input => undef,
+                       output => undef,
+                       chkpt => "upload_transcripts.ok",
+              }
+            );
+    
+        if (@PRIMARY_ALIGNERS) {
             
-            push (@cmds, { prog => "$UTILDIR/import_spliced_alignments.dbi",
-                           params => "-M '$database'  -A $aligner -g $aligner.spliced_alignments.gff3",
-                           input => undef,
-                           output => undef,
-                           chkpt => "import_alignments.$aligner.ok",
-                  },
-                );    
+            # split the threads among the different aligners.
+            
+            push (@cmds, { prog => "$UTILDIR/run_spliced_aligners.pl",
+                           params => "--aligners " . join(",", @PRIMARY_ALIGNERS) . " --genome $genome_db"
+                               . " --transcripts $transcript_db -I $MAX_INTRON_LENGTH -N $NUM_TOP_ALIGNMENTS --CPU $CPU",
+                               input => undef,
+                               output => undef,
+                               chkpt => "align_transcripts.ok",
+                  } );
+            
+            foreach my $aligner (@PRIMARY_ALIGNERS) {
+                
+                push (@cmds, { prog => "$UTILDIR/import_spliced_alignments.dbi",
+                               params => "-M '$database'  -A $aligner -g $aligner.spliced_alignments.gff3",
+                               input => undef,
+                               output => undef,
+                               chkpt => "import_alignments.$aligner.ok",
+                      },
+                    );    
+            }
         }
     }
     

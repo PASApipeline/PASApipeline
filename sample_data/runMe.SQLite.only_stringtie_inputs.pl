@@ -12,78 +12,22 @@ use Pipeliner;
 
 use Getopt::Long qw(:config no_ignore_case bundling pass_through);
 
-my $usage = <<__EOUSAGE__;
-
-####################################################################################
-#
-#
-#  --align_assembly_config <string>  align_assembly.config file
-#
-#  --annot_compare_config <string>   annot_compare.config file
-#
-# ## all optional:
-#
-# --ALIGNERS <string>   "blat", "gmap", or "minimap2" (default: blat,gmap,minimap2)
-#
-# --CPU <int>      number of threads to use (default: 2)
-#
-# --TRANSDECODER   run TRANSDECODER to identify candidate full-length transcripts
-#
-# --just_align_assembly    only run the initial alignment assembly portion of the pipeline.
-#
-# -s <int>                 resume alignAssembly run at step
-#
-# -N <int>              number of top scoring spliced alignments (default: 1)
-#
-# --stringent_alignment_overlap <int>     (suggested: 30.0)  overlapping transcripts must have this min % overlap to be clustered.
-# --gene_overlap <int>     (suggested: 50.0)  transcripts overlapping existing gene annotations are clustered.  Intergenic alignments are clustered by default mechanism.                
-#
-####################################################################################
-
-
-__EOUSAGE__
-
-    ;
-
 
 my $help_flag;
 
 my $ALIGNERS = "blat,gmap,minimap2";
 my $CPU = 4;
-my $TRANSDECODER;
+my $TRANSDECODER = 1;
 my $JUST_ALIGN_ASSEMBLY;
 my $resume_step;
 my $num_top_hits = 1;
 my $stringent_alignment_overlap;
 my $gene_overlap;
-my $align_assembly_config_file;
-my $annot_compare_config_file;
+my $align_assembly_config_file = "sqlite.confs/alignAssembly.config";
+my $annot_compare_config_file = "sqlite.confs/annotCompare.config";
 
 
-&GetOptions ( 'h' => \$help_flag,
-              'align_assembly_config=s' => \$align_assembly_config_file,
-              'annot_compare_config=s' => \$annot_compare_config_file,
-                            
-              'CPU=i' => \$CPU,
-              'TRANSDECODER' => \$TRANSDECODER,
-              'ALIGNERS=s' => \$ALIGNERS,
-              'just_align_assembly' => \$JUST_ALIGN_ASSEMBLY,
-              's=i' => \$resume_step,
-              'N=i' => \$num_top_hits,
-              'stringent_alignment_overlap=i' => \$stringent_alignment_overlap,
-              'gene_overlap=i' => \$gene_overlap,
-              
 
-    );
-
-
-if ($help_flag) {
-    die $usage;
-}
-
-unless ($align_assembly_config_file && $annot_compare_config_file) {
-    die $usage;
-}
 
 
 my %config = &readConfig($align_assembly_config_file);
@@ -114,7 +58,7 @@ $DBname = basename($DBname);
 		print "********* Running Alignment Assembly ************\n";
 		
 		# "-C -r" will drop db if exists
-		my $cmd = "../Launch_PASA_pipeline.pl -c $align_assembly_config_file -C -r -R -g genome_sample.fasta -t all_transcripts.fasta.clean -T -u all_transcripts.fasta -f FL_accs.txt --ALIGNERS $ALIGNERS --CPU $CPU -N $num_top_hits --TDN tdn.accs  --IMPORT_CUSTOM_ALIGNMENTS_GFF3 custom_alignments.gff3 ";
+		my $cmd = "../Launch_PASA_pipeline.pl -c $align_assembly_config_file -C -r -R -g genome_sample.fasta --trans_gtf stringtie.gtf --CPU $CPU ";
 		
         if ($TRANSDECODER) {
             $cmd .= " --TRANSDECODER ";
@@ -132,28 +76,12 @@ $DBname = basename($DBname);
         }
         
 		$pipeliner->add_commands(new Command($cmd, "align_assembly.ok"));
-	}
-
+     }
+     
      $pipeliner->run();
      
      
     
-  comprehensive_transcriptome_build:
-     {
-         print "********** Building comprehensive transcriptome database ***********\n";
-         my $cmd = "../scripts/build_comprehensive_transcriptome.dbi -c $align_assembly_config_file -t all_transcripts.fasta.clean";
-         $pipeliner->add_commands(new Command($cmd, "build_compreh.ok"));
-     }
-
-     $pipeliner->run();
-     
-     if ($JUST_ALIGN_ASSEMBLY) {
-         print STDERR "-stopping now, after alignment assembly.\n";
-         exit(0);
-     }
-     
-
-
 	
    annot_compare_R1:
      { ## Annotation comparisons:
