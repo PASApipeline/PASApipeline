@@ -371,16 +371,17 @@ if ($RUN_PIPELINE) {
 
     @PRIMARY_ALIGNERS = split(/,/,join(',',@PRIMARY_ALIGNERS)); # unpack list of aligners in case commas are used.
     
-    unless (@PRIMARY_ALIGNERS || $IMPORT_CUSTOM_ALIGNMENTS_GFF3) {
+    unless (@PRIMARY_ALIGNERS || $IMPORT_CUSTOM_ALIGNMENTS_GFF3 || $CUFFLINKS_GTF) {
         die "Error, must specify at least one primary aligner via --ALIGNERS or imported via --IMPORT...";
     }
-    foreach my $aligner (@PRIMARY_ALIGNERS) {
-        unless ($SUPPORTED_PRIMARY_ALIGNERS{$aligner}){
-            die "Error, do not recognize aligner: [$aligner] ";
+    if (@PRIMARY_ALIGNERS) {
+        foreach my $aligner (@PRIMARY_ALIGNERS) {
+            unless ($SUPPORTED_PRIMARY_ALIGNERS{$aligner}){
+                die "Error, do not recognize aligner: [$aligner] ";
+            }
         }
     }
     
-
 	
     my $TDN_param = "";
     if ($TDN_file) {
