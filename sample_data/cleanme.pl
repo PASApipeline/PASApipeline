@@ -33,7 +33,7 @@ runMe.SQLite.sh
 runMe.MySQL.sh
 __run_sample_pipeline.pl
 Makefile
-
+runMe.SQLite.only_stringtie_inputs.pl
 );
 
 my %keep = map { + $_ => 1 } @files_to_keep;
