@@ -50,6 +50,9 @@ my $DEBUG = $opt_d;
 our $SEE = ($opt_v); # || $DEBUG);
 our $DB_SEE = $opt_v; # || $DEBUG;
 
+
+my $MAX_acc_cluster_pair_links = 100;
+
 my $require_valid = 1;
 
 my $min_percent_shorter_length = 30;
@@ -126,6 +129,16 @@ foreach my $asmbl_id_info (keys %asmbl_id_to_cdna_accs) {
 
 	@transcripts = sort {$a->{lend}<=>$b->{lend}} @transcripts;
 
+    if ($DEBUG) {
+        print STDERR "-debug mode, writing: debug.assign_clusters_by_stringent_alignment_overlap.cluster_info\n";
+        open (my $ofh, ">debug.assign_clusters_by_stringent_alignment_overlap.cluster_info") or die $!;
+        foreach my $transcript (@transcripts) {
+            print $ofh "$asmbl_id\t$spliced_orient\t$transcript->{lend}\t$transcript->{rend}\t$transcript->{cdna_acc}\n";
+        }
+    }
+
+
+
     my $overlap_piler = new Overlap_piler();
     foreach my $transcript (@transcripts) {
         $overlap_piler->add_coordSet($transcript->{cdna_acc}, $transcript->{lend}, $transcript->{rend});
@@ -161,7 +174,7 @@ foreach my $asmbl_id_info (keys %asmbl_id_to_cdna_accs) {
             my $i_length = $i_rend - $i_lend + 1;
             
             
-
+            my $pair_link_counter = 0;
 
             for (my $j = $i + 1; $j <= $#transcript_pile; $j++) {
                 
@@ -190,11 +203,15 @@ foreach my $asmbl_id_info (keys %asmbl_id_to_cdna_accs) {
                 
                 if ($percent_overlap_i >= $min_percent_shorter_length || $percent_overlap_j >= $min_percent_shorter_length) {
                     push (@pairs, [$i_acc, $j_acc]);
+                    $pair_link_counter += 1;
+                    if ($pair_link_counter >= $MAX_acc_cluster_pair_links) {
+                        last;
+                    }
                 }
             }
         }
     }
-     
+    
     my @clusters = &SingleLinkageClusterer::build_clusters(@pairs);
     
     my %seen;
