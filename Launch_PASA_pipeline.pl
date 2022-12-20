@@ -162,7 +162,7 @@ my $usage =  <<_EOH_;
 #    Alternatives:
 #
 #        --stringent_alignment_overlap <float>  (suggested: 30.0)  overlapping transcripts must have this min % overlap to be clustered.
-#
+#              OR
 #        --gene_overlap <float>  (suggested: 50.0)  transcripts overlapping existing gene annotations are clustered.  Intergenic alignments are clustered by default mechanism.
 #               * if --gene_overlap, must also specify --annots  with annotations in recognizable format (gtf, gff3, or data adapted) (just examines 'gene' rows, though).
 #
@@ -199,6 +199,14 @@ if ($SHOW_VERSION_INFO) {
     print STDERR "PASA version: $VERSION\n";
     exit(0);
 }
+
+
+if ($STRINGENT_ALIGNMENT_OVERLAP && $GENE_OVERLAP) {
+
+    die "Sorry, can use --stringent_alignment_overlap or --gene_overlap but not both ";
+
+}
+
 
 
 if ($PASACONF) {
