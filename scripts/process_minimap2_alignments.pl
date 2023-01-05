@@ -77,7 +77,6 @@ my $MINIMAP2_CUSTOM_OPTS = $ENV{MINIMAP2_CUSTOM_OPTS} || "";
 	my $genomeBaseDir = dirname($genome);
 	my $genomeName = basename($genome);
 	my $genomeDir = "$genomeBaseDir/$genomeName" . ".mm2";
-
     my $pipeliner = new Pipeliner("-checkpoint_dir" => $genomeDir, "-verbose" => 2);
         
     unless (-d $genomeDir) {
@@ -93,8 +92,8 @@ my $MINIMAP2_CUSTOM_OPTS = $ENV{MINIMAP2_CUSTOM_OPTS} || "";
         $splice_file = "$genomeDir/anno.bed";
     }
 
-    my $minimap2_cmd = "minimap2 -d $mm2_idx $genome";
-    my $minimap2_chckpt = "${mm2_idx}.ok";
+    my $minimap2_cmd = "minimap2 -d $mm2_idx -K 1000M -t $CPU $genome";
+    my $minimap2_chckpt = "${genomeName}.mmi.ok";
 
     unless (-e $minimap2_chckpt) {
         $pipeliner->add_commands(new Command($minimap2_cmd, $minimap2_chckpt));
@@ -115,7 +114,6 @@ my $MINIMAP2_CUSTOM_OPTS = $ENV{MINIMAP2_CUSTOM_OPTS} || "";
     
     my $cmd = "bash -c \'set -o pipefail && minimap2 -ax splice $splice_param --secondary=no -O6,24 -B4 -L -t $CPU -cs -ub -G $max_intron_length ${MINIMAP2_CUSTOM_OPTS}  $mm2_idx $transcripts | samtools view -Sbt $genome_samtools_index | samtools sort -o $output && samtools index $output \'";
     &process_cmd($cmd);
-    
     
 	exit(0);
 }
