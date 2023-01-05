@@ -92,7 +92,7 @@ my $MINIMAP2_CUSTOM_OPTS = $ENV{MINIMAP2_CUSTOM_OPTS} || "";
         $splice_file = "$genomeDir/anno.bed";
     }
 
-    my $minimap2_cmd = "minimap2 -d $mm2_idx -K 1000M -t $CPU $genome";
+    my $minimap2_cmd = "minimap2 -d $mm2_idx -t $CPU $genome";
     my $minimap2_chckpt = "${genomeName}.mmi.ok";
 
     unless (-e $minimap2_chckpt) {
