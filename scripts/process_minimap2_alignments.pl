@@ -4,8 +4,13 @@ use strict;
 use warnings;
 
 use FindBin;
+use lib ($FindBin::Bin);
+use Pasa_init;
+
 use File::Basename;
 use Cwd;
+
+use Pipeliner;
 
 use Carp;
 use Getopt::Long qw(:config no_ignore_case bundling pass_through);
@@ -65,18 +70,15 @@ unless ($output) {
     $output = basename($transcripts) . ".mm2.bam";
 }
 
-
 my $MINIMAP2_CUSTOM_OPTS = $ENV{MINIMAP2_CUSTOM_OPTS} || "";
 
 
-main: {
-
-	
+ main: {
 	my $genomeBaseDir = dirname($genome);
 	my $genomeName = basename($genome);
 	my $genomeDir = "$genomeBaseDir/$genomeName" . ".mm2";
-    
-
+    my $pipeliner = new Pipeliner("-checkpoint_dir" => $genomeDir, "-verbose" => 2);
+        
     unless (-d $genomeDir) {
         &process_cmd("mkdir $genomeDir");
     }
@@ -90,22 +92,19 @@ main: {
         $splice_file = "$genomeDir/anno.bed";
     }
 
+    my $minimap2_cmd = "minimap2 -d $mm2_idx -t $CPU $genome";
+    my $minimap2_chckpt = "${genomeName}.mmi.ok";
 
-    unless (-e $mm2_idx) {
-        
-        my $cmd = "minimap2 -d $mm2_idx $genome";
-        &process_cmd($cmd);
+    unless (-e $minimap2_chckpt) {
+        $pipeliner->add_commands(new Command($minimap2_cmd, $minimap2_chckpt));
+        $pipeliner->run();
 
         if ($gtf) {
             my $cmd = "paftools.js gff2bed $gtf > $splice_file";
             &process_cmd($cmd);
         }
-	
     }
     
-	
-	## run minimap2
-
     my $splice_param = "";
     if ($splice_file) {
         $splice_param = "--junc-bed $splice_file";
@@ -115,7 +114,6 @@ main: {
     
     my $cmd = "bash -c \'set -o pipefail && minimap2 -ax splice $splice_param --secondary=no -O6,24 -B4 -L -t $CPU -cs -ub -G $max_intron_length ${MINIMAP2_CUSTOM_OPTS}  $mm2_idx $transcripts | samtools view -Sbt $genome_samtools_index | samtools sort -o $output && samtools index $output \'";
     &process_cmd($cmd);
-    
     
 	exit(0);
 }
