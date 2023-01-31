@@ -1,7 +1,7 @@
 # PASApipeline
 PASA software
 
-See wiki tab for documentation.
+See [wiki](https://github.com/PASApipeline/PASApipeline/wiki) tab for documentation.
 
 
 remaining to include in documentation:

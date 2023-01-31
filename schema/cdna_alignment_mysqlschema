@@ -132,8 +132,8 @@ CREATE TABLE annotation_compare (
 CREATE TABLE annotation_link (
   annotation_link_id int(11) NOT NULL auto_increment,
   cdna_acc varchar(250) default NULL,
-  gene_id varchar(200) default NULL,
-  model_id varchar(200) default NULL,
+  gene_id varchar(3000) default NULL,
+  model_id varchar(3000) default NULL,
   compare_id int(11) NOT NULL default '0',
   PRIMARY KEY  (annotation_link_id),
   KEY cdna_acc_idx (cdna_acc),
@@ -149,8 +149,8 @@ CREATE TABLE annotation_link (
 
 CREATE TABLE annotation_store (
   annot_id int(11) NOT NULL auto_increment,
-  gene_id varchar(200) NOT NULL default '',
-  model_id varchar(200) NOT NULL default '',
+  gene_id varchar(3000) NOT NULL default '',
+  model_id varchar(3000) NOT NULL default '',
   annotdb_asmbl_id varchar(200) NOT NULL default '',
   lend int(10) unsigned NOT NULL default '0',
   rend int(10) unsigned NOT NULL default '0',
@@ -171,8 +171,8 @@ CREATE TABLE annotation_store (
 
 CREATE TABLE annotation_updates (
   update_id int(11) NOT NULL auto_increment,
-  gene_id varchar(1000) default NULL,
-  model_id varchar(200) default NULL,
+  gene_id varchar(3000) default NULL,
+  model_id varchar(3000) default NULL,
   alt_splice_flag tinyint(1) unsigned NOT NULL default '0',
   before_gene_obj mediumblob,
   after_gene_obj mediumblob,
