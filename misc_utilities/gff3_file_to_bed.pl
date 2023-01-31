@@ -27,14 +27,12 @@ foreach my $asmbl_id (sort keys %$contig_to_gene_list_href) {
     
     foreach my $gene_id (@gene_ids) {
         		
-		my $gene_obj_ref = $gene_obj_indexer_href->{$gene_id};
+		my $gene_obj = $gene_obj_indexer_href->{$gene_id};
 		
-		foreach my $gene ($gene_obj_ref, $gene_obj_ref->get_additional_isoforms()) {
+        my $bed = $gene_obj->to_BED_format();
 
-			my $bed = $gene->to_BED_format();
-
-			print $bed;
-		}
+        print $bed;
+        
 	}
 }
 
