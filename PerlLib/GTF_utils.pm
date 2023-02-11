@@ -77,10 +77,13 @@ sub GTF_to_gene_objs {
     my %gene_id_to_seq_name;
     my %gene_id_to_gene_name;
 
+    my %gene_id_to_gene_type;
+    my %transcript_id_to_transcript_type;
 
+    
     my %coding_genes;
     
-    
+        
     open (my $fh, $gtf_filename) or die "Error, cannot open $gtf_filename";
     while (<$fh>) {
         unless (/\w/) { next; }
@@ -114,7 +117,12 @@ sub GTF_to_gene_objs {
             $gene_name = $1;
             $gene_id_to_gene_name{$gene_id} = $gene_name;
         }
-        
+
+        if ($annot =~ /gene_type \"([^\"]+)\"/) {
+            my $gene_type = $1;
+            $gene_id_to_gene_type{$gene_id} = $gene_type;
+        }
+
         
 		# print "gene_id: $gene_id, transcrpt_id: $transcript_id, $type\n";
 
@@ -123,6 +131,11 @@ sub GTF_to_gene_objs {
         my $transcript_id;
         if ($annot =~ /transcript_id \"([^\"]+)\"/) {
             $transcript_id = $1;
+            
+            if ($annot =~ /transcript_type \"([^\"]+)\"/) {
+                my $transcript_type = $1;
+                $transcript_id_to_transcript_type{$transcript_id} = $transcript_type;
+            }
         }
         else {
             print STDERR "Skipping line: $_, no transcript_id value provided\n";
@@ -213,6 +226,13 @@ sub GTF_to_gene_objs {
                     }
                     $gene_obj->{asmbl_id} = $seqname;
                     $gene_obj->{source} = $source;
+                    
+                    if (my $gene_type = $gene_id_to_gene_type{$gene_id}) {
+                        $gene_obj->{gene_type} = $gene_type;
+                    }
+                    if (my $transcript_type = $transcript_id_to_transcript_type{$transcript_id}) {
+                        $gene_obj->{transcript_type} = $transcript_type;
+                    }
                     
                     $gene_obj->join_adjacent_exons();
                     
