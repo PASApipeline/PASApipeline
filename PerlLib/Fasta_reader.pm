@@ -4,6 +4,8 @@
 package Fasta_reader;
 
 use strict;
+use warnings;
+use Carp;
 
 sub new {
     my ($packagename, $fastaFile) = @_;
@@ -23,8 +25,12 @@ sub new {
 		$filehandle = $fastaFile;
 	}
 	else {
-		
-		open ($filehandle, $fastaFile) or die "Error: Couldn't open $fastaFile\n";
+		if ($fastaFile =~ /\.gz$/) {
+            open ($filehandle, "gunzip -c $fastaFile | ") or confess "Error, cannot open file $fastaFile using 'gunzip -c'";
+        }
+        else {
+            open ($filehandle, $fastaFile) or die "Error: Couldn't open $fastaFile\n";
+        }
 		$self->{fastaFile} = $fastaFile;
 	}
 	
@@ -52,7 +58,8 @@ sub next {
 	my $seqobj = undef;
     
 	if ($next_text_input) {
-		$next_text_input =~ s/^>|>$//g; #remove trailing > char.
+		$next_text_input =~ s/^>//;
+        $next_text_input =~ s/>$//; #remove trailing > char.
 		$next_text_input =~ tr/\t\n\000-\037\177-\377/\t\n/d; #remove cntrl chars
 		my ($header, @seqlines) = split (/\n/, $next_text_input);
 		my $sequence = join ("", @seqlines);
@@ -132,10 +139,16 @@ sub get_sequence {
 #### 
 sub get_FASTA_format {
     my $self = shift;
+    my %settings = @_;
+
+    my $fasta_line_len = $settings{fasta_line_len} || 60;
+    
     my $header = $self->get_header();
     my $sequence = $self->get_sequence();
-    $sequence =~ s/(\S{60})/$1\n/g;
-    chomp $sequence;
+    if ($fasta_line_len > 0) {
+        $sequence =~ s/(\S{$fasta_line_len})/$1\n/g;
+        chomp $sequence;
+    }
     my $fasta_entry = ">$header\n$sequence\n";
     return ($fasta_entry);
 }
@@ -164,6 +177,16 @@ sub write_fasta_file {
     close TMP;
     return ($tempfile);
 }
+
+####
+sub get_core_read_name {
+    my $self = shift;
+    
+    my $acc = $self->get_accession();
+    $acc =~ s|/[12]$||;
+    return($acc);
+}
+
 
 1; #EOM
 
