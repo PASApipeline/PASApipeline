@@ -17,7 +17,7 @@ my $sample_data_path = "$base_dir/sample_data";
 
 chdir($sample_data_path) or die $!;
 
-my $cmd = "singularity exec -e -B $base_dir  ../Docker/pasapipeline.v${version}.simg ./runMe.SQLite.sh";
+my $cmd = "singularity exec -e -B $base_dir -B ../ ../Docker/pasapipeline.v${version}.simg ./runMe.SQLite.sh";
 
 print "CMD: $cmd\n";
 

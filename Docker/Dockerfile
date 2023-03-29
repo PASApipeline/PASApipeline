@@ -71,8 +71,8 @@ RUN wget https://github.com/wrpearson/fasta36/archive/refs/tags/v36.3.8h_04-May-
 ## PASA installation
 WORKDIR $SRC
 
-## pasapipeline v2.5.2-dev
-ENV PASA_CO 0f84c112cc79c285bfe4522121a43535185a7250
+## pasapipeline v2.5.2-devb
+ENV PASA_CO a0cf081437955903dcb63cc38cbfcfd48d5bcda4
 
 RUN git clone https://github.com/PASApipeline/PASApipeline.git && \
     cd PASApipeline && \
