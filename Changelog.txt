@@ -1,3 +1,9 @@
+##########3
+## PASA release v2.5.3 June 1, 2023
+- various bugfixes
+- support for singularity added
+- set gene_id and model_id to varchar 3000 in mysql schema
+
 
 ############
 ## PASA release v2.5.2  Feb 10, 2022
