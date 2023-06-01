@@ -68,11 +68,13 @@ RUN wget https://github.com/wrpearson/fasta36/archive/refs/tags/v36.3.8h_04-May-
         cp ../bin/fasta36 /usr/local/bin/fasta && \
 	rm $SRC/v36.3.8h_04-May-2020.tar.gz
 
+RUN apt-get update && apt-get install -y lighttpd
+
 ## PASA installation
 WORKDIR $SRC
 
-## pasapipeline v2.5.2-devb
-ENV PASA_CO a0cf081437955903dcb63cc38cbfcfd48d5bcda4
+## pasapipeline v2.5.3
+ENV PASA_CO bbe2d8ef509dbd933a03c7ebfadaed13fa2832ac
 
 RUN git clone https://github.com/PASApipeline/PASApipeline.git && \
     cd PASApipeline && \
@@ -86,5 +88,5 @@ ENV PASAHOME /usr/local/src/PASApipeline
 RUN cp $PASAHOME/bin/* /usr/local/bin/
 COPY conf.txt /usr/local/src/PASApipeline/pasa_conf/
 
-RUN apt-get update && apt-get install -y lighttpd
+
 
