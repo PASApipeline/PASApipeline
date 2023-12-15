@@ -21,7 +21,7 @@ main: {
 	open (my $fh, $gtf_file) or die "Error, cannot open file $gtf_file";
 	while (<$fh>) {
 		chomp;
-		
+		if (/^\#/) { next; } 
 		unless (/\w/) { next; }
 		
 		my @x = split(/\t/);
