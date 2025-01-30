@@ -6,11 +6,10 @@ use FindBin;
 use lib ("$FindBin::Bin/../PerlLib");
 use Gene_obj;
 use Gene_obj_indexer;
-use CdbTools;
 use GFF3_utils;
 use GTF_utils;
 use Carp;
-
+use Fasta_retriever;
 
 my $usage = "usage: $0 file.GFF3 genome.fasta > file.GTF\n\n";
 
@@ -24,10 +23,13 @@ main: {
     
     my $asmbl_id_to_gene_list_href = &GFF3_utils::index_GFF3_gene_objs($gff3_file, $gene_obj_indexer);
 
+    my $fasta_retriever = new Fasta_retriever($genome_fasta);
+
+    
     foreach my $asmbl_id (sort keys %$asmbl_id_to_gene_list_href) {
         
         ## get the genome sequence
-        my $genome_seq = &cdbyank_linear($asmbl_id, $genome_fasta);
+        my $genome_seq = $fasta_retriever->get_seq($asmbl_id);
 
         my @gene_ids = @{$asmbl_id_to_gene_list_href->{$asmbl_id}};
         
