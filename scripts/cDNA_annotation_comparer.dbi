@@ -1006,6 +1006,7 @@ sub get_potential_overlapping_annotations {
 
     print "Method: get_potential_overlapping_annotations() $lend-$rend, strand: $strand, type: $asmbl_type\n";
     my @models = @$models_aref;
+    print("Num models: " . scalar(@models) . "\n");
     # the fli require more stringent matching criteria for annotations than do the nonfli.
     print "asmbl_type: $asmbl_type.\n";
     my $coord = int (($lend + $rend) /2);
@@ -1030,6 +1031,9 @@ sub get_potential_overlapping_annotations {
         my $end5 = $model_ref->{end5}; #sorted in increased order already.
         my $end3 = $model_ref->{end3};
         my $orient = $model_ref->{orient};
+
+        #print("lend,rend=[$lend, $rend], end5,end3=[$end5, $end3]\n");
+        
         if ($end5 < $rend && $end3 > $lend ) { #coordinate overlap
             print "Overlap Detected. model($end5, $end3); lend,rend: ($lend, $rend)\n";
             
@@ -1475,7 +1479,8 @@ sub get_annotated_gene_models_on_contig {
         my ($feat_name, $end5, $end3, $orientation) = @$result;
         print "Gene: $feat_name\n";
         
-        my $index = int ($end5/$bin_size);
+        my $midpt_coord = ($end5+$end3)/2;
+        my $index = int ($midpt_coord/$bin_size);
         my $model_list_ref = $models[$index];
         my $model_ref =  {feat_name=>$feat_name,
                           orient=>$orientation,
