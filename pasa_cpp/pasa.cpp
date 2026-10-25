@@ -19,6 +19,60 @@ bool DEBUG = false;
 const int MAX_INPUTLINE_LENGTH = 10000;
 
 
+// Parses one input line (acc,orient,lend-rend,...) into an alignment.
+CDNA_alignment parse_alignment_line(const string& line) {
+  vector<string> tokens = stringSplitter(line, ",");
+  string acc = tokens[0];
+  char orientation = tokens[1][0];
+  vector<Alignment_segment> seglist;
+  for (int i=2; i< tokens.size(); i++) {
+    vector<string> coords = stringSplitter(tokens[i], "-");
+    seglist.push_back(Alignment_segment(stringToInt(coords[0]), stringToInt(coords[1])));
+  }
+  CDNA_alignment align (seglist, orientation);
+  align.set_title(acc);
+  return(align);
+}
+
+
+// Batch mode (-B): the input holds many independent records, each a block of
+// alignment lines, separated by lines reading "//". Each record is assembled
+// on its own and reported exactly as a single-record run would report it,
+// starting with its "//" separator line.
+void run_batch(ifstream& fileReader, int i_fuzzlength) {
+  vector<string> lines;
+  string line;
+  bool more = true;
+  while (more) {
+    more = static_cast<bool>(getline(fileReader, line));
+    if (more && line != "//") {
+      if (line.find(",") != string::npos) {
+        lines.push_back(line);
+      }
+      continue;
+    }
+    if (lines.empty()) {
+      continue;
+    }
+    cout << "//" << endl;
+    vector<CDNA_alignment> cdnaList;
+    for (int i = 0; i < lines.size(); i++) {
+      cout << "input: " << lines[i] << endl;
+      cdnaList.push_back(parse_alignment_line(lines[i]));
+    }
+    lines.clear();
+    CDNA_alignment_assembler assembler (cdnaList);
+    if (! argSet["-a"]) {
+      if (i_fuzzlength >= 0) {
+        assembler.set_fuzzlength(i_fuzzlength);
+      }
+      assembler.assembleAlignments();
+    }
+    cout << endl << assembler.toAlignIllustration(70) << endl << endl;
+  }
+}
+
+
 int main (int argc, char* argv[]) {
   if (argc < 2) {
     cerr << endl << endl << "\tUsage: " << argv[0] <<  " inputFile [opts]" << endl;
@@ -26,6 +80,8 @@ int main (int argc, char* argv[]) {
          << "\t-F fuzzlength (bp to discount at alignment termini during pairwise" << endl
          << "\t   compatibility checks.  (default: 20)" << endl
          << "\t-a illustrate incoming alignments only.  No assembly performed." << endl
+         << "\t-B batch mode: input holds many records separated by '//' lines;" << endl
+         << "\t   each is assembled independently." << endl
          << "\t-v verbose" << endl << endl << endl ;
     exit(1);
   }
@@ -53,6 +109,12 @@ int main (int argc, char* argv[]) {
       cerr << "ERROR: specified fuzzdist of " << fuzzlength << " is not acceptable. " << endl;
       exit(2);
     }
+  }
+  
+  if (argSet["-B"]) {
+    run_batch(fileReader, i_fuzzlength);
+    fileReader.close();
+    return(0);
   }
   
   vector<CDNA_alignment> cdnaList;
