@@ -73,8 +73,8 @@ RUN apt-get update && apt-get install -y lighttpd
 ## PASA installation
 WORKDIR $SRC
 
-## pasapipeline v2.5.3
-ENV PASA_CO bbe2d8ef509dbd933a03c7ebfadaed13fa2832ac
+## pasapipeline v2.5.4
+ENV PASA_CO d52691f38b5c8c1e74871c0fd424c6e08070e097
 
 RUN git clone https://github.com/PASApipeline/PASApipeline.git && \
     cd PASApipeline && \
