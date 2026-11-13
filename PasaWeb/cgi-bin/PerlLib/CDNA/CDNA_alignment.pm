@@ -1251,7 +1251,7 @@ sub get_gene_obj_via_alignment {
     
     my $orient = $self->get_spliced_orientation();
     
-	if ($orient eq '+' || '-') {
+	if ($orient eq '+' || $orient eq '-') {
 		return($self->_get_gene_obj_via_alignment_by_orient($orient, $partial_info_href));
 	}
 	elsif ($orient eq '?') {
