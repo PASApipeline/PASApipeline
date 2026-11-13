@@ -1,3 +1,12 @@
+##########
+## PASA release v2.5.4 Nov 13, 2026
+- bugfix (#345): alignments of unknown spliced orientation (e.g. single-exon assemblies from non-strand-specific data) were always built on the plus strand; they are now built in both orientations, keeping the longer ORF. Thanks to JMusser499 for the report and reproducer (now PerlLib/CDNA/test_CDNA_alignment_unknown_orient.pl).
+  Note: the strand is chosen by ORF length alone, so an unstranded single-exon assembly over an annotated gene can occasionally be built antisense to it; use strand-specific data with --transcribed_is_aligned_orient where possible.
+- bugfix (#342, PR #343 by SAY-5): --GENETIC_CODE universal no longer dies
+- annotation comparison: gene models are binned by midpoint (was 5' end) to match the overlap lookup
+- gff3_to_gtf_format.pl uses the fasta retriever
+
+
 ##########3
 ## PASA release v2.5.3 June 1, 2023
 - various bugfixes
