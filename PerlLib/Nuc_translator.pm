@@ -239,9 +239,13 @@ sub use_specified_genetic_code {
     &$init_codon_table_subref(); ## Restore default universal code.  Others are variations on this.
     $currentCode = $special_code;
     
-    if ($special_code eq "Euplotes") {
+    if ($special_code eq "universal") {
+        ## default codon table already holds the universal code, nothing to change.
+    }
+
+    elsif ($special_code eq "Euplotes") {
         $codon_table{UGA} = "C";
-    } 
+    }
     
     elsif ($special_code eq "Tetrahymena" || $special_code eq "Acetabularia") {
         $codon_table{UAA} = "Q";
